@@ -1,6 +1,14 @@
 <template>
-  <div>
+  <main>
     <NuxtRouteAnnouncer />
-    <NuxtWelcome />
-  </div>
+    <NuxtPage />
+  </main>
 </template>
+
+<script setup lang="ts">
+const matrixStore = useMatrixStore();
+
+onMounted(() => {
+  matrixStore.startVestra();
+});
+</script>

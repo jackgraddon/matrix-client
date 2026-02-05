@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "build": "nuxt build",
-    "dev": "nuxt dev",
+    "dev": "nuxt dev --host",
     "generate": "nuxt generate",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare"
@@ -17,15 +17,32 @@
     "@nuxt/icon": "2.2.1",
     "@nuxt/image": "2.0.0",
     "@nuxt/scripts": "0.13.2",
+    "@pinia/nuxt": "0.11.3",
     "@unhead/vue": "^2.0.3",
+    "@vueuse/core": "^14.2.0",
+    "add": "^2.0.6",
+    "button": "^1.1.1",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "dlx": "^0.2.1",
     "eslint": "^9.0.0",
+    "lucide-vue-next": "^0.563.0",
     "matrix-js-sdk": "^40.2.0-rc.0",
     "nuxt": "^4.3.0",
+    "pinia": "^3.0.4",
+    "radix-vue": "^1.9.17",
     "shadcn-nuxt": "2.4.3",
+    "shadcn-vue": "^2.4.3",
+    "tailwind-merge": "^3.4.0",
     "vue": "^3.5.27",
     "vue-router": "^4.6.4"
   },
   "devDependencies": {
+    "@nuxt/kit": "^4.3.0",
+    "@tailwindcss/vite": "^4.1.18",
+    "@types/node": "^25.2.0",
+    "tailwindcss": "^4.1.18",
     "typescript": "^5.9.3"
-  }
+  },
+  "packageManager": "yarn@4.12.0"
 }
