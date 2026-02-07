@@ -6,15 +6,6 @@ Look at the [Nuxt documentation](https://nuxt.com/docs/getting-started/introduct
 
 Make sure to install dependencies:
 
-````markdown
-# Nuxt Minimal Starter
-
-Look at the [Nuxt documentation](https://nuxt.com/docs/getting-started/introduction) to learn more.
-
-## Setup
-
-Make sure to install dependencies:
-
 ```bash
 # npm
 npm install
@@ -82,32 +73,3 @@ bun run preview
 ```
 
 Check out the [deployment documentation](https://nuxt.com/docs/getting-started/deployment) for more information.
-
-````
-
-## Using Yarn 4 (Berry)
-
-This project was originally created with Yarn Classic (1.x). To use Yarn 4 while keeping a `node_modules` layout, follow these steps locally:
-
-1. Enable Corepack (bundled with recent Node versions) and activate Yarn:
-
-```bash
-corepack enable
-corepack prepare yarn@stable --activate
-```
-
-2. (Optional) Pin a Yarn release into the repo (this will create `.yarn/releases`):
-
-```bash
-yarn set version stable
-```
-
-3. Install dependencies using Yarn 4:
-
-```bash
-yarn install
-```
-
-Notes:
-- This repository includes a minimal `.yarnrc.yml` configured to use the `node-modules` linker so installs behave like Yarn 1.
-- If you want Plug'n'Play instead, remove or change `nodeLinker` in `.yarnrc.yml`.
