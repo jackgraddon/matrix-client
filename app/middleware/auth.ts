@@ -6,7 +6,7 @@ export default defineNuxtRouteMiddleware((to, from) => {
     const matrixStore = useMatrixStore();
 
     // Check store first
-    if (matrixStore.isAuthenticated) {
+    if (matrixStore.isReady) {
         return;
     }
 

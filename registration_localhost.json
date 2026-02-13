@@ -1,0 +1,1 @@
+{"client_id":"01KHCBWYHWZ7MFQTPE2DGVQS61","client_id_issued_at":1771015404,"redirect_uris":["https://localho.st:3000/api/auth/callback"],"grant_types":["authorization_code","refresh_token"],"application_type":"web","token_endpoint_auth_method":"none","client_name":"Matrix Client Debug Localhost","client_uri":"https://localho.st:3000/"}

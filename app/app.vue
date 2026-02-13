@@ -12,6 +12,6 @@
 const matrixStore = useMatrixStore();
 
 onMounted(() => {
-  matrixStore.startVestra();
+  matrixStore.initClient();
 });
 </script>

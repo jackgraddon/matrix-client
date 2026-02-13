@@ -8,6 +8,7 @@ dist
 
 # Node dependencies
 node_modules
+yarn.lock
 
 # Logs
 logs
@@ -15,8 +16,9 @@ logs
 
 # Misc
 .DS_Store
-.fleet
 .idea
+.yarn
+.history
 
 # Local env files
 .env

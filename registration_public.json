@@ -1,0 +1,1 @@
+{"client_id":"01KH29C02FM0V06X5B6T9D3PJY","client_id_issued_at":1770677207,"redirect_uris":["https://google.com/callback"],"grant_types":["authorization_code","refresh_token"],"application_type":"web","token_endpoint_auth_method":"none","client_name":"Matrix Client Debug Public","client_uri":"https://google.com/"}
