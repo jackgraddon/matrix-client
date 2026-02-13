@@ -1,99 +1,69 @@
 <template>
-  <div class="flex items-center justify-center h-screen">
-    <UiCard class="w-full sm:max-w-md">
-      <UiCardContent>
-        <UiFieldGroup>
-          <form v-if="flows.length === 0" @submit.prevent="handleLoginCheck">
-            <UiFieldSet>
-              <UiFieldLegend>Matrix Login</UiFieldLegend>
-              <UiField>
-                <UiFieldDescription>Please enter your homeserver URL to login with OIDC</UiFieldDescription>
-                <UiInputGroup>
-                  <UiInputGroupInput placeholder="matrix.org" class="!pl-1" v-model="homeserverDomain" />
-                  <UiInputGroupAddon>
-                    <UiInputGroupText>https://</UiInputGroupText>
-                  </UiInputGroupAddon>
-                </UiInputGroup>
-              </UiField>
-              <UiButton type="submit" :disabled="isLoading">
-                {{ isLoading ? "Loading..." : "Login" }}
-              </UiButton>
-              <UiAlert v-if="error" variant="destructive">
-                <UiAlertTitle>Something went wrong.</UiAlertTitle>
-                <UiAlertDescription>
-                  <p>{{ error }}</p>
-                </UiAlertDescription>
-              </UiAlert>
-            </UiFieldSet>
-          </form>
-          <div v-else>
-            <UiAlert variant="destructive">
-              <UiAlertTitle>No supported login flows found.</UiAlertTitle>
-              <UiAlertDescription>
-                <p>Neither a password or SSO/OIDC login flow was found. Please contact your administrator.</p>
-              </UiAlertDescription>
-            </UiAlert>
-            <UiButton @click="navigateTo('/login')" variant="outline" class="mt-4">Back</UiButton>
-            <p v-if="error" style="color: red">{{ error }}</p>
-          </div>
-        </UiFieldGroup>
+  <div class="flex min-h-screen items-center justify-center bg-gray-50">
+    <UiCard class="w-full max-w-md">
+      <UiCardHeader class="text-center">
+        <UiCardTitle>Welcome to Chat</UiCardTitle>
+        <UiCardDescription>
+          Connecting to Matrix Homeserver...
+        </UiCardDescription>
+      </UiCardHeader>
+      
+      <UiCardContent class="flex flex-col gap-6">
+        <UiAlert v-if="error" variant="destructive">
+          <UiAlertTitle>Connection Error</UiAlertTitle>
+          <UiAlertDescription>{{ error }}</UiAlertDescription>
+        </UiAlert>
+
+        <div v-else class="flex flex-col items-center gap-4 py-4">
+          <UiSpinner size="lg" />
+          <p class="text-sm text-muted-foreground">
+            Redirecting to secure login...
+          </p>
+        </div>
+
+        <UiButton 
+          v-if="!isLoading" 
+          @click="handleLogin" 
+          class="w-full"
+        >
+          Sign In Manually
+        </UiButton>
       </UiCardContent>
     </UiCard>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
-import { useRouter } from 'vue-router';
+import { ref, onMounted } from 'vue';
+import { useMatrixStore } from '~/stores/matrix';
 
-const config = useRuntimeConfig();
-
-const router = useRouter();
-const homeserverDomain = ref(config.public.matrix?.baseUrl.replace("https://", "") || "matrix.org");
-const isLoading = ref(false);
+const matrixStore = useMatrixStore();
+const isLoading = ref(true);
 const error = ref<string | null>(null);
-const flows = ref<string[]>([]);
 
-/**
- * Check if the homeserver supports OIDC login
- */
-const handleLoginCheck = async () => {
+const handleLogin = async () => {
+  isLoading.value = true;
+  error.value = null;
+
   try {
-    isLoading.value = true;
-    error.value = null;
-
-    if (!homeserverDomain.value.trim()) {
-      error.value = 'Please enter a homeserver domain';
-      return;
-    }
-
-    const baseUrl = `https://${homeserverDomain.value}`;
-
-    // Check if server supports OIDC
-    const response = await $fetch<{
-      flows: Array<{ type: string }>;
-      supportedOidc: boolean;
-    }>('/api/auth/check', {
-      method: 'POST',
-      body: {
-        baseUrl: baseUrl,
-      },
-    });
-
-    if (!response.supportedOidc) {
-      flows.value = response.flows.map((f) => f.type);
-      error.value = 'This homeserver does not support OIDC login';
-      return;
-    }
-
-    // Initiate OIDC login via top-level navigation to allow external redirect
-    window.location.href = '/api/auth/login';
-  } catch (err) {
-    console.error('Login check failed:', err);
-    error.value =
-      err instanceof Error ? err.message : 'Failed to check homeserver configuration';
-  } finally {
+    // This runs the entire flow:
+    // 1. Discover OIDC Config
+    // 2. Register Client (Dynamic)
+    // 3. Generate URL
+    // 4. Redirect window
+    await matrixStore.startLogin();
+  } catch (err: any) {
+    console.error("Login initialization failed:", err);
+    error.value = err.message || "Failed to connect to the authentication server.";
     isLoading.value = false;
   }
 };
+
+// Automatically trigger login on mount
+onMounted(() => {
+  // We use a small timeout to ensure the UI renders first so the user sees what's happening
+  setTimeout(() => {
+    handleLogin();
+  }, 500);
+});
 </script>

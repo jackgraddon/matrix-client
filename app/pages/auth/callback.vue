@@ -14,7 +14,7 @@
             <p>{{ error.description }}</p>
           </UiAlertDescription>
         </UiAlert>
-        <UiButton @click="navigateTo('/login')" class="w-full">
+        <UiButton @click="retryLogin" class="w-full">
           Return to Login
         </UiButton>
       </UiCardContent>
@@ -22,7 +22,7 @@
 
     <div v-else class="flex flex-col items-center gap-4">
       <UiSpinner size="lg" />
-      <p class="text-muted-foreground">Completing authentication...</p>
+      <p class="text-muted-foreground">Verifying with Matrix Homeserver...</p>
     </div>
   </div>
 </template>
@@ -30,59 +30,62 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { useMatrixStore } from '~/stores/matrix';
 
 interface ErrorState {
   title: string;
   description: string;
 }
 
-const router = useRouter();
 const route = useRoute();
+const router = useRouter();
+const matrixStore = useMatrixStore();
 const error = ref<ErrorState | null>(null);
+
+const retryLogin = () => {
+  navigateTo('/login');
+};
 
 onMounted(async () => {
   try {
-    // Get authorization code from URL query params
-    const authorizationCode = route.query.code as string;
-    const state = route.query.state as string;
+    // 1. Check for errors returned by the OIDC provider
+    const errorParam = route.query.error as string;
+    const errorDesc = route.query.error_description as string;
 
-    if (!authorizationCode) {
-      // Check for error response from Matrix server
-      const errorCode = route.query.error as string;
-      const errorDescription = route.query.error_description as string;
-
-      throw new Error(
-        `Authorization failed: ${errorDescription || errorCode || 'Unknown error'}`
-      );
+    if (errorParam) {
+      throw new Error(errorDesc || errorParam);
     }
 
-        // Exchange authorization code for tokens
-    const response = await $fetch<{ accessToken: string; userId: string }>(
-      '/api/auth/callback',
-      {
-        method: 'POST',
-        body: {
-          code: authorizationCode,
-          state: state,
-        },
-      }
-    );
+    // 2. Get authorization code and state
+    const code = route.query.code as string;
+    const state = route.query.state as string;
 
-    // Store authentication tokens
-    const authToken = useCookie('auth_token');
-    authToken.value = response.accessToken;
+    if (!code || !state) {
+      throw new Error("Missing authorization parameters from callback URL.");
+    }
 
-    // Redirect to dashboard or home page
-    await navigateTo('/dashboard');
-  } catch (err) {
+    // 3. Hand off to the Store to perform the SDK exchange
+    // This replaces the $fetch call to /api/auth/callback
+    await matrixStore.handleCallback(code, state);
+
+    // 4. (Optional) Set a cookie for Nuxt Middleware
+    // The SDK uses localStorage, but if you have route middleware checking cookies:
+    const authCookie = useCookie('auth_token');
+    // We assume the store has set the accessToken in state by now
+    if (matrixStore.client?.getAccessToken()) {
+       authCookie.value = matrixStore.client.getAccessToken();
+    }
+
+    // 5. Redirect to dashboard
+    // Use replace to prevent the user from clicking "back" into the callback logic
+    await navigateTo('/chat', { replace: true });
+
+  } catch (err: any) {
     console.error('Authentication callback error:', err);
 
     error.value = {
       title: 'Authentication Error',
-      description:
-        err instanceof Error
-          ? err.message
-          : 'Failed to complete authentication. Please try again.',
+      description: err.message || 'Failed to complete authentication.',
     };
   }
 });

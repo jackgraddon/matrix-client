@@ -1,21 +1,11 @@
+import { useMatrixStore } from '~/stores/matrix';
+
 export default defineNuxtRouteMiddleware((to, from) => {
-    // With SSR disabled for /chat/** routes, this middleware only runs on client.
-    // However, keeping the safety check just in case it's used elsewhere.
-    if (import.meta.server) return;
+    // We can check localStorage directly for speed, 
+    // or use the store state if it's already hydrated.
+    const hasToken = import.meta.client && localStorage.getItem('matrix_access_token');
 
-    const matrixStore = useMatrixStore();
-
-    // Check store first
-    if (matrixStore.isReady) {
-        return;
+    if (!hasToken && to.path.startsWith('/chat')) {
+        return navigateTo('/login');
     }
-
-    // Fallback: Check localStorage directly. 
-    // Since we are client-side only for these routes, we can trust localStorage existence.
-    const token = localStorage.getItem("matrix_access_token");
-    if (token) {
-        return; // Allow navigation, store will catch up
-    }
-
-    return navigateTo('/login');
-})
+});

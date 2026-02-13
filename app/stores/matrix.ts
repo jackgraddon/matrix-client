@@ -1,143 +1,79 @@
-import * as sdk from 'matrix-js-sdk';
 import { defineStore } from 'pinia';
-import { ref } from 'vue';
+import * as sdk from 'matrix-js-sdk';
+import { getOidcConfig, registerClient, getLoginUrl, completeLoginFlow, getHomeserverUrl } from '~/utils/matrix-auth';
 
-export const useMatrixStore = defineStore('matrix', () => {
-  // Create an emtpy client and store it in a ref
-  const client = ref<sdk.MatrixClient | null>(null);
-  const isReady = ref(false);
+function generateNonce(): string {
+  return Array.from(crypto.getRandomValues(new Uint8Array(16)))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+}
 
-  /**
-   * Initialize the client using credentials saved in local storage.
-   * This will be called when the application starts up.
-   */
+export const useMatrixStore = defineStore('matrix', {
+  state: () => ({
+    client: null as sdk.MatrixClient | null,
+    isAuthenticated: false,
+    isSyncing: false,
+  }),
+  actions: {
+    // ... startLogin remains the same ...
+    async startLogin() {
+      const authConfig = await getOidcConfig();
+      const clientId = await registerClient(authConfig);
+      const nonce = generateNonce();
 
-  async function initClient() {
-    // Retrieve session data from local storage
-    const accessToken = localStorage.getItem("matrix_access_token");
-    const userId = localStorage.getItem("matrix_user_id");
-    const deviceId = localStorage.getItem("matrix_device_id");
-    const baseUrl = localStorage.getItem("matrix_base_url");
+      localStorage.setItem('matrix_oidc_config', JSON.stringify(authConfig));
+      localStorage.setItem('matrix_oidc_client_id', clientId);
+      localStorage.setItem('matrix_oidc_nonce', nonce);
 
-    // If session data is missing, wait for login
-    if (!accessToken || !userId || !baseUrl) {
-      console.log("[Matrix] Missing session data, waiting for login");
-      return;
-    }
+      const url = await getLoginUrl(authConfig, clientId, nonce);
+      window.location.href = url;
+    },
 
-    console.log("[Matrix] Found session data for user ", userId, " at ", baseUrl, ", initializing client");
+    async handleCallback(code: string, state: string) {
+      // 1. Exchange Code
+      // FIX: The response is a wrapper object, not the token itself
+      const data = await completeLoginFlow(code, state);
 
-    // Create the client
-    client.value = sdk.createClient({
-      baseUrl,
-      accessToken,
-      userId,
-      deviceId: deviceId || undefined,
-    });
+      // data structure: { tokenResponse: { access_token, refresh_token, ... }, ... }
+      //
+      const accessToken = data.tokenResponse.access_token;
+      const refreshToken = data.tokenResponse.refresh_token; // CRITICAL
+      const userId = data.idTokenClaims.sub || data.tokenResponse.user_id; // "sub" is standard OIDC user ID
+      const deviceId = data.tokenResponse.device_id;
 
-    // Initialize Crypto (for end-to-end encryption)
-    await client.value.initRustCrypto();
+      // 2. Persist EVERYTHING
+      localStorage.setItem('matrix_access_token', accessToken);
+      localStorage.setItem('matrix_refresh_token', refreshToken); // Save this!
+      localStorage.setItem('matrix_user_id', userId);
+      if (deviceId) localStorage.setItem('matrix_device_id', deviceId);
 
-    // Start syncing
-    await client.value.startClient();
+      // 3. Initialize
+      await this.initClient(accessToken, userId, deviceId, refreshToken);
+    },
 
-    // Listen for activity to verify client is running
-    client.value.on(sdk.ClientEvent.Sync, (state) => {
-      if (state === 'PREPARED') {
-        isReady.value = true;
-        console.log("[Matrix] Client is ready");
-      }
-    })
-  }
+    async initClient(accessToken: string, userId: string, deviceId?: string, refreshToken?: string) {
+      if (this.client) return;
 
-  /**
-   * Finalize login by exchanging the login token for an access token
-   */
-  async function completeSsoLogin(baseUrl: string, loginToken: string) {
-    // Create a temporary client to perform the exchange
-    const tempClient = sdk.createClient({ baseUrl });
-
-    try {
-      // We use the type 'm.login.token' which is standard for SSO/MAS handoffs
-      const response = await tempClient.loginRequest({
-        type: 'm.login.token',
-        token: loginToken,
+      // 4. Create Client with Refresh Token
+      this.client = sdk.createClient({
+        baseUrl: getHomeserverUrl(),
+        accessToken,
+        userId,
+        deviceId,
+        refreshToken: refreshToken,
       });
 
-      // Save the PERMANENT credentials
-      if (response.access_token && response.user_id && response.device_id) {
-        localStorage.setItem('matrix_access_token', response.access_token);
-        localStorage.setItem('matrix_user_id', response.user_id);
-        localStorage.setItem('matrix_device_id', response.device_id);
-
-        // Initialize the real client
-        await initClient();
-        return true;
+      // 5. Initialize Crypto (Optional but Recommended)
+      // If you don't do this, you can't read encrypted messages
+      try {
+        await this.client.initRustCrypto();
+      } catch (e) {
+        console.warn("Crypto failed to initialize:", e);
       }
-      return false;
 
-    } catch (e) {
-      console.error("[Matrix] Failed to exchange login token:", e);
-      throw e;
+      await this.client.startClient();
+      this.isAuthenticated = true;
+      this.isSyncing = true;
     }
-  }
-
-  /** 
-   * Initialize the client using credentials from the login form.
-   * This will be called after the user submits the login form.
-   */
-  async function login(baseUrl: string, userId: string, accessToken: string) {
-    // Save credentials to local storage
-    localStorage.setItem("matrix_base_url", baseUrl);
-    localStorage.setItem("matrix_user_id", userId);
-    localStorage.setItem("matrix_access_token", accessToken);
-
-    // Create the client
-    client.value = sdk.createClient({
-      baseUrl,
-      accessToken,
-      userId,
-    });
-
-    // Initialize Crypto (for end-to-end encryption)
-    await client.value.initRustCrypto();
-
-    // Start syncing
-    await client.value.startClient();
-
-    // Listen for activity to verify client is running
-    client.value.on(sdk.ClientEvent.Sync, (state) => {
-      if (state === 'PREPARED') {
-        isReady.value = true;
-        console.log("[Matrix] Client is ready");
-      }
-    })
-  }
-
-  /**
-   * Logout the user and clear session data
-   */
-  async function logout() {
-    // Clear session data
-    localStorage.removeItem("matrix_base_url");
-    localStorage.removeItem("matrix_user_id");
-    localStorage.removeItem("matrix_access_token");
-    localStorage.removeItem("matrix_device_id");
-
-    // Stop the client
-    await client.value?.stopClient();
-
-    // Clear the client
-    client.value = null;
-    isReady.value = false;
-  }
-
-  return {
-    client,
-    isReady,
-    initClient,
-    login,
-    completeSsoLogin,
-    logout,
   }
 });
