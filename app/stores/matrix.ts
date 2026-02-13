@@ -15,8 +15,14 @@ export const useMatrixStore = defineStore('matrix', {
     isSyncing: false,
   }),
   actions: {
-    // ... startLogin remains the same ...
     async startLogin() {
+      // CLEANUP: Remove old session data so the plugin doesn't try to auto-login when we land on the callback page.
+      localStorage.removeItem('matrix_access_token');
+      localStorage.removeItem('matrix_user_id');
+      localStorage.removeItem('matrix_device_id');
+      localStorage.removeItem('matrix_refresh_token');
+
+      // Standard Flow
       const authConfig = await getOidcConfig();
       const clientId = await registerClient(authConfig);
       const nonce = generateNonce();
@@ -30,31 +36,50 @@ export const useMatrixStore = defineStore('matrix', {
     },
 
     async handleCallback(code: string, state: string) {
-      // 1. Exchange Code
-      // FIX: The response is a wrapper object, not the token itself
+      // Exchange Code for Token
       const data = await completeLoginFlow(code, state);
 
-      // data structure: { tokenResponse: { access_token, refresh_token, ... }, ... }
-      //
       const accessToken = data.tokenResponse.access_token;
-      const refreshToken = data.tokenResponse.refresh_token; // CRITICAL
-      const userId = data.idTokenClaims.sub || data.tokenResponse.user_id; // "sub" is standard OIDC user ID
+      const refreshToken = data.tokenResponse.refresh_token;
+
+      // Fetch the real Matrix ID (MXID)
+      const tempClient = sdk.createClient({
+        baseUrl: getHomeserverUrl(),
+        accessToken: accessToken
+      });
+
+      let userId: string;
+      try {
+        const whoami = await tempClient.whoami();
+        userId = whoami.user_id;
+      } catch (e) {
+        console.error("Failed to fetch MXID:", e);
+        throw new Error("Could not verify user identity.");
+      }
+
       const deviceId = data.tokenResponse.device_id;
 
-      // 2. Persist EVERYTHING
+      // Persist Valid Credentials
       localStorage.setItem('matrix_access_token', accessToken);
-      localStorage.setItem('matrix_refresh_token', refreshToken); // Save this!
-      localStorage.setItem('matrix_user_id', userId);
+      localStorage.setItem('matrix_refresh_token', refreshToken);
+      localStorage.setItem('matrix_user_id', userId); // Now saving the correct MXID
       if (deviceId) localStorage.setItem('matrix_device_id', deviceId);
 
-      // 3. Initialize
+      // Initialize
       await this.initClient(accessToken, userId, deviceId, refreshToken);
     },
 
     async initClient(accessToken: string, userId: string, deviceId?: string, refreshToken?: string) {
-      if (this.client) return;
+      // FORCE RESTART: If a client exists, stop it. 
+      // This allows 'handleCallback' to overwrite the 'bad' client started by the plugin.
+      if (this.client) {
+        console.log("Stopping existing Matrix client...");
+        this.client.stopClient();
+        this.client.removeAllListeners(); // Clean up listeners
+      }
 
-      // 4. Create Client with Refresh Token
+      console.log(`Initializing Client for ${userId}...`);
+
       this.client = sdk.createClient({
         baseUrl: getHomeserverUrl(),
         accessToken,
@@ -63,10 +88,9 @@ export const useMatrixStore = defineStore('matrix', {
         refreshToken: refreshToken,
       });
 
-      // 5. Initialize Crypto (Optional but Recommended)
-      // If you don't do this, you can't read encrypted messages
       try {
         await this.client.initRustCrypto();
+        console.log("Crypto initialized successfully");
       } catch (e) {
         console.warn("Crypto failed to initialize:", e);
       }
