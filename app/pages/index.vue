@@ -6,7 +6,7 @@
         <UiCardDescription>Please login to continue</UiCardDescription>
       </UiCardHeader>
       <UiCardContent>
-        <div v-if="!isReady">
+        <div v-if="!isAuthenticated">
           <UiButton variant="default" as-child>
             <NuxtLink to="/login">
               Login
@@ -29,7 +29,7 @@
 
 <script lang="ts" setup>
 const matrixStore = useMatrixStore();
-const { isReady } = storeToRefs(matrixStore);
+const { isAuthenticated } = storeToRefs(matrixStore);
 const { logout } = matrixStore; // Actions can be destructured directly
 
 // onMounted(() => {

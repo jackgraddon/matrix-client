@@ -21,7 +21,7 @@
     </UiCard>
 
     <div v-else class="flex flex-col items-center gap-4">
-      <UiSpinner size="lg" />
+      <UiSpinner class="h-10 w-10 text-primary" />
       <p class="text-muted-foreground">Verifying with Matrix Homeserver...</p>
     </div>
   </div>
