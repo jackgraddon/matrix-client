@@ -3,19 +3,24 @@ export default defineNuxtConfig({
   srcDir: 'app',
   devtools: { enabled: true },
 
+  app: {
+    head: {
+      htmlAttrs: {
+        lang: 'en'
+      },
+      title: 'Matrix Client'
+    }
+  },
+
   runtimeConfig: {
     // Server-side config (not exposed to client)
     matrix: {
-      baseUrl: process.env.NUXT_PUBLIC_MATRIX_BASE_URL || 'https://matrix.org',
+      baseUrl: process.env.NUXT_PUBLIC_MATRIX_BASE_URL || 'matrix.org',
       clientUrl: process.env.NUXT_PUBLIC_CLIENT_URL || 'https://localhost:3000',
-      clientName: process.env.NUXT_PUBLIC_CLIENT_NAME || 'Matrix Client',
-      clientId: process.env.NUXT_PUBLIC_MATRIX_CLIENT_ID || '',
-      redirectEndpoint: process.env.NUXT_PUBLIC_REDIRECT_ENDPOINT || '/api/auth/callback',
-      contactEmail: process.env.NUXT_PUBLIC_MATRIX_CONTACT_EMAIL || 'admin@example.com',
     },
     public: {
       matrix: {
-        baseUrl: process.env.NUXT_PUBLIC_MATRIX_BASE_URL || 'https://matrix.org',
+        baseUrl: process.env.NUXT_PUBLIC_MATRIX_BASE_URL || 'matrix.org',
       }
     }
   },
@@ -36,6 +41,20 @@ export default defineNuxtConfig({
   vite: {
     server: {
       allowedHosts: ['localho.st'],
+    },
+    optimizeDeps: {
+      exclude: ['@matrix-org/matrix-sdk-crypto-wasm'],
+    },
+    esbuild: {
+      supported: {
+        'top-level-await': true
+      },
+    }
+  },
+
+  nitro: {
+    experimental: {
+      wasm: true,
     },
   },
 
@@ -66,5 +85,5 @@ export default defineNuxtConfig({
     classSuffix: '',
     preference: 'system',
     fallback: 'light',
-  }
+  },
 })
