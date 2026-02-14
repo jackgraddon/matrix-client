@@ -18,7 +18,7 @@ export default defineNuxtPlugin((nuxtApp) => {
         if (accessToken && userId && userId !== 'undefined') {
             console.log('Restoring Matrix session...');
 
-            // 3. PASS IT TO THE STORE
+            // Pass it to the store
             store.initClient(
                 accessToken,
                 userId,
