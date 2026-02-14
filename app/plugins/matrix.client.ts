@@ -6,20 +6,25 @@ export default defineNuxtPlugin((nuxtApp) => {
     const route = useRoute();
 
     nuxtApp.hook('app:mounted', () => {
-        // Don't try to auto-login if we are currently handling a callback
+        // Prevent auto-login on the callback page to avoid race conditions
         if (route.path.includes('/auth/callback')) return;
 
-        // 1. Retrieve the session data we saved during login
         const accessToken = localStorage.getItem('matrix_access_token');
         const userId = localStorage.getItem('matrix_user_id');
         const deviceId = localStorage.getItem('matrix_device_id');
+        const refreshToken = localStorage.getItem('matrix_refresh_token');
 
-        // 2. validate we have the minimum required data
-        if (accessToken && userId) {
-            console.log('Matrix session found, initializing...');
+        // Validate data (Check for "undefined" string which caused your earlier crash)
+        if (accessToken && userId && userId !== 'undefined') {
+            console.log('Restoring Matrix session...');
 
-            // 3. Pass the data to the store to restart the client
-            store.initClient(accessToken, userId, deviceId || undefined);
+            // 3. PASS IT TO THE STORE
+            store.initClient(
+                accessToken,
+                userId,
+                deviceId || undefined,
+                refreshToken || undefined
+            );
         }
     });
 

@@ -7461,12 +7461,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"lucide-vue-next@npm:^0.563.0":
-  version: 0.563.0
-  resolution: "lucide-vue-next@npm:0.563.0"
+"lucide-vue-next@npm:^0.564.0":
+  version: 0.564.0
+  resolution: "lucide-vue-next@npm:0.564.0"
   peerDependencies:
     vue: ">=3.0.1"
-  checksum: 10c0/cf18c0bac9bf306ab4f69d508bc08ddc4282f57503c45aa82feb4de8b053cf5ac77ecb3d71314d1cec1c96fd7ad687bf116efc32bba8d2a549bcce00aabf60e0
+  checksum: 10c0/33ef5b26005143385d725d8d2fc609759bb58bc788b75d2fdec15223ee814a55bae2685d30ce8edf9905e84ce6416404a613c4f7e126850eb0755338a51bf244
   languageName: node
   linkType: hard
 
@@ -7552,7 +7552,7 @@ __metadata:
     "@vueuse/core": "npm:^14.2.0"
     class-variance-authority: "npm:^0.7.1"
     clsx: "npm:^2.1.1"
-    lucide-vue-next: "npm:^0.563.0"
+    lucide-vue-next: "npm:^0.564.0"
     matrix-js-sdk: "npm:^40.2.0-rc.0"
     nuxt: "npm:^4.3.0"
     pinia: "npm:^3.0.4"

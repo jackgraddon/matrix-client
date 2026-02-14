@@ -13,6 +13,11 @@ export const useMatrixStore = defineStore('matrix', {
     client: null as sdk.MatrixClient | null,
     isAuthenticated: false,
     isSyncing: false,
+    user: null as {
+      userId: string;
+      displayName?: string;
+      avatarUrl?: string;
+    } | null,
   }),
   actions: {
     async startLogin() {
@@ -52,12 +57,16 @@ export const useMatrixStore = defineStore('matrix', {
       try {
         const whoami = await tempClient.whoami();
         userId = whoami.user_id;
+        // whoami response often contains device_id 
+        if (whoami.device_id) {
+          // Overwrite the one from token response if present, or just use this one
+        }
       } catch (e) {
         console.error("Failed to fetch MXID:", e);
         throw new Error("Could not verify user identity.");
       }
 
-      const deviceId = data.tokenResponse.device_id;
+      const deviceId = (await tempClient.whoami()).device_id || data.tokenResponse.device_id;
 
       // Persist Valid Credentials
       localStorage.setItem('matrix_access_token', accessToken);
@@ -70,34 +79,92 @@ export const useMatrixStore = defineStore('matrix', {
     },
 
     async initClient(accessToken: string, userId: string, deviceId?: string, refreshToken?: string) {
-      // FORCE RESTART: If a client exists, stop it. 
-      // This allows 'handleCallback' to overwrite the 'bad' client started by the plugin.
+      console.log("Initializing Matrix Client...", { userId, deviceId, hasAccessToken: !!accessToken });
+
+      // Force restart client
       if (this.client) {
-        console.log("Stopping existing Matrix client...");
         this.client.stopClient();
-        this.client.removeAllListeners(); // Clean up listeners
+        this.client.removeAllListeners();
       }
 
-      console.log(`Initializing Client for ${userId}...`);
-
+      // Create new client
       this.client = sdk.createClient({
         baseUrl: getHomeserverUrl(),
         accessToken,
         userId,
         deviceId,
-        refreshToken: refreshToken,
+        refreshToken,
       });
 
+      // Initialize crypto
       try {
         await this.client.initRustCrypto();
-        console.log("Crypto initialized successfully");
       } catch (e) {
         console.warn("Crypto failed to initialize:", e);
       }
 
+      // Start client
       await this.client.startClient();
       this.isAuthenticated = true;
       this.isSyncing = true;
+
+      // Fetch profile after login
+      this.fetchUserProfile(userId);
+    },
+
+    // Action to get avatar and name
+    async fetchUserProfile(userId: string) {
+      if (!this.client) return;
+      try {
+        const profile = await this.client.getProfileInfo(userId);
+
+        // Convert the mxc:// URL to a real HTTP URL
+        let avatarUrl = undefined;
+        if (profile.avatar_url) {
+          avatarUrl = this.client.mxcUrlToHttp(profile.avatar_url, 96, 96, "crop");
+        }
+
+        // Update state
+        this.user = {
+          userId,
+          displayName: profile.displayname,
+          avatarUrl: avatarUrl || undefined
+        };
+      } catch (e) {
+        console.error("Could not fetch profile:", e);
+        this.user = { userId }; // Fallback
+      }
+    },
+
+    // Reset the session and redirect to login
+    async logout() {
+      console.log("Logging out...");
+
+      // Stop the Matrix Client (Kill Sync & Crypto)
+      if (this.client) {
+        this.client.stopClient();
+        this.client.removeAllListeners();
+      }
+
+      // Clear Pinia State
+      this.client = null;
+      this.user = null;
+      this.isAuthenticated = false;
+      this.isSyncing = false;
+
+      // Wipe Local Storage, remove critical session data
+      localStorage.removeItem('matrix_access_token');
+      localStorage.removeItem('matrix_refresh_token');
+      localStorage.removeItem('matrix_user_id');
+      localStorage.removeItem('matrix_device_id');
+
+      // Remove OIDC data (forces fresh discovery/registration next time)
+      localStorage.removeItem('matrix_oidc_config');
+      localStorage.removeItem('matrix_oidc_client_id');
+      localStorage.removeItem('matrix_oidc_nonce');
+
+      // Redirect to landing page
+      await navigateTo('/');
     }
   }
 });

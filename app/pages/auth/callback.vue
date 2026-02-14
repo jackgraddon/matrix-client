@@ -14,8 +14,8 @@
             <p>{{ error.description }}</p>
           </UiAlertDescription>
         </UiAlert>
-        <UiButton @click="retryLogin" class="w-full">
-          Return to Login
+        <UiButton @click="backOut" class="w-full">
+          Return to Home
         </UiButton>
       </UiCardContent>
     </UiCard>
@@ -42,8 +42,8 @@ const router = useRouter();
 const matrixStore = useMatrixStore();
 const error = ref<ErrorState | null>(null);
 
-const retryLogin = () => {
-  navigateTo('/login');
+const backOut = () => {
+  navigateTo('/');
 };
 
 onMounted(async () => {
