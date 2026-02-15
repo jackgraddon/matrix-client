@@ -44,6 +44,13 @@ export const useMatrixStore = defineStore('matrix', {
   }),
   actions: {
     async startLogin() {
+      // Stop any existing client to release DB locks
+      if (this.client) {
+        this.client.stopClient();
+        this.client.removeAllListeners();
+        this.client = null;
+      }
+
       // CLEANUP: Remove old session data so the plugin doesn't try to auto-login when we land on the callback page.
       localStorage.removeItem('matrix_access_token');
       localStorage.removeItem('matrix_user_id');
@@ -159,8 +166,15 @@ export const useMatrixStore = defineStore('matrix', {
         if (msg.includes("account in the store doesn't match")) {
           console.warn('Crypto store has stale device data — clearing and retrying...');
           // Stop the current client to release the IndexedDB connection
-          this.client.stopClient();
-          this.client.removeAllListeners();
+          if (this.client) {
+            this.client.stopClient();
+            this.client.removeAllListeners();
+            this.client = null;
+          }
+
+          // Brief pause to ensure DB lock is released
+          await new Promise(resolve => setTimeout(resolve, 100));
+
           // Delete the stale Rust crypto IndexedDB databases
           const deleteDb = (name: string) => new Promise<void>((resolve) => {
             const req = window.indexedDB.deleteDatabase(name);
@@ -397,7 +411,7 @@ export const useMatrixStore = defineStore('matrix', {
         const req = window.indexedDB.deleteDatabase(name);
         req.onsuccess = () => resolve();
         req.onerror = () => resolve();
-        req.onblocked = () => resolve();
+        req.onblocked = () => { console.warn(`DB delete blocked: ${name}`); resolve(); };
       });
       await deleteDb('matrix-js-sdk::matrix-sdk-crypto');
       await deleteDb('matrix-js-sdk::matrix-sdk-crypto-meta');
