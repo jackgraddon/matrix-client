@@ -1,5 +1,5 @@
 <template>
-  <div v-if="store.verificationRequest" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+  <div v-if="store.verificationRequest || store.secretStoragePrompt || store.isVerificationCompleted" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
     <UiCard class="w-full max-w-md p-6 bg-white dark:bg-zinc-900">
       
       <UiCardHeader>
@@ -10,15 +10,39 @@
       </UiCardHeader>
 
       <UiCardContent class="flex flex-col gap-6 py-4">
+
+        <!-- Secret Storage / Backup Key Input -->
+        <div v-if="store.secretStoragePrompt" class="text-center">
+            <p class="mb-4 text-sm text-muted-foreground">
+                Please enter your Security Key or Passphrase to verify this session.
+            </p>
+            <UiInput
+                v-model="backupKeyInput"
+                type="password"
+                placeholder="Security Key or Passphrase"
+                class="mb-4"
+                @keyup.enter="submitKey"
+            />
+            <div class="flex gap-4 justify-center">
+                <UiButton variant="secondary" @click="store.cancelSecretStorageKey()">Cancel</UiButton>
+                <UiButton @click="submitKey">Verify</UiButton>
+            </div>
+        </div>
         
-        <div v-if="!store.sasEvent && !store.isVerificationCompleted" class="text-center">
+        <div v-else-if="!store.sasEvent && !store.isVerificationCompleted" class="text-center">
           <template v-if="store.verificationInitiatedByMe">
              <p class="mb-4">Open Element (or your other client) and accept the verification request.</p>
-             <div class="flex gap-4 justify-center">
-                <UiButton variant="destructive" @click="store.cancelVerification()">Cancel</UiButton>
-                <div class="flex items-center gap-2 text-sm text-muted-foreground">
-                    <span class="animate-pulse">Waiting for other device...</span>
-                </div>
+             <div class="flex flex-col gap-4">
+                 <div class="flex gap-4 justify-center">
+                    <UiButton variant="destructive" @click="store.cancelVerification()">Cancel</UiButton>
+                    <div class="flex items-center gap-2 text-sm text-muted-foreground">
+                        <span class="animate-pulse">Waiting for other device...</span>
+                    </div>
+                 </div>
+                 <div class="text-sm text-muted-foreground">or</div>
+                 <UiButton variant="outline" @click="store.startBackupVerification()">
+                    Use Recovery Key / Passphrase
+                 </UiButton>
              </div>
           </template>
           <template v-else>
@@ -61,4 +85,11 @@
 <script setup lang="ts">
 import { useMatrixStore } from '~/stores/matrix';
 const store = useMatrixStore();
+const backupKeyInput = ref('');
+
+async function submitKey() {
+    if (!backupKeyInput.value) return;
+    await store.submitSecretStorageKey(backupKeyInput.value);
+    backupKeyInput.value = ''; // Clear after submit
+}
 </script>

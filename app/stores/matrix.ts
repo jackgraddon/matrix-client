@@ -4,6 +4,8 @@ import { OidcTokenRefresher } from 'matrix-js-sdk';
 import { CryptoEvent } from 'matrix-js-sdk/lib/crypto-api/CryptoEvent';
 import { VerificationRequestEvent, VerificationPhase, VerifierEvent } from 'matrix-js-sdk/lib/crypto-api/verification';
 import type { VerificationRequest, Verifier, ShowSasCallbacks } from 'matrix-js-sdk/lib/crypto-api/verification';
+import { deriveRecoveryKeyFromPassphrase } from 'matrix-js-sdk/lib/crypto-api/key-passphrase';
+import { decodeRecoveryKey } from 'matrix-js-sdk/lib/crypto-api/recovery-key';
 import type { IdTokenClaims } from 'oidc-client-ts';
 import { getOidcConfig, registerClient, getLoginUrl, completeLoginFlow, getHomeserverUrl } from '~/utils/matrix-auth';
 
@@ -41,6 +43,12 @@ export const useMatrixStore = defineStore('matrix', {
     verificationInitiatedByMe: false,
     sasEvent: null as ShowSasCallbacks | null,
     isVerificationCompleted: false,
+    // Secret Storage / Backup Code Verification
+    secretStoragePrompt: null as {
+      promise: { resolve: (val: [string, Uint8Array] | null) => void, reject: (err?: any) => void },
+      keyId: string,
+      keyInfo: any // SecretStorageKeyDescription
+    } | null,
   }),
   actions: {
     async startLogin() {
@@ -152,7 +160,27 @@ export const useMatrixStore = defineStore('matrix', {
         deviceId,
         refreshToken,
         tokenRefreshFunction,
-        cryptoStore: new sdk.IndexedDBCryptoStore(window.indexedDB, "matrix-js-sdk-crypto")
+        cryptoStore: new sdk.IndexedDBCryptoStore(window.indexedDB, "matrix-js-sdk-crypto"),
+        cryptoCallbacks: {
+          getSecretStorageKey: async ({ keys }, name) => {
+            console.log(`getSecretStorageKey called for ${name}`, keys);
+
+            // If we already have a prompt open, we might need to handle concurrency or just return the existing promise?
+            // For simplicity, we create a new prompt.
+
+            return new Promise<[string, Uint8Array] | null>((resolve, reject) => {
+              // Find the default key or first key
+              const keyId = Object.keys(keys)[0];
+              const keyInfo = keys[keyId];
+
+              this.secretStoragePrompt = {
+                promise: { resolve, reject },
+                keyId,
+                keyInfo
+              };
+            });
+          }
+        }
       });
 
       // Initialize crypto
@@ -193,6 +221,15 @@ export const useMatrixStore = defineStore('matrix', {
             refreshToken,
             tokenRefreshFunction,
             cryptoStore: new sdk.IndexedDBCryptoStore(window.indexedDB, 'matrix-js-sdk-crypto'),
+            cryptoCallbacks: {
+               getSecretStorageKey: async ({ keys }, name) => {
+                 return new Promise<[string, Uint8Array] | null>((resolve, reject) => {
+                   const keyId = Object.keys(keys)[0];
+                   const keyInfo = keys[keyId];
+                   this.secretStoragePrompt = { promise: { resolve, reject }, keyId, keyInfo };
+                 });
+               }
+            }
           });
           // Retry init
           try {
@@ -255,6 +292,90 @@ export const useMatrixStore = defineStore('matrix', {
     },
 
     // --- Verification Actions ---
+
+    async startBackupVerification() {
+      if (!this.client) return;
+      try {
+        console.log("Starting backup verification check...");
+        // Calling bootstrapCrossSigning will trigger getSecretStorageKey if keys are missing locally but present on server
+        await this.client.getCrypto()?.bootstrapCrossSigning({
+          setupNewCrossSigning: false
+        });
+        // If successful, check verification status again
+        await this.checkDeviceVerified();
+
+        if (this.isDeviceVerified) {
+            // If we successfully verified via backup, we can cancel the interactive request
+            if (this.verificationRequest) {
+                try { await this.verificationRequest.cancel(); } catch (e) { /* ignore */ }
+            }
+            this.verificationRequest = null;
+            this.verificationInitiatedByMe = false;
+            this.sasEvent = null;
+            this.isVerificationCompleted = true;
+            setTimeout(() => this._resetVerificationState(), 3000);
+        }
+      } catch (e) {
+        console.error("Backup verification failed:", e);
+      }
+    },
+
+    async submitSecretStorageKey(input: string) {
+      if (!this.secretStoragePrompt) return;
+
+      const { promise, keyId, keyInfo } = this.secretStoragePrompt;
+
+      try {
+        let keyArray: Uint8Array;
+
+        // Try to decode as Recovery Key (Base58)
+        // A recovery key is typically 48 bytes when decoded?
+        // We'll trust the user if it decodes successfully.
+        // Or we check input format: if it has spaces, remove them.
+        const cleanInput = input.replace(/\s/g, '');
+
+        // Naive heuristic: if it looks like a base58 string (alphanumeric) and is long enough
+        // matrix-js-sdk `decodeRecoveryKey` throws if invalid?
+        let isRecoveryKey = false;
+        try {
+            keyArray = decodeRecoveryKey(cleanInput);
+            isRecoveryKey = true;
+        } catch (e) {
+            // Not a valid recovery key, assume passphrase
+        }
+
+        if (!isRecoveryKey) {
+            if (keyInfo.passphrase) {
+                keyArray = await deriveRecoveryKeyFromPassphrase(
+                    input,
+                    keyInfo.passphrase.salt,
+                    keyInfo.passphrase.iterations
+                );
+            } else {
+                throw new Error("Input is not a valid recovery key and no passphrase info available.");
+            }
+        }
+
+        // Resolve the promise
+        promise.resolve([keyId, keyArray!]);
+        this.secretStoragePrompt = null;
+
+      } catch (e) {
+        console.error("Failed to process secret storage key:", e);
+        // We could reject, but maybe we want to let the user try again?
+        // For now, let's keep the prompt open but log error.
+        // To close it:
+        // promise.reject(e);
+        // this.secretStoragePrompt = null;
+      }
+    },
+
+    cancelSecretStorageKey() {
+      if (this.secretStoragePrompt) {
+        this.secretStoragePrompt.promise.resolve(null); // Return null to indicate cancellation/skipping
+        this.secretStoragePrompt = null;
+      }
+    },
 
     async requestVerification() {
       const crypto = this.client?.getCrypto();
