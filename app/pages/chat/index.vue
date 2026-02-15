@@ -5,23 +5,6 @@
     <div v-if="!store.isSyncing" class="text-gray-500">
       <p>Syncing with Matrix...</p>
     </div>
-
-    <div v-else class="grid gap-4">
-      <UiButton 
-        v-for="room in rooms" 
-        :key="room.roomId"
-        class="p-4"
-      >
-        <div class="font-bold">{{ room.name }}</div>
-        <div class="text-sm text-gray-500">
-          {{ room.lastMessage }}
-        </div>
-      </UiButton>
-      
-      <div v-if="rooms.length === 0" class="text-gray-400">
-        No rooms found. Join one to get started!
-      </div>
-    </div>
   </div>
 </template>
 

@@ -32,18 +32,36 @@
                             </UiButton>
                         </div>
                         <div class="flex flex-col gap-2 flex-1">
+                            <!-- Sidebar Room List -->
+                            <UiButton 
+                                v-if="isLinkActive('/chat/people')"
+                                v-for="friend in friends"
+                                :key="friend.roomId"
+                                :disabled="isLinkActive(`/chat/people/${friend.roomId}`)"
+                                :variant="isLinkActive(`/chat/people/${friend.roomId}`) ? 'secondary' : 'ghost'"
+                                class="justify-start"
+                                as-child
+                            >
+                                <NuxtLink :to="`/chat/people/${friend.roomId}`">
+                                    <Icon
+                                        :name="isLinkActive(`/chat/people/${friend.roomId}`) ? 'solar:chat-round-dots-bold' : 'solar:chat-round-dots-linear'"
+                                        class="h-4 w-4"
+                                    />
+                                    {{ friend.name }}
+                                </NuxtLink>
+                            </UiButton>
                             <UiButton 
                                 v-if="isLinkActive('/chat/rooms')"
                                 v-for="room in rooms"
                                 :key="room.roomId"
-                                :disabled="isLinkActive(room.roomId)"
-                                :variant="isLinkActive(room.roomId) ? 'secondary' : 'ghost'"
+                                :disabled="isLinkActive(`/chat/rooms/${room.roomId}`)"
+                                :variant="isLinkActive(`/chat/rooms/${room.roomId}`) ? 'secondary' : 'ghost'"
                                 class="justify-start"
                                 as-child
                             >
                                 <NuxtLink :to="`/chat/rooms/${room.roomId}`">
                                     <Icon
-                                        :name="isLinkActive(room.roomId) ? 'solar:chat-round-dots-bold' : 'solar:chat-round-dots-linear'"
+                                        :name="isLinkActive(`/chat/rooms/${room.roomId}`) ? 'solar:chat-round-dots-bold' : 'solar:chat-round-dots-linear'"
                                         class="h-4 w-4"
                                     />
                                     {{ room.name }}
@@ -80,49 +98,79 @@ definePageMeta({
     middleware: "auth",
 });
 
-import { Room, ClientEvent, RoomEvent } from 'matrix-js-sdk';
+import { Room, ClientEvent, RoomEvent, EventType } from 'matrix-js-sdk';
 const route = useRoute();
 
 const links = [
     { name: "Home", to: "/chat", icon: "solar:home-angle" },
     { name: "People", to: "/chat/people", icon: "solar:users-group-rounded" },
-    { name: "Rooms", to: "/chat/rooms", icon: "solar:hashtag" },
+    { name: "Rooms", to: "/chat/rooms", icon: "solar:inbox-archive" },
 ];
 
 const store = useMatrixStore();
 
 // Reactive state for the UI
-const rooms = ref<{ roomId: string; name: string; lastMessage: string }[]>([]);
+interface MappedRoom {
+  roomId: string;
+  name: string;
+  lastMessage: string;
+  lastActive: number;
+}
 
-// Helper to format rooms for display
+const friends = ref<(MappedRoom & { dmUserId: string })[]>([]);
+const rooms = ref<MappedRoom[]>([]);
+
+// Helper to format rooms for display, split by type
 const updateRooms = () => {
   if (!store.client) return;
   
   // Get all joined rooms
   const matrixRooms = store.client.getVisibleRooms();
-  
-  // Map to a temporary array (including the raw timestamp for sorting)
-  const mappedRooms = matrixRooms.map((room: Room) => {
+
+  // Build a set of DM room IDs from m.direct account data
+  const directEvent = store.client.getAccountData(EventType.Direct);
+  const directContent: Record<string, string[]> = directEvent ? directEvent.getContent() as Record<string, string[]> : {};
+  const dmRoomIds = new Set<string>();
+  for (const roomIds of Object.values(directContent)) {
+    for (const id of roomIds) dmRoomIds.add(id);
+  }
+
+  const dmList: (MappedRoom & { dmUserId: string })[] = [];
+  const roomList: MappedRoom[] = [];
+
+  for (const room of matrixRooms) {
+    // Skip spaces — they aren't chat rooms
+    if (room.isSpaceRoom()) continue;
+
     // Attempt to get the last message event for the preview text
     const lastEvent = room.timeline.length > 0 
       ? room.timeline[room.timeline.length - 1] 
       : null;
 
-    return {
+    const mapped: MappedRoom = {
       roomId: room.roomId,
       name: room.name || 'Unnamed Room',
       lastMessage: lastEvent ? lastEvent.getContent().body : 'No messages',
-      // Get the timestamp for sorting
-      // Fallback to 0 if the room has no activity so it goes to the bottom
-      lastActive: room.getLastActiveTimestamp() ?? 0 
+      lastActive: room.getLastActiveTimestamp() ?? 0,
     };
-  });
 
-  // Sort the array (Newest first)
-  mappedRooms.sort((a, b) => b.lastActive - a.lastActive);
+    if (dmRoomIds.has(room.roomId)) {
+      // Find which user this DM is with
+      const dmUserId = Object.entries(directContent)
+        .find(([, ids]) => ids.includes(room.roomId))?.[0] ?? '';
+      dmList.push({ ...mapped, dmUserId });
+    } else {
+      roomList.push(mapped);
+    }
+  }
+
+  // Sort both lists newest-first
+  dmList.sort((a, b) => b.lastActive - a.lastActive);
+  roomList.sort((a, b) => b.lastActive - a.lastActive);
 
   // Update the reactive state
-  rooms.value = mappedRooms;
+  friends.value = dmList;
+  rooms.value = roomList;
 };
 
 // Hook up listeners so the UI updates when messages come in

@@ -39,7 +39,7 @@
               :key="index"
               class="flex flex-col items-center p-2 bg-gray-100 dark:bg-zinc-800 rounded"
             >
-              <span class="text-3xl">{{ item.symbol }}</span> <span class="text-xs font-bold uppercase mt-1">{{ item.label }}</span> </div>
+              <span class="text-3xl">{{ item[0] }}</span> <span class="text-xs font-bold uppercase mt-1">{{ item[1] }}</span> </div>
           </div>
 
           <div class="flex gap-4 justify-center">
