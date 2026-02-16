@@ -16,10 +16,10 @@
             <p class="mb-4 text-sm text-muted-foreground">
                 Please enter your Security Key or Passphrase to verify this session.
             </p>
-            <UiInput
-                v-model="backupKeyInput"
-                type="password"
-                placeholder="Security Key or Passphrase"
+            <UiInput 
+                v-model="backupKeyInput" 
+                type="password" 
+                placeholder="Security Key or Passphrase" 
                 class="mb-4"
                 @keyup.enter="submitKey"
             />
