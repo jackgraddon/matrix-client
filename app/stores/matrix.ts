@@ -339,6 +339,9 @@ export const useMatrixStore = defineStore('matrix', {
            });
 
            await crypto.checkKeyBackupAndEnable();
+           console.log("Key backup restoration complete.");
+        } else {
+           console.warn("No key backup found on server.");
         }
 
         // If successful, check verification status again
