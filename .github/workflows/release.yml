@@ -21,6 +21,9 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
 
+      - name: Update Yarn to v4
+        run: corepack yarn set version stable
+
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
@@ -31,7 +34,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Install dependencies
-        run: yarn install
+        run: yarn
 
       - name: Build and Release
         uses: tauri-apps/tauri-action@v0
