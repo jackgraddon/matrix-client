@@ -1,5 +1,5 @@
 <template>
-  <div v-if="store.verificationRequest || store.secretStoragePrompt || store.isVerificationCompleted" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+  <div v-if="store.verificationModalOpen || store.secretStoragePrompt" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
     <UiCard class="w-full max-w-md p-6 bg-white dark:bg-zinc-900">
       
       <UiCardHeader>
@@ -34,7 +34,7 @@
              <p class="mb-4">Open Element (or your other client) and accept the verification request.</p>
              <div class="flex flex-col gap-4">
                  <div class="flex gap-4 justify-center">
-                    <UiButton variant="destructive" @click="store.cancelVerification()">Cancel</UiButton>
+                    <UiButton variant="destructive" @click="store.closeVerificationModal()">Cancel</UiButton>
                     <div class="flex items-center gap-2 text-sm text-muted-foreground">
                         <span class="animate-pulse">Waiting for other device...</span>
                     </div>
@@ -75,6 +75,40 @@
         <div v-else-if="store.isVerificationCompleted" class="text-center text-green-600">
           <div class="text-4xl mb-2">✅</div>
           <p class="font-bold">Verified!</p>
+          <UiButton class="mt-4" variant="outline" @click="store.closeVerificationModal()">Close</UiButton>
+        </div>
+        
+        <!-- Fallback / Manual Options (e.g. if already verified but want to restore backup) -->
+        <div v-else class="text-center">
+            <template v-if="store.isDeviceVerified">
+                <div class="text-green-600 mb-4 flex flex-col items-center">
+                    <div class="text-4xl mb-2">✅</div>
+                    <p class="font-bold">This session is verified.</p>
+                </div>
+                <p class="mb-4 text-sm text-muted-foreground">
+                    If you are missing messages, you can try restoring keys from backup.
+                </p>
+                <div class="flex flex-col gap-3">
+                    <UiButton @click="store.requestVerification()">
+                        Verify with another device
+                    </UiButton>
+                    <UiButton variant="outline" @click="store.startBackupVerification()">
+                        Restore from Backup
+                    </UiButton>
+                    <UiButton variant="ghost" @click="store.closeVerificationModal()">Close</UiButton>
+                </div>
+            </template>
+            <template v-else>
+                 <!-- Should normally be handled by verificationRequest logic above, but if we opened modal manually without a request: -->
+                 <p class="mb-4">Verify this session to access encrypted history.</p>
+                 <div class="flex flex-col gap-3">
+                    <UiButton @click="store.requestVerification()">Start Verification</UiButton>
+                    <UiButton variant="outline" @click="store.startBackupVerification()">
+                        Use Recovery Key
+                    </UiButton>
+                    <UiButton variant="ghost" @click="store.closeVerificationModal()">Cancel</UiButton>
+                 </div>
+            </template>
         </div>
 
       </UiCardContent>

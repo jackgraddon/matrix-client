@@ -43,13 +43,14 @@ export const useMatrixStore = defineStore('matrix', {
     verificationInitiatedByMe: false,
     sasEvent: null as ShowSasCallbacks | null,
     isVerificationCompleted: false,
+    verificationModalOpen: false,
     // Secret Storage / Backup Code Verification
     secretStoragePrompt: null as {
-      promise: { resolve: (val: [string, Uint8Array] | null) => void, reject: (err?: any) => void },
+      promise: { resolve: (val: [string, Uint8Array<ArrayBuffer>] | null) => void, reject: (err?: any) => void },
       keyId: string,
       keyInfo: any // SecretStorageKeyDescription
     } | null,
-    secretStorageKeyCache: {} as Record<string, Uint8Array>,
+    secretStorageKeyCache: {} as Record<string, Uint8Array<ArrayBuffer>>,
   }),
   actions: {
     async startLogin() {
@@ -165,17 +166,22 @@ export const useMatrixStore = defineStore('matrix', {
         cryptoCallbacks: {
           getSecretStorageKey: async ({ keys }, name) => {
             console.log(`getSecretStorageKey called for ${name}`, keys);
-            
+
             for (const keyId of Object.keys(keys)) {
               if (this.secretStorageKeyCache[keyId]) {
                 return [keyId, this.secretStorageKeyCache[keyId]];
               }
             }
-            
-            return new Promise<[string, Uint8Array] | null>((resolve, reject) => {
+
+            return new Promise<[string, Uint8Array<ArrayBuffer>] | null>((resolve, reject) => {
               const keyId = Object.keys(keys)[0];
+              if (!keyId) {
+                // Should not happen if keys are requested properly, but handle it safely
+                resolve(null);
+                return;
+              }
               const keyInfo = keys[keyId];
-              
+
               this.secretStoragePrompt = {
                 promise: { resolve, reject },
                 keyId,
@@ -202,7 +208,7 @@ export const useMatrixStore = defineStore('matrix', {
             this.client.removeAllListeners();
             this.client = null;
           }
-          
+
           // Brief pause to ensure DB lock is released
           await new Promise(resolve => setTimeout(resolve, 100));
 
@@ -225,18 +231,22 @@ export const useMatrixStore = defineStore('matrix', {
             tokenRefreshFunction,
             cryptoStore: new sdk.IndexedDBCryptoStore(window.indexedDB, 'matrix-js-sdk-crypto'),
             cryptoCallbacks: {
-               getSecretStorageKey: async ({ keys }, name) => {
-                 for (const keyId of Object.keys(keys)) {
-                   if (this.secretStorageKeyCache[keyId]) {
-                     return [keyId, this.secretStorageKeyCache[keyId]];
-                   }
-                 }
-                 return new Promise<[string, Uint8Array] | null>((resolve, reject) => {
-                   const keyId = Object.keys(keys)[0];
-                   const keyInfo = keys[keyId];
-                   this.secretStoragePrompt = { promise: { resolve, reject }, keyId, keyInfo };
-                 });
-               }
+              getSecretStorageKey: async ({ keys }, name) => {
+                for (const keyId of Object.keys(keys)) {
+                  if (this.secretStorageKeyCache[keyId]) {
+                    return [keyId, this.secretStorageKeyCache[keyId]];
+                  }
+                }
+                return new Promise<[string, Uint8Array<ArrayBuffer>] | null>((resolve, reject) => {
+                  const keyId = Object.keys(keys)[0];
+                  if (!keyId) {
+                    resolve(null);
+                    return;
+                  }
+                  const keyInfo = keys[keyId];
+                  this.secretStoragePrompt = { promise: { resolve, reject }, keyId, keyInfo };
+                });
+              }
             }
           });
           // Retry init
@@ -267,7 +277,7 @@ export const useMatrixStore = defineStore('matrix', {
           }
         });
 
-        // Check if this device is already verified
+        // Check if this device is already verified (initial check)
         this.checkDeviceVerified();
       }
 
@@ -281,11 +291,8 @@ export const useMatrixStore = defineStore('matrix', {
       try {
         const profile = await this.client.getProfileInfo(userId);
 
-        // Convert the mxc:// URL to a real HTTP URL
-        let avatarUrl = undefined;
-        if (profile.avatar_url) {
-          avatarUrl = this.client.mxcUrlToHttp(profile.avatar_url, 96, 96, "crop");
-        }
+        // Store the mxc:// URL directly
+        let avatarUrl = profile.avatar_url;
 
         // Update state
         this.user = {
@@ -308,43 +315,48 @@ export const useMatrixStore = defineStore('matrix', {
 
       try {
         console.log("Starting backup verification check...");
-        
+
         // 1. Verify User/Device (Cross-Signing)
         await crypto.bootstrapCrossSigning({
-          setupNewCrossSigning: false 
+          setupNewCrossSigning: false
         });
 
         // 2. Restore Key Backup (Historical Messages)
         console.log("Checking key backup status...");
         const backupInfo = await crypto.getKeyBackupInfo();
         if (backupInfo) {
-           console.log("Found key backup, ensuring we have access...");
-           // This will use the cached secret storage key to get the backup private key
-           await crypto.loadSessionBackupPrivateKeyFromSecretStorage();
-           
-           console.log("Restoring key backup...");
-           await crypto.restoreKeyBackup({
-             progressCallback: ({ successes, failures, total }) => {
-               console.log(`Restoring keys: ${successes}/${total} (failed: ${failures})`);
-             }
-           });
-           
-           await crypto.checkKeyBackupAndEnable();
+          console.log("Found key backup, ensuring we have access...");
+          // This will use the cached secret storage key to get the backup private key
+          await crypto.loadSessionBackupPrivateKeyFromSecretStorage();
+
+          console.log("Restoring key backup...");
+          await crypto.restoreKeyBackup({
+            progressCallback: (progress) => {
+              if (progress.stage === 'load_keys') {
+                console.log(`Restoring keys: ${progress.successes}/${progress.total} (failed: ${progress.failures})`);
+              }
+            }
+          });
+
+          await crypto.checkKeyBackupAndEnable();
+          console.log("Key backup restoration complete.");
+        } else {
+          console.warn("No key backup found on server.");
         }
 
         // If successful, check verification status again
         await this.checkDeviceVerified();
-        
+
         if (this.isDeviceVerified) {
-            // If we successfully verified via backup, we can cancel the interactive request
-            if (this.verificationRequest) {
-                try { await this.verificationRequest.cancel(); } catch (e) { /* ignore */ }
-            }
-            this.verificationRequest = null;
-            this.verificationInitiatedByMe = false;
-            this.sasEvent = null;
-            this.isVerificationCompleted = true;
-            setTimeout(() => this._resetVerificationState(), 3000);
+          // If we successfully verified via backup, we can cancel the interactive request
+          if (this.verificationRequest) {
+            try { await this.verificationRequest.cancel(); } catch (e) { /* ignore */ }
+          }
+          this.verificationRequest = null;
+          this.verificationInitiatedByMe = false;
+          this.sasEvent = null;
+          this.isVerificationCompleted = true;
+          setTimeout(() => this._resetVerificationState(), 3000);
         }
       } catch (e) {
         console.error("Backup verification failed:", e);
@@ -353,45 +365,43 @@ export const useMatrixStore = defineStore('matrix', {
 
     async submitSecretStorageKey(input: string) {
       if (!this.secretStoragePrompt) return;
-      
+
       const { promise, keyId, keyInfo } = this.secretStoragePrompt;
-      
+
       try {
-        let keyArray: Uint8Array;
+        let keyArray: Uint8Array<ArrayBuffer>;
 
         // Try to decode as Recovery Key (Base58)
-        // A recovery key is typically 48 bytes when decoded? 
-        // We'll trust the user if it decodes successfully.
-        // Or we check input format: if it has spaces, remove them.
         const cleanInput = input.replace(/\s/g, '');
-        
-        // Naive heuristic: if it looks like a base58 string (alphanumeric) and is long enough
-        // matrix-js-sdk `decodeRecoveryKey` throws if invalid?
         let isRecoveryKey = false;
         try {
-            keyArray = decodeRecoveryKey(cleanInput);
-            isRecoveryKey = true;
+          const decoded = decodeRecoveryKey(cleanInput);
+          // Ensure type is Uint8Array<ArrayBuffer>
+          keyArray = new Uint8Array(decoded.buffer, decoded.byteOffset, decoded.byteLength) as Uint8Array<ArrayBuffer>;
+          isRecoveryKey = true;
         } catch (e) {
-            // Not a valid recovery key, assume passphrase
+          // Not a valid recovery key, assume passphrase
         }
 
         if (!isRecoveryKey) {
-            if (keyInfo.passphrase) {
-                keyArray = await deriveRecoveryKeyFromPassphrase(
-                    input,
-                    keyInfo.passphrase.salt,
-                    keyInfo.passphrase.iterations
-                );
-            } else {
-                throw new Error("Input is not a valid recovery key and no passphrase info available.");
-            }
+          if (keyInfo.passphrase) {
+            const derived = await deriveRecoveryKeyFromPassphrase(
+              input,
+              keyInfo.passphrase.salt,
+              keyInfo.passphrase.iterations
+            );
+            // Ensure type is Uint8Array<ArrayBuffer>
+            keyArray = new Uint8Array(derived.buffer, derived.byteOffset, derived.byteLength) as Uint8Array<ArrayBuffer>;
+          } else {
+            throw new Error("Input is not a valid recovery key and no passphrase info available.");
+          }
         }
-        
+
         // Cache and resolve
         this.secretStorageKeyCache[keyId] = keyArray!;
         promise.resolve([keyId, keyArray!]);
         this.secretStoragePrompt = null;
-        
+
       } catch (e) {
         console.error("Failed to process secret storage key:", e);
         // We could reject, but maybe we want to let the user try again?
@@ -408,8 +418,10 @@ export const useMatrixStore = defineStore('matrix', {
         this.secretStoragePrompt = null;
       }
     },
-    
+
     async requestVerification() {
+      this.verificationModalOpen = true; // Ensure modal opens
+
       const crypto = this.client?.getCrypto();
       if (!crypto) { console.error('Crypto not available'); return; }
 
@@ -422,6 +434,18 @@ export const useMatrixStore = defineStore('matrix', {
         this._setupVerificationListeners(request);
       } catch (e) {
         console.error('Failed to request verification:', e);
+      }
+    },
+
+    openVerificationModal() {
+      this.verificationModalOpen = true;
+    },
+
+    closeVerificationModal() {
+      this.verificationModalOpen = false;
+      if (!this.verificationRequest && !this.isVerificationCompleted) {
+        // Only reset if we aren't in the middle of something or just finished
+        this._resetVerificationState();
       }
     },
 
@@ -510,6 +534,8 @@ export const useMatrixStore = defineStore('matrix', {
       if (!userId || !deviceId) return;
       try {
         const status = await crypto.getDeviceVerificationStatus(userId, deviceId);
+        // Log the whole object for debugging instead of accessing potentially missing properties
+        console.log('[Verification] Device status:', status);
         this.isDeviceVerified = status?.isVerified() ?? false;
       } catch (e) {
         console.error('Failed to check device verification:', e);

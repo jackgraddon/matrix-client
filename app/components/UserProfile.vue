@@ -1,14 +1,16 @@
 <template>
   <div class="flex items-center gap-3">
     <div class="relative">
-      <UiAvatar class="h-10 w-10 border">
-        <UiAvatarImage v-if="user?.avatarUrl" :src="user.avatarUrl" :alt="user.displayName" class="object-cover" />
-        <UiAvatarFallback>{{ initials }}</UiAvatarFallback>
-      </UiAvatar>
+      <MatrixAvatar 
+        class="h-10 w-10 border" 
+        :mxc-url="user?.avatarUrl" 
+        :name="user?.displayName" 
+        :size="96"
+      />
       
       <!-- Verification Status Indicator -->
+      <!-- @click.stop="store.openVerificationModal()" -->
       <button 
-        @click.stop="store.isDeviceVerified ? null : store.requestVerification()"
         class="absolute -bottom-1 -right-1 p-0.5 rounded-full bg-background border shadow-sm hover:bg-muted transition-colors"
         :title="store.isDeviceVerified ? 'Session Verified' : 'Verify Session'"
       >
@@ -37,8 +39,5 @@ const user = computed(() => matrixStore.user);
 
 console.log(user.value);
 
-const initials = computed(() => {
-  const name = user.value?.displayName || user.value?.userId || "ME";
-  return name.slice(0, 2).toUpperCase();
-});
+
 </script>
