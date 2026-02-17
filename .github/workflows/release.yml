@@ -50,5 +50,5 @@ jobs:
           releaseBody: "Automated Windows and MacOS build."
           releaseDraft: true
           prerelease: true
-          tauriScript: corepack yarn tauri --no-bundle
-          args: --verbose
+          tauriScript: corepack yarn tauri
+          args: --verbose --no-bundle
