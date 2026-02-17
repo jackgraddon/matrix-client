@@ -2,7 +2,7 @@ name: Release
 on:
   push:
     tags:
-      - 'dev*' # Trigger when you push a tag starting with 'dev' (e.g., dev1.0.0)
+      - 'dev*'
 
 jobs:
   release:
