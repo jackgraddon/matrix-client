@@ -120,6 +120,7 @@ const links = [
 ];
 
 const store = useMatrixStore();
+useGameActivity(); // Initialize game detection at layout level
 import MatrixAvatar from '~/components/MatrixAvatar.vue';
 
 // Reactive state for the UI

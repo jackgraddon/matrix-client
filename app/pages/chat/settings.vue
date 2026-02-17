@@ -1,24 +1,46 @@
 <template>
-  <div>
-    <h1>Settings</h1>
-    <!-- Logout -->
-    <UiButton @click="logout">Logout</UiButton>
-    <!-- <UiButton 
-        variant="ghost" 
-        size="icon" 
-        @click="store.isDeviceVerified ? null : store.requestVerification()"
-        :title="store.isDeviceVerified ? 'Session Verified' : 'Verify Session'"
-      >
-        <svg 
-          v-if="store.isDeviceVerified" 
-          class="text-green-500" 
-          xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
-        
-        <svg 
-          v-else 
-          class="text-red-500 animate-pulse"
-          xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
-      </UiButton> -->
+  <div class="container py-6 space-y-8 max-w-2xl">
+    <h1 class="text-3xl font-bold tracking-tight">Settings</h1>
+
+    <!-- Activity Status (Desktop Only) -->
+    <div v-if="gameActivity.isSupported.value" class="space-y-4">
+      <h2 class="text-xl font-semibold tracking-tight">Activity Status</h2>
+      <p class="text-sm text-muted-foreground">
+        Automatically detect running games and show them as your Matrix status.
+        Uses Discord's detectable games database for recognition.
+      </p>
+
+      <div class="flex items-center justify-between rounded-lg border p-4">
+        <div class="flex items-center gap-3">
+          <Icon name="solar:gamepad-bold" class="h-5 w-5 text-muted-foreground" />
+          <div class="space-y-0.5">
+            <p class="text-sm font-medium">Enable Game Detection</p>
+            <p class="text-xs text-muted-foreground">
+              Scan running processes to detect games
+            </p>
+          </div>
+        </div>
+        <Switch 
+          :checked="gameActivity.isEnabled.value" 
+          @update:checked="gameActivity.toggle()" 
+        />
+      </div>
+
+      <!-- Current Activity Preview -->
+      <div v-if="store.activityDetails?.is_running" class="rounded-lg border p-4 space-y-2">
+        <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Current Activity</p>
+        <div class="flex items-center gap-2">
+          <Icon name="solar:gamepad-bold" class="h-4 w-4 text-emerald-500" />
+          <span class="text-sm font-medium">{{ store.activityDetails.name }}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Account -->
+    <div class="space-y-4">
+      <h2 class="text-xl font-semibold tracking-tight">Account</h2>
+      <UiButton variant="destructive" @click="logout">Logout</UiButton>
+    </div>
   </div>
 </template>
 
@@ -27,7 +49,10 @@ definePageMeta({
     middleware: "auth",
 });
 
+import { Switch } from '~/components/ui/switch';
+
 const store = useMatrixStore();
+const gameActivity = useGameActivity();
 
 function logout () {
     store.logout();

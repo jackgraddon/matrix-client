@@ -51,6 +51,9 @@ export const useMatrixStore = defineStore('matrix', {
       keyInfo: any // SecretStorageKeyDescription
     } | null,
     secretStorageKeyCache: {} as Record<string, Uint8Array<ArrayBuffer>>,
+    // Activity Status (Game Detection)
+    activityStatus: null as string | null,
+    activityDetails: null as { name: string; is_running: boolean } | null,
   }),
   actions: {
     async startLogin() {
