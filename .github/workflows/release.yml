@@ -18,17 +18,17 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Enable Corepack
-        run: corepack enable
-
-      - name: Update Yarn to v4
-        run: corepack yarn set version stable
-
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 25
           cache: 'yarn'
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Update Yarn to v4
+        run: corepack yarn set version stable
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -45,4 +45,4 @@ jobs:
           releaseName: "App Release ${{ github.ref_name }}"
           releaseBody: "Automated Windows and MacOS build."
           releaseDraft: true
-          prerelease: false
+          prerelease: true
