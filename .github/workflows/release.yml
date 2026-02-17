@@ -38,8 +38,13 @@ jobs:
 
       - name: Install dependencies
         run: corepack yarn
+        shell: bash
 
-      - name: Build and Release
+      - name: Build Tauri App
+        run: corepack yarn tauri build
+        shell: bash
+
+      - name: Release App
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -49,3 +54,4 @@ jobs:
           releaseBody: "Automated Windows and MacOS build."
           releaseDraft: true
           prerelease: true
+          buildBundle: false
