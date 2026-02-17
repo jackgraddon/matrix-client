@@ -51,4 +51,5 @@ jobs:
           releaseDraft: true
           prerelease: true
           tauriScript: corepack yarn tauri
+          projectPath: .
           args: --verbose --no-bundle
