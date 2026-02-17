@@ -23,12 +23,15 @@ jobs:
         with:
           node-version: 25
 
-      - name: Enable Corepack and Yarn 4
+      - name: Enable Corepack
+        run: corepack enable
+        shell: bash
+
+      - name: Set Yarn Version
         run: |
-          corepack enable
-          yarn -v
           corepack yarn set version stable
           yarn -v
+        shell: bash
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
