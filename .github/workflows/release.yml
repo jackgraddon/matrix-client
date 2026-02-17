@@ -30,14 +30,14 @@ jobs:
       - name: Set Yarn Version
         run: |
           corepack yarn set version stable
-          yarn -v
+          corepack yarn -v
         shell: bash
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
       - name: Install dependencies
-        run: yarn
+        run: corepack yarn
 
       - name: Build and Release
         uses: tauri-apps/tauri-action@v0
