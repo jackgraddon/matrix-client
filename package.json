@@ -7,7 +7,8 @@
     "dev": "nuxt dev",
     "generate": "nuxt generate",
     "preview": "nuxt preview",
-    "postinstall": "nuxt prepare"
+    "postinstall": "nuxt prepare",
+    "tauri": "tauri"
   },
   "dependencies": {
     "@matrix-org/matrix-sdk-crypto-wasm": "^17.1.0",
@@ -20,6 +21,7 @@
     "@nuxt/image": "^2.0.0",
     "@nuxtjs/color-mode": "^4.0.0",
     "@pinia/nuxt": "^0.11.3",
+    "@tauri-apps/api": "^2.10.1",
     "@vueuse/core": "^14.2.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -35,6 +37,7 @@
   },
   "devDependencies": {
     "@nuxtjs/tailwindcss": "7.0.0-beta.1",
+    "@tauri-apps/cli": "^2.10.0",
     "@types/node": "^25.2.3",
     "@vite-pwa/nuxt": "^1.1.1",
     "tailwindcss": "^4.1.18",
