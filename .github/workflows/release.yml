@@ -22,13 +22,13 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 25
-          cache: 'yarn'
 
-      - name: Enable Corepack
-        run: corepack enable
-
-      - name: Update Yarn to v4
-        run: corepack yarn set version stable
+      - name: Enable Corepack and Yarn 4
+        run: |
+          corepack enable
+          yarn -v
+          corepack yarn set version stable
+          yarn -v
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
