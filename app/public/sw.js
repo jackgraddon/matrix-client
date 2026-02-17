@@ -1,9 +1,13 @@
 /// <reference lib="webworker" />
+import { cleanupOutdatedCaches, precacheAndRoute } from 'workbox-precaching'
 
 // Give the service worker access to Firebase Messaging.
 // Note: We are using Web Push directly, not necessarily Firebase, but the reference is good for types.
 
 const sw = self;
+
+cleanupOutdatedCaches()
+precacheAndRoute(self.__WB_MANIFEST)
 
 sw.addEventListener('install', (event) => {
     console.log('Service Worker installing.');

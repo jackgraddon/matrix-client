@@ -1,5 +1,7 @@
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
+  future: { compatibilityVersion: 4 },
+  ssr: false,
   srcDir: 'app',
   devtools: { enabled: true },
 
@@ -16,7 +18,7 @@ export default defineNuxtConfig({
     // Server-side config (not exposed to client)
     matrix: {
       baseUrl: process.env.NUXT_PUBLIC_MATRIX_BASE_URL || 'matrix.org',
-      clientUrl: process.env.NUXT_PUBLIC_CLIENT_URL || 'https://localhost:3000',
+      clientUrl: process.env.NUXT_PUBLIC_CLIENT_URL || 'http://localhost:3000',
     },
     public: {
       matrix: {
@@ -39,8 +41,11 @@ export default defineNuxtConfig({
   },
 
   vite: {
+    clearScreen: false,
+    envPrefix: ['VITE_', 'TAURI_'],
     server: {
       allowedHosts: ['localho.st'],
+      strictPort: true,
     },
     optimizeDeps: {
       exclude: ['@matrix-org/matrix-sdk-crypto-wasm'],
@@ -61,11 +66,11 @@ export default defineNuxtConfig({
   devServer: {
     host: '0.0.0.0',
     port: 3000,
-    https: {
-      key: '.dev/keys/server.key',
-      cert: '.dev/keys/server.crt',
-    },
   },
+
+  ignore: [
+    'src-tauri/**'
+  ],
 
   modules: [
     '@nuxt/devtools',
