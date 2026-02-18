@@ -81,7 +81,6 @@
                         </div>
                     </nav>
                     <footer class="p-2">
-                        <ActivityStatus />
                         <UiButton variant="ghost" as-child>
                             <div class="p-4 h-fit w-full flex justify-start cursor-pointer" @click="navigateTo('/chat/settings')">
                                 <UserProfile />

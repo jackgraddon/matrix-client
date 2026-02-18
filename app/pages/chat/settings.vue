@@ -3,6 +3,24 @@
     <h1 class="text-3xl font-bold tracking-tight">Settings</h1>
 
     <!-- Activity Status (Desktop Only) -->
+    <div class="space-y-4">
+      <h2 class="text-xl font-semibold tracking-tight">Custom Status</h2>
+      <div class="flex gap-2">
+        <UiInput 
+          v-model="manualStatusInput" 
+          placeholder="What's on your mind?" 
+          @keyup.enter="updateStatus"
+        />
+        <UiButton v-if="store.customStatus" variant="ghost" size="sm" @click="clearStatus">
+          Clear
+        </UiButton>
+        <UiButton size="sm" @click="updateStatus">Set Status</UiButton>
+      </div>
+      <p v-if="store.customStatus" class="text-xs text-emerald-600 dark:text-emerald-400">
+        Manual status is overriding game detection.
+      </p>
+    </div>
+
     <div v-if="gameActivity.isSupported.value" class="space-y-4">
       <h2 class="text-xl font-semibold tracking-tight">Activity Status</h2>
       <p class="text-sm text-muted-foreground">
@@ -20,18 +38,56 @@
             </p>
           </div>
         </div>
-        <Switch 
-          :checked="store.isGameDetectionEnabled" 
-          @update:checked="store.toggleGameDetection()" 
-        />
+        <UiSwitch v-model="gameDetectionToggle" />
       </div>
 
-      <!-- Current Activity Preview -->
-      <div v-if="store.activityDetails?.is_running" class="rounded-lg border p-4 space-y-2">
-        <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Current Activity</p>
-        <div class="flex items-center gap-2">
-          <Icon name="solar:gamepad-bold" class="h-4 w-4 text-emerald-500" />
-          <span class="text-sm font-medium">{{ store.activityDetails.name }}</span>
+      <!-- Status Preview -->
+      <div class="rounded-lg border bg-card text-card-foreground shadow-sm">
+        <div class="p-6 space-y-4">
+          <div class="space-y-1.5">
+            <h3 class="font-semibold leading-none tracking-tight">Status Preview</h3>
+            <p class="text-sm text-muted-foreground">This is how your status appears to others.</p>
+          </div>
+          
+          <!-- Mock User Card -->
+          <div class="flex items-center gap-3 rounded-md border p-3 bg-background/50">
+             <MatrixAvatar
+               :mxc-url="store.user?.avatarUrl"
+               :name="store.user?.displayName"
+               class="h-10 w-10 border"
+             />
+             <div class="flex-1 overflow-hidden">
+                <p class="text-sm font-medium leading-none truncate">{{ store.user?.displayName || ' You' }}</p>
+                
+                <!-- Status Line -->
+                <div class="flex items-center gap-1.5 mt-1.5">
+                   <!-- Manual Status Override -->
+                   <template v-if="store.customStatus">
+                      <div class="h-2 w-2 rounded-full bg-emerald-500"></div>
+                      <p class="text-xs text-muted-foreground truncate">{{ store.customStatus }}</p>
+                   </template>
+
+                   <!-- Game Activity -->
+                   <template v-else-if="store.activityDetails?.is_running">
+                      <Icon name="solar:gamepad-bold" class="h-3.5 w-3.5 text-emerald-500" />
+                      <p class="text-xs text-emerald-600 dark:text-emerald-400 font-medium truncate">
+                        Playing {{ store.activityDetails.name }}
+                      </p>
+                   </template>
+
+                   <!-- Default Online -->
+                   <template v-else>
+                      <div class="h-2 w-2 rounded-full bg-emerald-500"></div>
+                      <p class="text-xs text-muted-foreground">Online</p>
+                   </template>
+                </div>
+             </div>
+          </div>
+
+          <div v-if="gameActivity.isEnabled.value && !store.activityDetails?.is_running && !store.customStatus" class="flex items-center gap-2 text-xs text-muted-foreground">
+             <Icon name="svg-spinners:ring-resize" class="h-3.5 w-3.5" />
+             <span>Scanning for games...</span>
+          </div>
         </div>
       </div>
     </div>
@@ -58,10 +114,25 @@ definePageMeta({
     middleware: "auth",
 });
 
-import { Switch } from '~/components/ui/switch';
 
 const store = useMatrixStore();
 const gameActivity = useGameActivity();
+
+const gameDetectionToggle = computed({
+  get: () => store.isGameDetectionEnabled,
+  set: (val: boolean) => store.setGameDetection(val),
+});
+
+const manualStatusInput = ref(store.customStatus || '');
+
+function updateStatus() {
+  store.setCustomStatus(manualStatusInput.value);
+}
+
+function clearStatus() {
+  manualStatusInput.value = '';
+  store.setCustomStatus(null);
+}
 
 function logout () {
     store.logout();

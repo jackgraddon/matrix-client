@@ -1,5 +1,5 @@
 [package]
-name = "app"
+name = "matrix_client_app"
 version = "0.1.0"
 description = "A Tauri App"
 authors = ["you"]
@@ -24,4 +24,4 @@ log = "0.4"
 tauri = { version = "2.10.0", features = [] }
 tauri-plugin-log = "2"
 sysinfo = "0.38"
-tokio = { version = "1", features = ["time"] }
+tokio = { version = "1", features = ["macros", "sync", "time", "rt"] }

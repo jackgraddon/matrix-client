@@ -8,6 +8,9 @@ import { deriveRecoveryKeyFromPassphrase } from 'matrix-js-sdk/lib/crypto-api/ke
 import { decodeRecoveryKey } from 'matrix-js-sdk/lib/crypto-api/recovery-key';
 import type { IdTokenClaims } from 'oidc-client-ts';
 import { getOidcConfig, registerClient, getLoginUrl, completeLoginFlow, getHomeserverUrl } from '~/utils/matrix-auth';
+// Tauri imports - explicit import is required as per user confirmation/config check
+import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 
 /**
  * Subclass of OidcTokenRefresher that persists rotated tokens to localStorage.
@@ -57,17 +60,128 @@ export const useMatrixStore = defineStore('matrix', {
     activityStatus: null as string | null,
     activityDetails: null as { name: string; is_running: boolean } | null,
     isGameDetectionEnabled: false,
+    customStatus: null as string | null,
   }),
   actions: {
     initGameDetection() {
       // Check if localStorage has "game_activity_enabled"
       const stored = localStorage.getItem('game_activity_enabled');
+      console.log('[MatrixStore] Loading game detection config:', stored);
       this.isGameDetectionEnabled = stored === 'true';
+      // Sync with backend immediately if supported
+      const tauriCheck = !!(window as any).__TAURI_INTERNALS__;
+      console.log('[MatrixStore] Syncing with backend. Tauri detected:', tauriCheck);
+      if (tauriCheck) {
+        invoke('set_scanner_enabled', { enabled: this.isGameDetectionEnabled })
+          .then(() => console.log('[MatrixStore] Backend sync success'))
+          .catch((e: any) => console.error('[MatrixStore] Failed to sync scanner state:', e));
+      } else {
+        console.warn('[MatrixStore] Tauri not detected, skipping backend sync');
+      }
     },
 
-    setGameDetection(enabled: boolean) {
+    async setGameDetection(enabled: boolean) {
+      console.log('[MatrixStore] Setting game detection:', enabled);
       this.isGameDetectionEnabled = enabled;
       localStorage.setItem('game_activity_enabled', String(enabled));
+
+      const tauriCheck = !!(window as any).__TAURI_INTERNALS__;
+      console.log('[MatrixStore] Invoking set_scanner_enabled. Tauri detected:', tauriCheck);
+
+      if (tauriCheck) {
+        try {
+          await invoke('set_scanner_enabled', { enabled });
+          console.log('[MatrixStore] Toggle command sent successfully');
+          if (!enabled) {
+            // Clear status immediately when disabled
+            this.activityStatus = null;
+            this.activityDetails = null;
+            this.setCustomStatus(this.customStatus); // Refresh presence without game
+          }
+        } catch (e) {
+          console.error('[MatrixStore] Failed to toggle scanner:', e);
+        }
+      }
+    },
+
+    async bindGameActivityListener() {
+      if (!(window as any).__TAURI_INTERNALS__) return;
+
+      console.log('[MatrixStore] Binding game activity listener...');
+      try {
+        // Load game list first
+        try {
+          const res = await fetch('https://discord.com/api/v9/applications/detectable');
+          if (res.ok) {
+            const allGames = await res.json();
+            const platform = navigator.platform.toLowerCase();
+            const os = platform.includes('mac') ? 'darwin' : (platform.includes('win') ? 'win32' : 'linux');
+
+            // Include native OS executables + win32 (for Proton/CrossOver/Wine games)
+            const matchOs = [os, ...(os !== 'win32' ? ['win32'] : [])];
+
+            const filtered = allGames
+              .filter((g: any) => g.executables?.some((e: any) => matchOs.includes(e.os)))
+              .map((g: any) => ({
+                id: g.id,
+                name: g.name,
+                executables: g.executables.filter((e: any) => matchOs.includes(e.os)),
+              }));
+
+            // Add fake game for testing
+            filtered.push({
+              id: '99999',
+              name: 'The Most Intense Calculator Session',
+              executables: [{ os: 'darwin', name: 'Calculator' }]
+            });
+
+            await invoke('update_watch_list', { games: filtered });
+          }
+        } catch (e) {
+          console.error('[MatrixStore] Failed to load/send game list:', e);
+        }
+
+        // Listen for events
+        await listen<{ name: string; is_running: boolean }>('game-activity', (event) => {
+          const { name, is_running } = event.payload;
+          console.log('[MatrixStore] Game Activity Event:', name, is_running);
+
+          if (is_running) {
+            this.activityDetails = { name, is_running };
+            // Only update presence if no custom status is set
+            if (!this.customStatus) {
+              this.client?.setPresence({
+                presence: 'online',
+                status_msg: `Playing ${name}`
+              });
+            }
+          } else {
+            // Game stopped
+            if (this.activityDetails?.name === name) {
+              this.activityDetails = null;
+              if (!this.customStatus) {
+                this.client?.setPresence({
+                  presence: 'online',
+                  status_msg: ''
+                });
+              }
+            }
+          }
+        });
+      } catch (e) {
+        console.error('[MatrixStore] Failed to bind listener:', e);
+      }
+    },
+
+    setCustomStatus(status: string | null) {
+      this.customStatus = status;
+      // If we set a custom status, push it to Matrix immediately
+      if (this.client && this.isClientReady) {
+        this.client.setPresence({
+          presence: 'online',
+          status_msg: status || (this.activityDetails?.is_running ? `Playing ${this.activityDetails.name}` : '')
+        });
+      }
     },
 
     async startLogin() {

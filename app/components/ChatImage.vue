@@ -1,15 +1,17 @@
 <template>
-  <div class="relative rounded-md overflow-hidden bg-muted/20" :class="containerClass">
+  <div class="relative rounded-md overflow-hidden bg-muted/20" :class="containerClass" :style="placeholderStyle">
     <img
       v-if="imageUrl"
       :src="imageUrl"
       :alt="alt || 'Image'"
       class="max-w-full h-auto object-contain rounded-md"
       :class="imageClass"
+      :width="displayWidth || undefined"
+      :height="displayHeight || undefined"
       loading="lazy"
       @load="emit('load')"
     />
-    <div v-else-if="isLoading" class="flex items-center justify-center p-8 bg-muted/50 rounded-md">
+    <div v-else-if="isLoading" class="flex items-center justify-center bg-muted/50 rounded-md" :style="placeholderStyle">
        <span class="loading loading-spinner loading-sm text-muted-foreground">Loading image...</span>
     </div>
     <div v-else-if="error" class="flex flex-col items-center justify-center p-4 bg-muted/50 rounded-md text-xs text-destructive">
@@ -26,12 +28,14 @@ import { useAuthenticatedMedia } from '~/composables/useAuthenticatedMedia';
 
 const props = defineProps<{
   mxcUrl?: string | null;
-  encryptedFile?: any; // Encrypted file metadata
+  encryptedFile?: any;
   alt?: string;
   containerClass?: string;
   imageClass?: string;
   maxWidth?: number;
   maxHeight?: number;
+  intrinsicWidth?: number;
+  intrinsicHeight?: number;
 }>();
 
 const emit = defineEmits<{
@@ -68,6 +72,30 @@ const { imageUrl: standardUrl, isLoading: standardLoading, error: standardError 
 const imageUrl = computed(() => encryptedImageUrl.value || standardUrl.value);
 const isLoading = computed(() => encryptedLoading.value || standardLoading.value);
 const error = computed(() => encryptedError.value || standardError.value);
+
+// Compute display dimensions capped to maxWidth, preserving aspect ratio
+const displayWidth = computed(() => {
+  if (!props.intrinsicWidth || !props.intrinsicHeight) return null;
+  const maxW = props.maxWidth || 400;
+  if (props.intrinsicWidth <= maxW) return props.intrinsicWidth;
+  return maxW;
+});
+
+const displayHeight = computed(() => {
+  if (!props.intrinsicWidth || !props.intrinsicHeight) return null;
+  const maxW = props.maxWidth || 400;
+  if (props.intrinsicWidth <= maxW) return props.intrinsicHeight;
+  return Math.round(props.intrinsicHeight * (maxW / props.intrinsicWidth));
+});
+
+// CSS style to reserve space before the image loads
+const placeholderStyle = computed(() => {
+  if (!displayWidth.value || !displayHeight.value) return {};
+  return {
+    width: `${displayWidth.value}px`,
+    aspectRatio: `${displayWidth.value} / ${displayHeight.value}`,
+  };
+});
 
 
 

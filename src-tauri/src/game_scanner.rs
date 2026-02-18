@@ -1,6 +1,7 @@
 use std::ffi::OsStr;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use tokio::sync::Notify;
 
 use serde::{Deserialize, Serialize};
 use sysinfo::System;
@@ -32,6 +33,19 @@ pub struct GameActivity {
 pub struct ScannerState {
     pub watch_list: Mutex<Vec<DetectableGame>>,
     pub current_game: Mutex<Option<String>>,
+    pub is_enabled: Mutex<bool>,
+    pub notify: Arc<Notify>,
+}
+
+#[tauri::command]
+pub fn set_scanner_enabled(state: tauri::State<'_, Arc<ScannerState>>, enabled: bool) {
+    let mut is_enabled = state.is_enabled.lock().unwrap();
+    if *is_enabled != enabled {
+        *is_enabled = enabled;
+        log::info!("[game_scanner] Scanner state set to: {}", enabled);
+        // Wake up the loop immediately if enabled, or to process disable
+        state.notify.notify_one();
+    }
 }
 
 /// Tauri command: receives the filtered detectable games list from the frontend.
@@ -41,6 +55,9 @@ pub fn update_watch_list(
     games: Vec<DetectableGame>,
 ) {
     let count = games.len();
+    for game in &games {
+        let exe_names: Vec<&str> = game.executables.iter().map(|e| e.name.as_str()).collect();
+    }
     let mut list = state.watch_list.lock().unwrap();
     *list = games;
     log::info!("[game_scanner] Watch list updated with {} games", count);
@@ -52,9 +69,18 @@ pub fn start(app: AppHandle, state: Arc<ScannerState>) {
         let mut sys = System::new();
 
         loop {
-            // Wait before scanning (gives time for watch list to be populated on first run)
-            tokio::time::sleep(Duration::from_secs(15)).await;
+            // Check enabled state first
+            let is_enabled = *state.is_enabled.lock().unwrap();
 
+            if !is_enabled {
+                // If disabled, wait indefinitely for a notification (enable command)
+                log::info!("[game_scanner] Scanner disabled, waiting...");
+                state.notify.notified().await;
+                log::info!("[game_scanner] Scanner woke up!");
+                continue;
+            }
+
+            // If enabled, proceed with scan
             sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
 
             let watch_list = state.watch_list.lock().unwrap().clone();
@@ -111,6 +137,14 @@ pub fn start(app: AppHandle, state: Arc<ScannerState>) {
 
             // Update current state
             *state.current_game.lock().unwrap() = detected_name;
+
+            // Wait for 15s OR a notification (e.g. disable command or instant re-scan)
+            tokio::select! {
+                _ = tokio::time::sleep(Duration::from_secs(15)) => {},
+                _ = state.notify.notified() => {
+                    log::info!("[game_scanner] Scan interrupt received");
+                }
+            }
         }
     });
 }

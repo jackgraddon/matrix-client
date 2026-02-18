@@ -17,6 +17,4 @@
 //   // const userId = localStorage.getItem('matrix_user_id')!;
 //   // const deviceId = localStorage.getItem('matrix_device_id')!;
 //   // const refreshToken = localStorage.getItem('matrix_refresh_token')!;
-//   // matrixStore.initClient(accessToken, userId, deviceId, refreshToken);
-// });
 </script>

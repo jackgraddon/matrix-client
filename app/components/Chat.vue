@@ -83,6 +83,8 @@
                  :encrypted-file="msg.encryptedFile"
                  :alt="msg.body" 
                  :max-width="400"
+                 :intrinsic-width="msg.imageWidth"
+                 :intrinsic-height="msg.imageHeight"
                  class="max-w-[400px]"
                  @load="scrollToBottomIfAtBottom"
                />
@@ -163,6 +165,8 @@ interface ChatMessage {
   encryptedFile?: any;
   filename?: string;
   showCaption?: boolean;
+  imageWidth?: number;
+  imageHeight?: number;
 }
 
 const messages = ref<ChatMessage[]>([]);
@@ -171,7 +175,8 @@ const isSending = ref(false);
 const isLoadingHistory = ref(false);
 const room = ref<Room | null>(null);
 const timelineContainer = ref<HTMLElement | null>(null);
-const timelineWindow = ref<TimelineWindow | null>(null); // Store the TimelineWindow instance
+const timelineWindow = ref<TimelineWindow | null>(null);
+const decryptionListenerIds = new Set<string>(); // Track events with registered decryption listeners
 
 // --- Computed ---
 
@@ -270,30 +275,58 @@ function mapEvent(event: MatrixEvent): ChatMessage | null {
     url: content.url,
     encryptedFile: content.file,
     filename,
-    showCaption
+    showCaption,
+    imageWidth: content.info?.w,
+    imageHeight: content.info?.h,
   };
 }
 
-function updateOrPushEvent(event: MatrixEvent) {
-  const mapped = mapEvent(event);
-  if (!mapped) return;
+/**
+ * Rebuild the messages array entirely from the TimelineWindow.
+ * This is the ONLY function that should mutate `messages.value`.
+ */
+function refreshMessagesFromWindow() {
+  if (!timelineWindow.value) return;
 
-  const idx = messages.value.findIndex(m => m.eventId === mapped.eventId);
-  if (idx !== -1) {
-    messages.value[idx] = mapped;
-  } else {
-    messages.value.push(mapped);
-    if (mapped.isOwn) {
-        forceScrollToBottom();
-    } else {
-        scrollToBottomIfAtBottom();
+  const events = timelineWindow.value.getEvents();
+  const newMessages: ChatMessage[] = [];
+
+  for (const event of events) {
+    if (event.isEncrypted() && !event.getClearContent()) {
+      // Only register the decryption listener once per event
+      const eventId = event.getId();
+      if (eventId && !decryptionListenerIds.has(eventId)) {
+        decryptionListenerIds.add(eventId);
+        event.once(MatrixEventEvent.Decrypted, () => {
+          refreshMessagesFromWindow();
+        });
+      }
+    }
+    const mapped = mapEvent(event);
+    if (mapped) {
+      newMessages.push(mapped);
     }
   }
-}
 
-function handleDecryption(event: MatrixEvent) {
-   // When decrypted, try to map and update
-   updateOrPushEvent(event);
+  // Detect if a new live event was appended at the end
+  const lastOldId = messages.value.length > 0
+    ? messages.value[messages.value.length - 1]!.eventId
+    : null;
+  const lastNewId = newMessages.length > 0
+    ? newMessages[newMessages.length - 1]!.eventId
+    : null;
+  const newLiveEvent = newMessages.length > messages.value.length && lastNewId !== lastOldId;
+
+  messages.value = newMessages;
+
+  if (newLiveEvent) {
+    const lastMsg = newMessages[newMessages.length - 1];
+    if (lastMsg?.isOwn) {
+      forceScrollToBottom();
+    } else {
+      scrollToBottomIfAtBottom();
+    }
+  }
 }
 
 function isPreviousSameSender(index: number): boolean {
@@ -389,41 +422,17 @@ async function loadMoreMessages() {
 }
 
 function updateMessagesFromWindow(preserveScroll = false, oldHeight = 0, oldScrollTop = 0) {
-  if (!timelineWindow.value) return;
-  
-  const events = timelineWindow.value.getEvents();
-  messages.value = [];
-
-  for (const event of events) {
-    if (event.isEncrypted() && !event.getClearContent()) {
-       event.once(MatrixEventEvent.Decrypted, () => handleDecryption(event));
-    }
-    const mapped = mapEvent(event);
-    if (mapped) {
-      messages.value.push(mapped);
-    }
-  }
+  refreshMessagesFromWindow();
 
   if (preserveScroll) {
     nextTick(() => {
       const el = timelineContainer.value;
       if (el) {
-        // The new content height minus the old content height gives us the amount of new content added to the top.
-        // We want to be at the same visual position, so we add that difference to the scroll top.
         el.scrollTop = el.scrollHeight - oldHeight + oldScrollTop;
-        
-        // Even when preserving scroll, we might not have enough content if we started small and paged back a bit?
-        // But usually paginate(Back) adds content. 
-        // We only really strictly need fillViewport on initial load or if we are at the bottom and it's sparse.
-        // But adding it here generally doesn't hurt if we are careful.
-        // If we are preserving scroll, we are likely paging back.
-        // If we page back and it's STILL not scrollable? Then we should load more.
-        fillViewport(); 
       }
     });
   } else {
     forceScrollToBottom();
-    fillViewport();
   }
 }
 
@@ -432,22 +441,15 @@ function updateMessagesFromWindow(preserveScroll = false, oldHeight = 0, oldScro
 function onTimelineEvent(event: MatrixEvent, eventRoom: Room | undefined, toStartOfTimeline: boolean | undefined) {
   if (toStartOfTimeline) return; // Handled by pagination
   if (!eventRoom || eventRoom.roomId !== roomId.value) return;
+  if (!timelineWindow.value) return;
 
-  if (event.isEncrypted() && !event.getClearContent()) {
-    event.once(MatrixEventEvent.Decrypted, () => handleDecryption(event));
-  }
-  
-  // Update window to include this live event
-  if (timelineWindow.value && timelineWindow.value.canPaginate(Direction.Forward)) {
-     timelineWindow.value.paginate(Direction.Forward, 1);
-  }
-  
-  // Just push new live events to the list
-  updateOrPushEvent(event);
-  
-  // Mark as read if we are looking at the room
-  // Optimization: Debounce this or check document visibility in production, 
-  // but for now, if the component is active, we assume user is reading.
+  // Extend the window forward to absorb any new live event(s)
+  // extend() is synchronous and uses events already in the underlying timeline
+  timelineWindow.value.extend(Direction.Forward, 20);
+
+  // Rebuild messages from the window (single source of truth)
+  refreshMessagesFromWindow();
+
   sendReadReceipt(event);
 }
 
@@ -492,6 +494,9 @@ async function initRoom() {
   store.client.removeListener(ClientEvent.Room, onRoomAdded);
   room.value = r;
 
+  // Clear decryption tracking for the new room
+  decryptionListenerIds.clear();
+
   // Initialize TimelineWindow
   const timelineSet = r.getLiveTimeline().getTimelineSet();
   timelineWindow.value = new TimelineWindow(store.client as MatrixClient, timelineSet);
@@ -515,16 +520,7 @@ async function initRoom() {
   }
 }
 
-async function fillViewport() {
-  await nextTick();
-  const el = timelineContainer.value;
-  if (!el || !timelineWindow.value || isLoadingHistory.value) return;
-  
-  // If content is smaller than container and we have more history
-  if (el.scrollHeight <= el.clientHeight && timelineWindow.value.canPaginate(Direction.Backward)) {
-    await loadMoreMessages();
-  }
-}
+
 
 function onRoomAdded(room: Room) {
     if (room.roomId === roomId.value) {
