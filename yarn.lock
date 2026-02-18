@@ -1804,6 +1804,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@fabianlars/tauri-plugin-oauth@npm:2":
+  version: 2.0.0
+  resolution: "@fabianlars/tauri-plugin-oauth@npm:2.0.0"
+  dependencies:
+    "@tauri-apps/api": "npm:^2.0.3"
+  checksum: 10c0/6e20ab7488b8104a66aa0a130307585607a3a6456ae12b778f233630402002313b2f7cadfdae098cefb075ceb93271e5894c00ae102869c3931b5d95ff2ac1fd
+  languageName: node
+  linkType: hard
+
 "@fastify/accept-negotiator@npm:^2.0.1":
   version: 2.0.1
   resolution: "@fastify/accept-negotiator@npm:2.0.1"
@@ -4575,7 +4584,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@tauri-apps/api@npm:^2.10.1":
+"@tauri-apps/api@npm:^2.0.3, @tauri-apps/api@npm:^2.10.1":
   version: 2.10.1
   resolution: "@tauri-apps/api@npm:2.10.1"
   checksum: 10c0/f3c0b2ba67a0b887440a7faa1e0589e847760ee30ec29b964f22573a46b817cb3af2199d6f5f7dfdda54d65b465ebaaa280454c610a5c53d808a0911fa15e45d
@@ -4700,6 +4709,24 @@ __metadata:
   bin:
     tauri: tauri.js
   checksum: 10c0/23b41ee1fe635a8b60f2a3011d50f3ca10aa8f86f885e9345acce899b0062833c139a26e0c41667a515888363de9ea5bfd29aea0721eeb61a75b45a125296f55
+  languageName: node
+  linkType: hard
+
+"@tauri-apps/plugin-deep-link@npm:~2":
+  version: 2.4.7
+  resolution: "@tauri-apps/plugin-deep-link@npm:2.4.7"
+  dependencies:
+    "@tauri-apps/api": "npm:^2.10.1"
+  checksum: 10c0/b77087485950bbe2c341aa8daf4575174e0cea05ec399d92a25a2a79be1672056051e86cf5b3545075b56beddc752d2cd00860302bc432d399c5b793061bb310
+  languageName: node
+  linkType: hard
+
+"@tauri-apps/plugin-shell@npm:^2.3.5":
+  version: 2.3.5
+  resolution: "@tauri-apps/plugin-shell@npm:2.3.5"
+  dependencies:
+    "@tauri-apps/api": "npm:^2.10.1"
+  checksum: 10c0/555f33efb997a0e1b21c9540b0bb30dcda073009f55f7cdb89eb0587427fdec27b1e6a1df4ab5c08065b7f3f0a61cfefd059ec8be9eafb157c9b6344eb856df2
   languageName: node
   linkType: hard
 
@@ -9588,6 +9615,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "matrix-client@workspace:."
   dependencies:
+    "@fabianlars/tauri-plugin-oauth": "npm:2"
     "@matrix-org/matrix-sdk-crypto-wasm": "npm:^17.1.0"
     "@nuxt/a11y": "npm:^1.0.0-alpha.1"
     "@nuxt/devtools": "npm:^3.1.1"
@@ -9601,6 +9629,8 @@ __metadata:
     "@pinia/nuxt": "npm:^0.11.3"
     "@tauri-apps/api": "npm:^2.10.1"
     "@tauri-apps/cli": "npm:^2.10.0"
+    "@tauri-apps/plugin-deep-link": "npm:~2"
+    "@tauri-apps/plugin-shell": "npm:^2.3.5"
     "@types/node": "npm:^25.2.3"
     "@vite-pwa/nuxt": "npm:^1.1.1"
     "@vueuse/core": "npm:^14.2.1"

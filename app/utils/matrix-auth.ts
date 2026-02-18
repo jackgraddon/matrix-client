@@ -8,7 +8,7 @@ export const getHomeserverUrl = () => {
   return baseUrl;
 }
 
-// Helper to get redirect URI safely
+// Helper to get redirect URI safely (web/PWA only)
 const getRedirectUri = () => {
   if (import.meta.client) {
     return window.location.origin + "/auth/callback";
@@ -25,38 +25,43 @@ export async function getOidcConfig(): Promise<OidcClientConfig> {
 }
 
 // Registration
-export async function registerClient(authConfig: OidcClientConfig): Promise<string> {
-  const redirectUri = getRedirectUri();
+// If a redirectUri is provided (e.g. loopback), use it; otherwise fall back to the web redirect URI.
+export async function registerClient(authConfig: OidcClientConfig, redirectUri?: string): Promise<string> {
+  const effectiveRedirectUri = redirectUri || getRedirectUri();
+
+  console.log('Auth config: ' + authConfig, 'Redirect URI: ' + effectiveRedirectUri);
 
   // Note: These keys must be snake_case as per OIDC spec
   return await sdk.registerOidcClient(
     authConfig,
     {
       clientName: 'Ruby Matrix Client',
-      clientUri: import.meta.client ? window.location.origin : '',
+      clientUri: 'https://jackg.cc',
       applicationType: "native",
-      redirectUris: [redirectUri], // MUST match what you use in getLoginUrl
+      redirectUris: [effectiveRedirectUri], // MUST match what you use in getLoginUrl
       contacts: ["jack@jackgraddon.com"],
-      tosUri: import.meta.client ? window.location.origin + "/tos" : undefined,
-      policyUri: import.meta.client ? window.location.origin + "/policy" : undefined,
+      tosUri: 'https://jackg.cc/tos',
+      policyUri: 'https://jackg.cc/policy',
     }
   );
 }
 
 // Generate URL
+// If a redirectUri is provided (e.g. loopback), use it; otherwise fall back to the web redirect URI.
 export async function getLoginUrl(
   authConfig: OidcClientConfig,
   clientId: string,
-  nonce: string
+  nonce: string,
+  redirectUri?: string
 ): Promise<string> {
   const metadata = authConfig as unknown as ValidatedAuthMetadata;
   const homeserverUrl = getHomeserverUrl();
-  const redirectUri = getRedirectUri();
+  const effectiveRedirectUri = redirectUri || getRedirectUri();
 
   return await sdk.generateOidcAuthorizationUrl({
     metadata: metadata,
     clientId: clientId,
-    redirectUri: redirectUri, // Matches registration above
+    redirectUri: effectiveRedirectUri, // Matches registration above
     homeserverUrl: homeserverUrl,
     nonce: nonce,
   });

@@ -200,17 +200,105 @@ export const useMatrixStore = defineStore('matrix', {
       // Clear stale crypto store so a new device ID doesn't conflict
       await this._clearCryptoStore();
 
-      // Standard Flow
-      const authConfig = await getOidcConfig();
-      const clientId = await registerClient(authConfig);
-      const nonce = generateNonce();
+      const isTauri = !!(window as any).__TAURI_INTERNALS__;
 
-      localStorage.setItem('matrix_oidc_config', JSON.stringify(authConfig));
-      localStorage.setItem('matrix_oidc_client_id', clientId);
-      localStorage.setItem('matrix_oidc_nonce', nonce);
+      if (isTauri) {
+        // --- Loopback OAuth Flow (Desktop) ---
+        // Use tauri-plugin-oauth to spawn a local HTTP server on a random port.
+        // The OIDC provider redirects the system browser to http://127.0.0.1:<port>
+        // and the plugin fires an event with the full URL.
+        const { start, cancel, onUrl } = await import('@fabianlars/tauri-plugin-oauth');
 
-      const url = await getLoginUrl(authConfig, clientId, nonce);
-      window.location.href = url;
+        // Start the loopback server with a branded response page
+        const port = await start({
+          ports: [12345, 12346, 12347, 12348, 12349],
+          response: `<html>
+            <head>
+              <title>Login Successful — Ruby</title>
+              <style>
+                * { margin: 0; padding: 0; box-sizing: border-box; }
+                body {
+                  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                  display: flex; align-items: center; justify-content: center;
+                  height: 100vh; background: #0a0a0f;
+                  color: #e4e4e7;
+                }
+                .card {
+                  text-align: center; padding: 3rem 4rem;
+                  border-radius: 16px; background: #18181b;
+                  border: 1px solid #27272a;
+                  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+                }
+                .icon { font-size: 3rem; margin-bottom: 1rem; }
+                h1 { font-size: 1.5rem; font-weight: 600; margin-bottom: 0.5rem; color: #f4f4f5; }
+                p { color: #a1a1aa; font-size: 0.95rem; line-height: 1.5; }
+                .subtle { margin-top: 1.5rem; font-size: 0.8rem; color: #52525b; }
+              </style>
+            </head>
+            <body>
+              <div class="card">
+                <h1>Login Successful</h1>
+                <p>You can close this tab and return to Ruby.</p>
+                <p class="subtle">This tab will close automatically…</p>
+              </div>
+              <script>setTimeout(() => window.close(), 3000);</script>
+            </body>
+          </html>`,
+        });
+
+        // Listen for the redirect URL from the OIDC provider
+        const unlisten = await onUrl(async (url: string) => {
+          try {
+            const parsed = new URL(url);
+            const code = parsed.searchParams.get('code');
+            const state = parsed.searchParams.get('state');
+
+            if (code && state) {
+              await this.handleCallback(code, state);
+              await navigateTo('/chat', { replace: true });
+            } else {
+              console.error('[OAuth Loopback] Missing code or state in callback URL:', url);
+            }
+          } catch (err) {
+            console.error('[OAuth Loopback] Callback handling failed:', err);
+          } finally {
+            // Clean up: stop listening and shut down the temporary server
+            unlisten();
+            await cancel(port);
+          }
+        });
+
+        const redirectUri = `http://127.0.0.1:${port}`;
+        localStorage.setItem('matrix_oidc_redirect_uri', redirectUri);
+
+        const authConfig = await getOidcConfig();
+        const clientId = await registerClient(authConfig, redirectUri);
+        const nonce = generateNonce();
+
+        localStorage.setItem('matrix_oidc_config', JSON.stringify(authConfig));
+        localStorage.setItem('matrix_oidc_client_id', clientId);
+        localStorage.setItem('matrix_oidc_nonce', nonce);
+
+        const loginUrl = await getLoginUrl(authConfig, clientId, nonce, redirectUri);
+
+        // Open the system browser (not the webview)
+        const { open } = await import('@tauri-apps/plugin-shell');
+        await open(loginUrl);
+
+      } else {
+        // --- Standard Web/PWA Flow ---
+        const authConfig = await getOidcConfig();
+        const clientId = await registerClient(authConfig);
+        const nonce = generateNonce();
+
+        localStorage.setItem('matrix_oidc_config', JSON.stringify(authConfig));
+        localStorage.setItem('matrix_oidc_client_id', clientId);
+        localStorage.setItem('matrix_oidc_nonce', nonce);
+        localStorage.setItem('matrix_oidc_redirect_uri', window.location.origin + '/auth/callback');
+
+        const url = await getLoginUrl(authConfig, clientId, nonce);
+        window.location.href = url;
+      }
     },
 
     async handleCallback(code: string, state: string) {
@@ -276,7 +364,7 @@ export const useMatrixStore = defineStore('matrix', {
       // Build tokenRefreshFunction when we have full OIDC context
       let tokenRefreshFunction: sdk.TokenRefreshFunction | undefined;
       if (refreshToken && issuer && clientId && idTokenClaims && deviceId) {
-        const redirectUri = window.location.origin + '/auth/callback';
+        const redirectUri = localStorage.getItem('matrix_oidc_redirect_uri') || window.location.origin + '/auth/callback';
         const refresher = new LocalStorageOidcTokenRefresher(issuer, clientId, redirectUri, deviceId, idTokenClaims);
 
         tokenRefreshFunction = refresher.doRefreshAccessToken.bind(refresher);

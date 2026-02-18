@@ -50,10 +50,7 @@ pub fn set_scanner_enabled(state: tauri::State<'_, Arc<ScannerState>>, enabled: 
 
 /// Tauri command: receives the filtered detectable games list from the frontend.
 #[tauri::command]
-pub fn update_watch_list(
-    state: tauri::State<'_, Arc<ScannerState>>,
-    games: Vec<DetectableGame>,
-) {
+pub fn update_watch_list(state: tauri::State<'_, Arc<ScannerState>>, games: Vec<DetectableGame>) {
     let count = games.len();
     for game in &games {
         let exe_names: Vec<&str> = game.executables.iter().map(|e| e.name.as_str()).collect();
@@ -109,26 +106,35 @@ pub fn start(app: AppHandle, state: Arc<ScannerState>) {
                 (None, Some(name)) => {
                     // Game just started
                     log::info!("[game_scanner] Detected: {}", name);
-                    let _ = app.emit("game-activity", GameActivity {
-                        name: name.clone(),
-                        is_running: true,
-                    });
+                    let _ = app.emit(
+                        "game-activity",
+                        GameActivity {
+                            name: name.clone(),
+                            is_running: true,
+                        },
+                    );
                 }
                 (Some(prev), None) => {
                     // Game just stopped
                     log::info!("[game_scanner] Stopped: {}", prev);
-                    let _ = app.emit("game-activity", GameActivity {
-                        name: prev.clone(),
-                        is_running: false,
-                    });
+                    let _ = app.emit(
+                        "game-activity",
+                        GameActivity {
+                            name: prev.clone(),
+                            is_running: false,
+                        },
+                    );
                 }
                 (Some(prev), Some(name)) if prev != name => {
                     // Switched games
                     log::info!("[game_scanner] Switched: {} -> {}", prev, name);
-                    let _ = app.emit("game-activity", GameActivity {
-                        name: name.clone(),
-                        is_running: true,
-                    });
+                    let _ = app.emit(
+                        "game-activity",
+                        GameActivity {
+                            name: name.clone(),
+                            is_running: true,
+                        },
+                    );
                 }
                 _ => {
                     // No change — don't emit
