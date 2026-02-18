@@ -34,7 +34,7 @@ export async function registerClient(authConfig: OidcClientConfig): Promise<stri
     {
       clientName: 'Ruby Matrix Client',
       clientUri: import.meta.client ? window.location.origin : '',
-      applicationType: "web",
+      applicationType: "native",
       redirectUris: [redirectUri], // MUST match what you use in getLoginUrl
       contacts: ["jack@jackgraddon.com"],
       tosUri: import.meta.client ? window.location.origin + "/tos" : undefined,

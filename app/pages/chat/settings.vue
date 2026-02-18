@@ -21,8 +21,8 @@
           </div>
         </div>
         <Switch 
-          :checked="gameActivity.isEnabled.value" 
-          @update:checked="gameActivity.toggle()" 
+          :checked="store.isGameDetectionEnabled" 
+          @update:checked="store.toggleGameDetection()" 
         />
       </div>
 
@@ -39,6 +39,15 @@
     <!-- Account -->
     <div class="space-y-4">
       <h2 class="text-xl font-semibold tracking-tight">Account</h2>
+      
+      <div v-if="!store.isCrossSigningReady" class="rounded-lg border border-yellow-500/50 bg-yellow-500/10 p-4 flex items-center justify-between">
+          <div class="space-y-0.5">
+              <p class="text-sm font-medium text-yellow-600 dark:text-yellow-500">Unverified Session</p>
+              <p class="text-xs text-muted-foreground">Verify to access encrypted history</p>
+          </div>
+          <UiButton size="sm" variant="secondary" @click="store.requestVerification()">Verify</UiButton>
+      </div>
+
       <UiButton variant="destructive" @click="logout">Logout</UiButton>
     </div>
   </div>

@@ -1,4 +1,4 @@
-import { ref, onUnmounted } from 'vue';
+import { ref, watch, computed, onUnmounted } from 'vue';
 import { useMatrixStore } from '~/stores/matrix';
 
 interface GameActivity {
@@ -12,19 +12,13 @@ interface DetectableGame {
     executables: { os: string; name: string }[];
 }
 
-const LOCAL_STORAGE_KEY = 'game_activity_enabled';
 
-// Shared singleton state
-const isEnabled = ref(false);
 const isSupported = ref(false);
 const currentActivity = ref<string | null>(null);
 
 let initialized = false;
 let unlisten: (() => void) | null = null;
 
-/**
- * Determines the current OS string used in Discord's detectable games API.
- */
 function getCurrentOs(): string {
     const platform = navigator.platform.toLowerCase();
     if (platform.includes('mac')) return 'darwin';
@@ -32,24 +26,15 @@ function getCurrentOs(): string {
     return 'linux';
 }
 
-/**
- * Fetches Discord's detectable games list, filters for current OS,
- * and sends executables to the Rust backend.
- */
 async function loadAndSendGameList() {
     try {
         const { invoke } = await import('@tauri-apps/api/core');
-
         const res = await fetch('https://discord.com/api/v9/applications/detectable');
-        if (!res.ok) {
-            console.warn('[GameActivity] Failed to fetch detectable games:', res.status);
-            return;
-        }
+        if (!res.ok) return;
 
         const allGames: DetectableGame[] = await res.json();
         const os = getCurrentOs();
 
-        // Filter to games that have executables for the current OS
         const filtered = allGames
             .filter(g => g.executables?.some(e => e.os === os))
             .map(g => ({
@@ -59,24 +44,30 @@ async function loadAndSendGameList() {
             }));
 
         await invoke('update_watch_list', { games: filtered });
-        console.log(`[GameActivity] Sent ${filtered.length} games to scanner`);
     } catch (err) {
         console.error('[GameActivity] Failed to load game list:', err);
     }
 }
 
+/**
+ * Enhanced Presence Update
+ * Ensures we only update if the client is actually 'PREPARED'
+ */
 async function setMatrixPresence(statusMsg: string) {
     const store = useMatrixStore();
-    if (!store.client) return;
+    // Only send if client exists and is syncing
+    if (!store.client || store.client.getSyncState() !== 'PREPARED') {
+        console.warn('[GameActivity] Client not ready, presence update deferred');
+        return;
+    }
 
     try {
         await store.client.setPresence({
-            presence: 'online',
+            presence: statusMsg ? 'online' : 'online', // Keep online even when clearing msg
             status_msg: statusMsg,
         });
-        console.log('[GameActivity] Updated Matrix presence:', statusMsg || '(cleared)');
     } catch (err) {
-        console.error('[GameActivity] Failed to set Matrix presence:', err);
+        console.error('[GameActivity] Matrix presence error:', err);
     }
 }
 
@@ -88,99 +79,98 @@ async function startListening() {
         unlisten = (await listen<GameActivity>('game-activity', (event) => {
             const { name, is_running } = event.payload;
 
-            if (is_running) {
+            if (is_running && name !== currentActivity.value) {
                 currentActivity.value = name;
-                store.activityStatus = `Playing ${name}`;
                 store.activityDetails = { name, is_running };
                 setMatrixPresence(`Playing ${name}`);
-            } else {
+            } else if (!is_running && currentActivity.value) {
                 currentActivity.value = null;
-                store.activityStatus = null;
                 store.activityDetails = null;
                 setMatrixPresence('');
             }
         })) as unknown as () => void;
 
-        // Load the game database and send to Rust
         await loadAndSendGameList();
     } catch (err) {
-        console.error('[GameActivity] Failed to start listening:', err);
+        console.error('[GameActivity] Listener failed:', err);
     }
 }
 
 function stopListening() {
-    if (unlisten) {
-        unlisten();
-        unlisten = null;
-    }
-    const store = useMatrixStore();
+    if (unlisten) unlisten();
+    unlisten = null;
     currentActivity.value = null;
-    store.activityStatus = null;
-    store.activityDetails = null;
     setMatrixPresence('');
 }
 
+
+
 function enable() {
-    isEnabled.value = true;
-    localStorage.setItem(LOCAL_STORAGE_KEY, 'true');
+    const store = useMatrixStore();
+    store.setGameDetection(true);
     startListening();
 }
 
 function disable() {
-    isEnabled.value = false;
-    localStorage.setItem(LOCAL_STORAGE_KEY, 'false');
+    const store = useMatrixStore();
+    store.setGameDetection(false);
     stopListening();
 }
 
 function toggle() {
-    if (isEnabled.value) {
+    const store = useMatrixStore();
+    if (store.isGameDetectionEnabled) {
         disable();
     } else {
         enable();
     }
 }
 
-/**
- * Composable for Tauri native game detection.
- * Initialize once at the chat layout level.
- * Gracefully no-ops in a browser (non-Tauri) environment.
- */
 export function useGameActivity() {
+    const store = useMatrixStore();
+
     if (!initialized) {
         initialized = true;
-
-        // Check if we're running inside Tauri
         isSupported.value = !!(window as any).__TAURI_INTERNALS__;
 
         if (isSupported.value) {
-            const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
-            isEnabled.value = stored === 'true';
+            store.initGameDetection();
 
-            if (isEnabled.value) {
-                startListening();
-            }
+            // Watch store state to start/stop listening
+            watch(() => store.isGameDetectionEnabled, (enabled) => {
+                if (enabled) {
+                    startListening();
+                } else {
+                    stopListening();
+                }
+            }, { immediate: true });
 
-            // Clear presence on tab/app close
-            window.addEventListener('beforeunload', () => {
-                if (currentActivity.value) {
-                    const store = useMatrixStore();
-                    if (store.client) {
-                        store.client.setPresence({
-                            presence: 'offline',
-                            status_msg: '',
-                        }).catch(() => { });
-                    }
+            /**
+             * TAURI RELIABLE CLEANUP
+             * 'beforeunload' is flaky for async network calls.
+             * For Tauri, use the 'tauri://close-requested' event if possible, 
+             * but for a composable, this is the best web-standard fallback.
+             */
+            window.addEventListener('pagehide', () => {
+                const store = useMatrixStore();
+                if (store.client && currentActivity.value) {
+                    // Clearing the status message is more reliable for app-close cleanup
+                    store.client.setPresence({
+                        presence: 'online',
+                        status_msg: ''
+                    }).catch(() => { });
                 }
             });
         }
     }
 
     return {
-        isEnabled,
-        isSupported,
-        currentActivity,
-        enable,
-        disable,
-        toggle,
-    };
-}
+        return {
+            isEnabled: computed(() => store.isGameDetectionEnabled),
+            isSupported,
+            currentActivity,
+            enable,
+            disable,
+            toggle
+        };
+    }

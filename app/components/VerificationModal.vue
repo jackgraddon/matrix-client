@@ -13,9 +13,21 @@
 
         <!-- Secret Storage / Backup Key Input -->
         <div v-if="store.secretStoragePrompt" class="text-center">
-            <p class="mb-4 text-sm text-muted-foreground">
-                Please enter your Security Key or Passphrase to verify this session.
-            </p>
+            <template v-if="store.isCrossSigningReady">
+                <div class="text-green-600 mb-4 flex flex-col items-center">
+                    <div class="text-4xl mb-2">✅</div>
+                    <p class="font-bold">Verified!</p>
+                </div>
+                <p class="mb-4 text-sm text-muted-foreground">
+                    To restore your secure message history, please enter your Security Key or Passphrase.
+                </p>
+            </template>
+            <template v-else>
+                <p class="mb-4 text-sm text-muted-foreground">
+                    Please enter your Security Key or Passphrase to verify this session.
+                </p>
+            </template>
+
             <UiInput 
                 v-model="backupKeyInput" 
                 type="password" 
@@ -24,8 +36,12 @@
                 @keyup.enter="submitKey"
             />
             <div class="flex gap-4 justify-center">
-                <UiButton variant="secondary" @click="store.cancelSecretStorageKey()">Cancel</UiButton>
-                <UiButton @click="submitKey">Verify</UiButton>
+                <UiButton variant="secondary" @click="store.cancelSecretStorageKey()">
+                    {{ store.isCrossSigningReady ? 'Skip History' : 'Cancel' }}
+                </UiButton>
+                <UiButton @click="submitKey">
+                    {{ store.isCrossSigningReady ? 'Restore' : 'Verify' }}
+                </UiButton>
             </div>
         </div>
         
@@ -40,7 +56,7 @@
                     </div>
                  </div>
                  <div class="text-sm text-muted-foreground">or</div>
-                 <UiButton variant="outline" @click="store.startBackupVerification()">
+                 <UiButton variant="outline" @click="store.bootstrapVerification()">
                     Use Recovery Key / Passphrase
                  </UiButton>
              </div>
@@ -80,7 +96,7 @@
         
         <!-- Fallback / Manual Options (e.g. if already verified but want to restore backup) -->
         <div v-else class="text-center">
-            <template v-if="store.isDeviceVerified">
+            <template v-if="store.isCrossSigningReady">
                 <div class="text-green-600 mb-4 flex flex-col items-center">
                     <div class="text-4xl mb-2">✅</div>
                     <p class="font-bold">This session is verified.</p>
@@ -92,8 +108,8 @@
                     <UiButton @click="store.requestVerification()">
                         Verify with another device
                     </UiButton>
-                    <UiButton variant="outline" @click="store.startBackupVerification()">
-                        Restore from Backup
+                    <UiButton variant="outline" @click="store.bootstrapVerification()">
+                        Restore from Backup (Bootstrap)
                     </UiButton>
                     <UiButton variant="ghost" @click="store.closeVerificationModal()">Close</UiButton>
                 </div>
@@ -103,7 +119,7 @@
                  <p class="mb-4">Verify this session to access encrypted history.</p>
                  <div class="flex flex-col gap-3">
                     <UiButton @click="store.requestVerification()">Start Verification</UiButton>
-                    <UiButton variant="outline" @click="store.startBackupVerification()">
+                    <UiButton variant="outline" @click="store.bootstrapVerification()">
                         Use Recovery Key
                     </UiButton>
                     <UiButton variant="ghost" @click="store.closeVerificationModal()">Cancel</UiButton>

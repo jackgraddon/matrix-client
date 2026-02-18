@@ -110,6 +110,7 @@ const getRoomAvatarMxc = (room: any): string | undefined => {
     // 2. Fallback for DMs: find other user
     // We need to know if it is a DM to be safe, or just check members if 2 people
     // Simplest heuristic: 2 members, one is us, the other is the target
+    if (!store.client) return undefined;
     const myUserId = store.client.getUserId();
     const members = room.getJoinedMembers();
     
@@ -173,6 +174,7 @@ const setupListeners = () => {
   store.client.on(sdk.ClientEvent.Room, updateLists);
   store.client.on(sdk.RoomEvent.Timeline, updateLists);
   store.client.on(sdk.RoomEvent.Name, updateLists);
+  store.client.on(sdk.MatrixEventEvent.Decrypted, updateLists);
   store.client.on(sdk.ClientEvent.AccountData, (event) => {
       if (event.getType() === sdk.EventType.Direct) {
           updateLists();

@@ -1,6 +1,6 @@
 <template>
   <div 
-    v-if="store.isAuthenticated && (!store.isDeviceVerified) && !store.verificationRequest"
+    v-if="store.isAuthenticated && !store.isCrossSigningReady && !store.verificationRequest"
     class="fixed bottom-4 right-4 z-40 max-w-sm"
   >
     <UiCard class="border-yellow-500 bg-yellow-50 dark:bg-yellow-900/20 shadow-lg">

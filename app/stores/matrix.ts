@@ -32,13 +32,15 @@ export const useMatrixStore = defineStore('matrix', {
     client: null as sdk.MatrixClient | null,
     isAuthenticated: false,
     isSyncing: false,
+    isClientReady: false,
     user: null as {
       userId: string;
       displayName?: string;
       avatarUrl?: string;
     } | null,
     // Verification state
-    isDeviceVerified: false,
+    isCrossSigningReady: false,
+    isSecretStorageReady: false,
     verificationRequest: null as VerificationRequest | null,
     verificationInitiatedByMe: false,
     sasEvent: null as ShowSasCallbacks | null,
@@ -54,8 +56,20 @@ export const useMatrixStore = defineStore('matrix', {
     // Activity Status (Game Detection)
     activityStatus: null as string | null,
     activityDetails: null as { name: string; is_running: boolean } | null,
+    isGameDetectionEnabled: false,
   }),
   actions: {
+    initGameDetection() {
+      // Check if localStorage has "game_activity_enabled"
+      const stored = localStorage.getItem('game_activity_enabled');
+      this.isGameDetectionEnabled = stored === 'true';
+    },
+
+    setGameDetection(enabled: boolean) {
+      this.isGameDetectionEnabled = enabled;
+      localStorage.setItem('game_activity_enabled', String(enabled));
+    },
+
     async startLogin() {
       // Stop any existing client to release DB locks
       if (this.client) {
@@ -270,6 +284,17 @@ export const useMatrixStore = defineStore('matrix', {
       this.isAuthenticated = true;
       this.isSyncing = true;
 
+      this.client.on(sdk.ClientEvent.Sync, (state: sdk.SyncState) => {
+        this.isSyncing = state === sdk.SyncState.Syncing || state === sdk.SyncState.Prepared;
+        if (state === sdk.SyncState.Prepared) {
+          this.isClientReady = true;
+          // Optional: Trigger a fresh presence update now that we are ready
+          if (this.activityDetails?.is_running) {
+            this.client?.setPresence({ presence: 'online', status_msg: `Playing ${this.activityDetails.name}` });
+          }
+        }
+      });
+
       if (cryptoReady) {
         // Listen for incoming verification requests from other devices
         this.client.on(CryptoEvent.VerificationRequestReceived, (request: VerificationRequest) => {
@@ -279,6 +304,10 @@ export const useMatrixStore = defineStore('matrix', {
             this._setupVerificationListeners(request);
           }
         });
+
+        // Listen for security status changes to update UI in real-time
+        this.client.on(CryptoEvent.KeysChanged, () => this.checkDeviceVerified());
+        this.client.on(CryptoEvent.UserTrustStatusChanged, () => this.checkDeviceVerified());
 
         // Check if this device is already verified (initial check)
         this.checkDeviceVerified();
@@ -311,60 +340,7 @@ export const useMatrixStore = defineStore('matrix', {
 
     // --- Verification Actions ---
 
-    async startBackupVerification() {
-      if (!this.client) return;
-      const crypto = this.client.getCrypto();
-      if (!crypto) return;
 
-      try {
-        console.log("Starting backup verification check...");
-
-        // 1. Verify User/Device (Cross-Signing)
-        await crypto.bootstrapCrossSigning({
-          setupNewCrossSigning: false
-        });
-
-        // 2. Restore Key Backup (Historical Messages)
-        console.log("Checking key backup status...");
-        const backupInfo = await crypto.getKeyBackupInfo();
-        if (backupInfo) {
-          console.log("Found key backup, ensuring we have access...");
-          // This will use the cached secret storage key to get the backup private key
-          await crypto.loadSessionBackupPrivateKeyFromSecretStorage();
-
-          console.log("Restoring key backup...");
-          await crypto.restoreKeyBackup({
-            progressCallback: (progress) => {
-              if (progress.stage === 'load_keys') {
-                console.log(`Restoring keys: ${progress.successes}/${progress.total} (failed: ${progress.failures})`);
-              }
-            }
-          });
-
-          await crypto.checkKeyBackupAndEnable();
-          console.log("Key backup restoration complete.");
-        } else {
-          console.warn("No key backup found on server.");
-        }
-
-        // If successful, check verification status again
-        await this.checkDeviceVerified();
-
-        if (this.isDeviceVerified) {
-          // If we successfully verified via backup, we can cancel the interactive request
-          if (this.verificationRequest) {
-            try { await this.verificationRequest.cancel(); } catch (e) { /* ignore */ }
-          }
-          this.verificationRequest = null;
-          this.verificationInitiatedByMe = false;
-          this.sasEvent = null;
-          this.isVerificationCompleted = true;
-          setTimeout(() => this._resetVerificationState(), 3000);
-        }
-      } catch (e) {
-        console.error("Backup verification failed:", e);
-      }
-    },
 
     async submitSecretStorageKey(input: string) {
       if (!this.secretStoragePrompt) return;
@@ -429,14 +405,29 @@ export const useMatrixStore = defineStore('matrix', {
       if (!crypto) { console.error('Crypto not available'); return; }
 
       try {
-        const request = await crypto.requestOwnUserVerification();
-        this.verificationRequest = request;
+        // Cancel any existing request first to avoid conflicts
+        if (this.verificationRequest) {
+          try {
+            await this.verificationRequest.cancel();
+          } catch (e) {
+            console.warn("Failed to cancel previous verification request:", e);
+          }
+          this.verificationRequest = null;
+        }
+
+        // Set state immediately to show "Waiting..." UI instead of "Incoming Request"
         this.verificationInitiatedByMe = true;
         this.isVerificationCompleted = false;
         this.sasEvent = null;
+
+        const request = await crypto.requestOwnUserVerification();
+        this.verificationRequest = request;
         this._setupVerificationListeners(request);
       } catch (e) {
         console.error('Failed to request verification:', e);
+        // Reset if failed so we don't get stuck in "Waiting..."
+        this.verificationInitiatedByMe = false;
+        this.verificationModalOpen = false;
       }
     },
 
@@ -473,6 +464,11 @@ export const useMatrixStore = defineStore('matrix', {
           this.isVerificationCompleted = true;
           this.sasEvent = null;
           await this.checkDeviceVerified();
+
+          // Pull keys after verification success
+          await this.restoreKeysFromBackup();
+          await this.retryDecryption();
+
           // Auto-dismiss after a short delay
           setTimeout(() => this._resetVerificationState(), 3000);
         } else if (phase === VerificationPhase.Cancelled) {
@@ -535,11 +531,25 @@ export const useMatrixStore = defineStore('matrix', {
       const userId = this.client?.getUserId();
       const deviceId = this.client?.getDeviceId();
       if (!userId || !deviceId) return;
+
       try {
-        const status = await crypto.getDeviceVerificationStatus(userId, deviceId);
-        // Log the whole object for debugging instead of accessing potentially missing properties
-        console.log('[Verification] Device status:', status);
-        this.isDeviceVerified = status?.isVerified() ?? false;
+        const wasReady = this.isCrossSigningReady;
+
+        // Refresh security status
+        this.isCrossSigningReady = await crypto.isCrossSigningReady();
+        this.isSecretStorageReady = await crypto.isSecretStorageReady();
+
+        console.log('[Verification] Status:', {
+          crossSigningReady: this.isCrossSigningReady,
+          secretStorageReady: this.isSecretStorageReady
+        });
+
+        // If we just became verified/ready, attempt to decrypt any blocked messages
+        if (!wasReady && this.isCrossSigningReady) {
+          console.log('[Verification] Cross-signing is now ready. Triggering re-decryption...');
+          // Don't await this, let it run in background so UI updates immediately
+          this.retryDecryption();
+        }
       } catch (e) {
         console.error('Failed to check device verification:', e);
       }
@@ -550,6 +560,84 @@ export const useMatrixStore = defineStore('matrix', {
       this.verificationInitiatedByMe = false;
       this.sasEvent = null;
       this.isVerificationCompleted = false;
+      // Do NOT reset isCrossSigningReady or isSecretStorageReady here. 
+      // They are persistent until logout or manual check says otherwise.
+      this.verificationModalOpen = false;
+    },
+
+    async bootstrapVerification() {
+      if (!this.client) return;
+      const crypto = this.client.getCrypto();
+      if (!crypto) return;
+
+      try {
+        console.log("Bootstrapping verification and secret storage...");
+
+        // 1. Bootstrap Cross-Signing (find or create keys)
+        await crypto.bootstrapCrossSigning({
+          setupNewCrossSigning: false
+        });
+
+        // 2. Bootstrap Secret Storage (ensure we have access to secrets)
+        await crypto.bootstrapSecretStorage({
+          setupNewSecretStorage: false
+        });
+
+        // 3. Try to load historical backup keys if they exist
+        await this.restoreKeysFromBackup();
+        await this.retryDecryption();
+
+        await this.checkDeviceVerified();
+
+        if (this.isCrossSigningReady) {
+          this.isVerificationCompleted = true;
+          this.verificationModalOpen = true; // Stay open to show success
+          setTimeout(() => this._resetVerificationState(), 3000);
+        }
+      } catch (e) {
+        console.error("Bootstrap failed:", e);
+      }
+    },
+
+    async restoreKeysFromBackup() {
+      if (!this.client) return;
+      const crypto = this.client.getCrypto();
+      if (!crypto) return;
+
+      console.log("Checking for historical key backups...");
+      try {
+        const backupInfo = await crypto.getKeyBackupInfo();
+        if (backupInfo) {
+          await crypto.loadSessionBackupPrivateKeyFromSecretStorage();
+          await crypto.restoreKeyBackup({
+            progressCallback: (p) => {
+              if (p.stage === 'load_keys') {
+                console.log(`Restoring keys: ${p.successes}/${p.total}`);
+              }
+            }
+          });
+          await crypto.checkKeyBackupAndEnable();
+        }
+      } catch (err) {
+        console.warn("Failed to restore keys from backup:", err);
+      }
+    },
+
+    async retryDecryption() {
+      if (!this.client) return;
+      const crypto = this.client.getCrypto();
+      const rooms = this.client.getRooms(); // Check ALL rooms, not just visible ones
+
+      console.log(`Retrying decryption for ${rooms.length} rooms...`);
+      for (const room of rooms) {
+        const events = room.getLiveTimeline().getEvents();
+        for (const event of events) {
+          if (event.isDecryptionFailure()) {
+            // Use attemptDecryption which is standard for retrying
+            await event.attemptDecryption(crypto as any, { isRetry: true });
+          }
+        }
+      }
     },
 
     // Reset the session and redirect to login
@@ -567,6 +655,8 @@ export const useMatrixStore = defineStore('matrix', {
       this.user = null;
       this.isAuthenticated = false;
       this.isSyncing = false;
+      this.isClientReady = false;
+      this._resetVerificationState();
 
       // Wipe Local Storage, remove critical session data
       localStorage.removeItem('matrix_access_token');
