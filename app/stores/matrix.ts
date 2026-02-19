@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia';
+import { toast } from 'vue-sonner';
 import * as sdk from 'matrix-js-sdk';
 import { OidcTokenRefresher } from 'matrix-js-sdk';
 import { CryptoEvent } from 'matrix-js-sdk/lib/crypto-api/CryptoEvent';
@@ -11,6 +12,61 @@ import { getOidcConfig, registerClient, getLoginUrl, completeLoginFlow, getHomes
 // Tauri imports - explicit import is required as per user confirmation/config check
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+
+// Enhanced HTML for OAuth Loopback Response
+const authResponseHtml = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"> <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Authentication</title>
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #111; color: #eee; }
+    .card { text-align: center; padding: 2rem; border-radius: 12px; background: #222; box-shadow: 0 4px 6px rgba(0,0,0,0.3); border: 1px solid #333; max-width: 400px; width: 100%; }
+    .success { color: #10b981; }
+    .error { color: #ef4444; }
+    .hidden { display: none !important; }
+    p { color: #aaa; line-height: 1.5; }
+    .small { color: #666; font-size: 0.875rem; margin-top: 1.5rem; }
+  </style>
+</head>
+<body>
+  <div class="card hidden" id="success-card">
+    <h1 class="success">Login Successful</h1>
+    <p>You can close this tab and return to the app.</p>
+    <p class="small">This tab will close automatically...</p>
+  </div>
+  
+  <div class="card hidden" id="error-card">
+    <h1 class="error">Authentication Failed</h1>
+    <p id="error-msg">Access was denied.</p>
+    <p class="small">You can close this tab and try again in the app.</p>
+  </div>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const successCard = document.getElementById('success-card');
+    const errorCard = document.getElementById('error-card');
+    const errorMsg = document.getElementById('error-msg');
+    
+    // Check if the URL contains an error parameter
+    if (params.has('error')) {
+      errorCard.classList.remove('hidden');
+      
+      // Make the error readable (e.g., 'access_denied' -> 'access denied')
+      const rawError = params.get('error').replace(/_/g, ' ');
+      const desc = params.get('error_description');
+      
+      errorMsg.textContent = desc ? desc : "Error: " + rawError;
+    } else {
+      // Show success and attempt to auto-close
+      successCard.classList.remove('hidden');
+      setTimeout(() => window.close(), 3000);
+    }
+  </script>
+</body>
+</html>
+`;
 
 /**
  * Subclass of OidcTokenRefresher that persists rotated tokens to localStorage.
@@ -60,7 +116,9 @@ export const useMatrixStore = defineStore('matrix', {
     activityStatus: null as string | null,
     activityDetails: null as { name: string; is_running: boolean } | null,
     isGameDetectionEnabled: false,
+
     customStatus: null as string | null,
+    isLoggingIn: false,
   }),
   actions: {
     initGameDetection() {
@@ -131,7 +189,7 @@ export const useMatrixStore = defineStore('matrix', {
             // Add fake game for testing
             filtered.push({
               id: '99999',
-              name: 'The Most Intense Calculator Session',
+              name: 'Calculator',
               executables: [{ os: 'darwin', name: 'Calculator' }]
             });
 
@@ -184,7 +242,31 @@ export const useMatrixStore = defineStore('matrix', {
       }
     },
 
+    cancelLogin(errorReason?: string | null) {
+      this.isLoggingIn = false;
+
+      let friendlyMessage = "The authentication process was cancelled.";
+
+      if (errorReason === 'access_denied') {
+        friendlyMessage = "Access to the homeserver was denied.";
+      } else if (errorReason) {
+        // Clean up snake_case errors like 'invalid_request' -> 'invalid request'
+        friendlyMessage = `Authentication failed: ${errorReason.replace(/_/g, ' ')}`;
+      }
+
+      toast.error('Login Cancelled', {
+        description: friendlyMessage,
+        duration: 5000,
+      });
+
+      const router = useRouter();
+      if (router.currentRoute.value.path !== '/login') {
+        router.push('/login');
+      }
+    },
+
     async startLogin() {
+      this.isLoggingIn = true;
       // Stop any existing client to release DB locks
       if (this.client) {
         this.client.stopClient();
@@ -212,38 +294,7 @@ export const useMatrixStore = defineStore('matrix', {
         // Start the loopback server with a branded response page
         const port = await start({
           ports: [12345, 12346, 12347, 12348, 12349],
-          response: `<html>
-            <head>
-              <title>Login Successful — Ruby</title>
-              <style>
-                * { margin: 0; padding: 0; box-sizing: border-box; }
-                body {
-                  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                  display: flex; align-items: center; justify-content: center;
-                  height: 100vh; background: #0a0a0f;
-                  color: #e4e4e7;
-                }
-                .card {
-                  text-align: center; padding: 3rem 4rem;
-                  border-radius: 16px; background: #18181b;
-                  border: 1px solid #27272a;
-                  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-                }
-                .icon { font-size: 3rem; margin-bottom: 1rem; }
-                h1 { font-size: 1.5rem; font-weight: 600; margin-bottom: 0.5rem; color: #f4f4f5; }
-                p { color: #a1a1aa; font-size: 0.95rem; line-height: 1.5; }
-                .subtle { margin-top: 1.5rem; font-size: 0.8rem; color: #52525b; }
-              </style>
-            </head>
-            <body>
-              <div class="card">
-                <h1>Login Successful</h1>
-                <p>You can close this tab and return to Ruby.</p>
-                <p class="subtle">This tab will close automatically…</p>
-              </div>
-              <script>setTimeout(() => window.close(), 3000);</script>
-            </body>
-          </html>`,
+          response: authResponseHtml,
         });
 
         // Listen for the redirect URL from the OIDC provider
@@ -252,15 +303,21 @@ export const useMatrixStore = defineStore('matrix', {
             const parsed = new URL(url);
             const code = parsed.searchParams.get('code');
             const state = parsed.searchParams.get('state');
+            const error = parsed.searchParams.get('error');
 
-            if (code && state) {
+            if (error) {
+              console.error("OAuth flow failed or was cancelled:", error);
+              this.cancelLogin(error);
+            } else if (code && state) {
               await this.handleCallback(code, state);
               await navigateTo('/chat', { replace: true });
             } else {
               console.error('[OAuth Loopback] Missing code or state in callback URL:', url);
+              this.cancelLogin('missing_credentials');
             }
-          } catch (err) {
+          } catch (err: any) {
             console.error('[OAuth Loopback] Callback handling failed:', err);
+            this.cancelLogin(err?.message || 'callback_failed');
           } finally {
             // Clean up: stop listening and shut down the temporary server
             unlisten();

@@ -23,7 +23,7 @@
     <div 
       v-else 
       ref="timelineContainer" 
-      class="flex-1 overflow-y-auto space-y-1 pr-1 pb-1 min-h-0"
+      class="flex-1 overflow-y-auto space-y-1 pr-1 pb-10 min-h-0"
       @scroll="handleScroll"
     >
       <div v-if="isLoadingHistory" class="flex justify-center py-2">
@@ -99,16 +99,33 @@
                  {{ msg.body }}
                </div>
             </div>
+
+            <!-- Sticker (no bubble background, transparent) -->
+            <div
+              v-else-if="msg.type === 'm.sticker'"
+              class="mt-1 flex flex-col"
+              :class="msg.isOwn ? 'items-end' : 'items-start'"
+            >
+               <ChatSticker 
+                 :mxc-url="msg.url" 
+                 :encrypted-file="msg.encryptedFile"
+                 :alt="msg.body" 
+                 @load="scrollToBottomIfAtBottom"
+               />
+            </div>
             
             <div
               v-else
-              class="rounded-2xl mt-1 px-3.5 py-2 text-sm leading-relaxed break-words whitespace-pre-wrap max-w-full"
-              style="overflow-wrap: anywhere"
+              class="rounded-2xl mt-1 px-3.5 py-2 overflow-hidden"
               :class="msg.isOwn
-                ? 'bg-primary text-primary-foreground rounded-br-md'
+                ? 'bg-primary rounded-br-md'
                 : 'bg-background rounded-bl-md'"
             >
-              {{ msg.body }}
+              <MessageContent 
+                :body="msg.body" 
+                :formatted-body="msg.formattedBody" 
+                :is-own="msg.isOwn" 
+              />
             </div>
           </div>
 
@@ -158,6 +175,7 @@ interface ChatMessage {
   senderInitials: string;
   avatarUrl: string | null;
   body: string;
+  formattedBody?: string;
   timestamp: number;
   isOwn: boolean;
   type: string;
@@ -222,8 +240,10 @@ const canSend = computed(() => newMessage.value.trim().length > 0 && !isSending.
 function mapEvent(event: MatrixEvent): ChatMessage | null {
   const type = event.getType();
   const isEncrypted = type === 'm.room.encrypted';
+  const isMessage = type === EventType.RoomMessage;
+  const isSticker = type === 'm.sticker';
   
-  if (type !== EventType.RoomMessage && !isEncrypted) return null;
+  if (!isMessage && !isEncrypted && !isSticker) return null;
 
   const content = isEncrypted ? event.getClearContent() : event.getContent();
   
@@ -269,9 +289,12 @@ function mapEvent(event: MatrixEvent): ChatMessage | null {
     senderInitials: senderName.replace(/^[@!]/, '').slice(0, 2).toUpperCase(),
     avatarUrl,
     body: content.body,
+    // Strip the reply fallback from body when formatted HTML is available
+    // Reply fallback text like "> <@user> quote\n\n" creates duplicate content
+    formattedBody: content.format === 'org.matrix.custom.html' ? content.formatted_body : undefined,
     timestamp: event.getTs(),
     isOwn: senderId === store.client?.getUserId(),
-    type: content.msgtype || MsgType.Text,
+    type: isSticker ? 'm.sticker' : (content.msgtype || MsgType.Text),
     url: content.url,
     encryptedFile: content.file,
     filename,
@@ -291,8 +314,12 @@ function refreshMessagesFromWindow() {
   const events = timelineWindow.value.getEvents();
   const newMessages: ChatMessage[] = [];
 
+  let pendingDecryption = 0;
+  let filteredOut = 0;
+
   for (const event of events) {
     if (event.isEncrypted() && !event.getClearContent()) {
+      pendingDecryption++;
       // Only register the decryption listener once per event
       const eventId = event.getId();
       if (eventId && !decryptionListenerIds.has(eventId)) {
@@ -305,8 +332,12 @@ function refreshMessagesFromWindow() {
     const mapped = mapEvent(event);
     if (mapped) {
       newMessages.push(mapped);
+    } else {
+      filteredOut++;
     }
   }
+
+  console.log(`[Chat] Timeline: ${events.length} events, ${newMessages.length} messages, ${pendingDecryption} pending decryption, ${filteredOut} filtered out`);
 
   // Detect if a new live event was appended at the end
   const lastOldId = messages.value.length > 0
@@ -503,7 +534,8 @@ async function initRoom() {
   
   try {
     // Load initial window (latest messages)
-    await timelineWindow.value.load(undefined, 30); // Load initial 30
+    await timelineWindow.value.load(undefined, 30);
+    
     updateMessagesFromWindow(false);
   } catch (e) {
     console.error("Failed to load timeline window", e);

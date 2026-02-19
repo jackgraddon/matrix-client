@@ -5,7 +5,7 @@
   "identifier": "cc.jackg.matrixclient",
   "build": {
     "frontendDist": "../.output/public",
-    "devUrl": "https://localho.st:3000",
+    "devUrl": "http://localhost:3000",
     "beforeDevCommand": "corepack yarn dev",
     "beforeBuildCommand": "corepack yarn generate"
   },

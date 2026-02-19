@@ -8,7 +8,6 @@
   "permissions": [
     "core:default",
     "core:event:default",
-    "deep-link:default",
     "oauth:allow-start",
     "oauth:allow-cancel",
     "shell:allow-open"

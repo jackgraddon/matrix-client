@@ -66,10 +66,10 @@ export default defineNuxtConfig({
   devServer: {
     host: 'localhost',
     port: 3000,
-    https: {
-      key: './.dev/keys/server.key',
-      cert: './.dev/keys/server.crt'
-    }
+    // https: {
+    //   key: './.dev/keys/server.key',
+    //   cert: './.dev/keys/server.crt'
+    // }
   },
 
   ignore: [

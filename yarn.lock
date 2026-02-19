@@ -4712,15 +4712,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@tauri-apps/plugin-deep-link@npm:~2":
-  version: 2.4.7
-  resolution: "@tauri-apps/plugin-deep-link@npm:2.4.7"
-  dependencies:
-    "@tauri-apps/api": "npm:^2.10.1"
-  checksum: 10c0/b77087485950bbe2c341aa8daf4575174e0cea05ec399d92a25a2a79be1672056051e86cf5b3545075b56beddc752d2cd00860302bc432d399c5b793061bb310
-  languageName: node
-  linkType: hard
-
 "@tauri-apps/plugin-shell@npm:^2.3.5":
   version: 2.3.5
   resolution: "@tauri-apps/plugin-shell@npm:2.3.5"
@@ -9629,7 +9620,6 @@ __metadata:
     "@pinia/nuxt": "npm:^0.11.3"
     "@tauri-apps/api": "npm:^2.10.1"
     "@tauri-apps/cli": "npm:^2.10.0"
-    "@tauri-apps/plugin-deep-link": "npm:~2"
     "@tauri-apps/plugin-shell": "npm:^2.3.5"
     "@types/node": "npm:^25.2.3"
     "@vite-pwa/nuxt": "npm:^1.1.1"
@@ -9650,6 +9640,7 @@ __metadata:
     vite-plugin-wasm: "npm:^3.5.0"
     vue: "npm:^3.5.27"
     vue-router: "npm:^4.6.4"
+    vue-sonner: "npm:^2.0.9"
   languageName: unknown
   linkType: soft
 
@@ -13839,6 +13830,24 @@ __metadata:
   peerDependencies:
     vue: ^3.5.0
   checksum: 10c0/9dcbe1124f1f444ae263ca37914829eea1ebff3feaa182559efee611dfd4436bbebe0ebffdcb60e37fecfb2fbdc691346df00996eeba708485e9ea9b8a7dd193
+  languageName: node
+  linkType: hard
+
+"vue-sonner@npm:^2.0.9":
+  version: 2.0.9
+  resolution: "vue-sonner@npm:2.0.9"
+  peerDependencies:
+    "@nuxt/kit": ^4.0.3
+    "@nuxt/schema": ^4.0.3
+    nuxt: ^4.0.3
+  peerDependenciesMeta:
+    "@nuxt/kit":
+      optional: true
+    "@nuxt/schema":
+      optional: true
+    nuxt:
+      optional: true
+  checksum: 10c0/0001fcfd9163dd69f74bbbdbd50f61d7ceb514bf16571562cd51b0824b89cee809de2f93e1bb13fcc06375a07bc3e8bc1f552cb98e8ba1a665c8aecda47e039c
   languageName: node
   linkType: hard
 

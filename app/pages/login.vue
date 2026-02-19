@@ -1,48 +1,57 @@
 <template>
-  <div class="flex min-h-screen items-center justify-center bg-gray-50">
+  <div class="flex min-h-screen items-center justify-center bg-background">
     <UiCard class="w-full max-w-md">
       <UiCardHeader class="text-center">
-        <UiCardTitle>Welcome to Chat</UiCardTitle>
+        <UiCardTitle>Let's get you logged in.</UiCardTitle>
         <UiCardDescription>
-          Connecting to Matrix Homeserver...
+          Enter your homeserver URL to connect.
         </UiCardDescription>
       </UiCardHeader>
       
       <UiCardContent class="flex flex-col gap-6">
+        <form v-if="!matrixStore.isLoggingIn">
+          <UiInputGroup>
+            <UiInputGroupInput id="homeserverURL" type="url" v-model="homeserver" :placeholder="homeserver" class="!pl-1" />
+            <UiInputGroupAddon>
+              <UiInputGroupText>https://</UiInputGroupText>
+            </UiInputGroupAddon>
+            <UiInputGroupAddon align="inline-end">
+              <UiInputGroupButton
+                variant="default"
+                class="rounded-full"
+                @click="handleLogin" 
+                size="icon-xs"
+              >
+                <Icon name="solar:alt-arrow-right-linear" class="size-4" />
+              </UiInputGroupButton>
+            </UiInputGroupAddon>
+          </UiInputGroup>
+        </form>
         <UiAlert v-if="error" variant="destructive">
           <UiAlertTitle>Connection Error</UiAlertTitle>
           <UiAlertDescription>{{ error }}</UiAlertDescription>
         </UiAlert>
 
-        <div v-else class="flex flex-col items-center gap-4 py-4">
+        <div v-if="matrixStore.isLoggingIn" class="flex flex-col items-center gap-4 py-4">
           <UiSpinner size="lg" />
           <p class="text-sm text-muted-foreground">
             Redirecting to secure login...
           </p>
         </div>
-
-        <UiButton 
-          v-if="!isLoading" 
-          @click="handleLogin" 
-          class="w-full"
-        >
-          Sign In Manually
-        </UiButton>
       </UiCardContent>
     </UiCard>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
-import { useMatrixStore } from '~/stores/matrix';
-
 const matrixStore = useMatrixStore();
-const isLoading = ref(true);
+const config = useRuntimeConfig();
+const homeserver = ref<string>((config.public.matrix.baseUrl as string) || 'matrix.org');
+// const isLoading = ref(false); // Use store state instead
 const error = ref<string | null>(null);
 
 const handleLogin = async () => {
-  isLoading.value = true;
+  // matrixStore.isLoggingIn = true; // Handled in action
   error.value = null;
 
   try {
@@ -55,15 +64,11 @@ const handleLogin = async () => {
   } catch (err: any) {
     console.error("Login initialization failed:", err);
     error.value = err.message || "Failed to connect to the authentication server.";
-    isLoading.value = false;
+    matrixStore.isLoggingIn = false;
   }
 };
 
-// Automatically trigger login on mount
 onMounted(() => {
-  // We use a small timeout to ensure the UI renders first so the user sees what's happening
-  setTimeout(() => {
-    handleLogin();
-  }, 500);
+  console.log(homeserver.value, config.public.matrixBaseUrl);
 });
 </script>

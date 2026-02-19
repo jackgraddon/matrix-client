@@ -18,7 +18,6 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_oauth::init())
         .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_deep_link::init())
         .manage(scanner_state)
         .invoke_handler(tauri::generate_handler![
             game_scanner::update_watch_list,
