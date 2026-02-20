@@ -1,5 +1,3 @@
-import { computed, ref } from 'vue';
-import { useMatrixStore } from '~/stores/matrix';
 
 export function useGameActivity() {
     const store = useMatrixStore();

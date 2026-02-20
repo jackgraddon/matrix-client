@@ -23,6 +23,7 @@
     "@nuxtjs/color-mode": "^4.0.0",
     "@pinia/nuxt": "^0.11.3",
     "@tauri-apps/api": "^2.10.1",
+    "@tauri-apps/plugin-os": "~2",
     "@tauri-apps/plugin-shell": "^2.3.5",
     "@vueuse/core": "^14.2.1",
     "class-variance-authority": "^0.7.1",
@@ -31,12 +32,13 @@
     "matrix-js-sdk": "^40.2.0-rc.0",
     "nuxt": "^4.3.0",
     "pinia": "^3.0.4",
-    "reka-ui": "^2.8.0",
+    "reka-ui": "^2.8.2",
     "shadcn-nuxt": "^2.4.3",
     "tailwind-merge": "^3.4.0",
     "vue": "^3.5.27",
     "vue-router": "^4.6.4",
-    "vue-sonner": "^2.0.9"
+    "vue-sonner": "^2.0.9",
+    "vue3-emoji-picker": "^1.1.8"
   },
   "devDependencies": {
     "@nuxtjs/tailwindcss": "7.0.0-beta.1",

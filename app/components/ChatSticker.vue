@@ -20,9 +20,6 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onUnmounted, computed } from 'vue';
-import { useMatrixStore } from '~/stores/matrix';
-import { useAuthenticatedMedia } from '~/composables/useAuthenticatedMedia';
 
 const props = defineProps<{
   mxcUrl?: string | null;
@@ -58,28 +55,7 @@ const imageUrl = computed(() => encryptedImageUrl.value || standardUrl.value);
 const isLoading = computed(() => encryptedLoading.value || standardLoading.value);
 const error = computed(() => encryptedError.value || standardError.value);
 
-// --- Encrypted File Logic (Preserved from ChatImage just in case) ---
-function decodeBase64(str: string): Uint8Array {
-  const padded = str.padEnd(str.length + (4 - str.length % 4) % 4, '=');
-  const base64 = padded.replace(/-/g, '+').replace(/_/g, '/');
-  const binaryString = atob(base64);
-  const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
-  return bytes;
-}
-
-async function decryptAttachment(data: ArrayBuffer, info: any): Promise<ArrayBuffer> {
-  if (!info.key || !info.iv) throw new Error('Missing key or iv');
-  const key = await window.crypto.subtle.importKey(
-    'jwk', info.key, { name: 'AES-CTR' }, false, ['encrypt', 'decrypt']
-  );
-  const iv = decodeBase64(info.iv);
-  return await window.crypto.subtle.decrypt(
-    { name: 'AES-CTR', counter: iv as any, length: 64 }, key, data
-  );
-}
+// --- Encrypted File Logic ---
 
 const loadEncrypted = async () => {
   if (!props.encryptedFile || !store.client) return;
@@ -94,17 +70,7 @@ const loadEncrypted = async () => {
 
   try {
     const mxc = props.encryptedFile.url;
-    if (!mxc || !mxc.startsWith('mxc://')) throw new Error('Invalid MXC URL');
-    
-    const mxcParts = mxc.replace('mxc://', '').split('/');
-    const httpUrl = `${store.client.baseUrl}/_matrix/client/v1/media/download/${mxcParts[0]}/${mxcParts[1]}`;
-
-    const headers: Record<string, string> = {};
-    const token = store.client.getAccessToken();
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-
-    const response = await fetch(httpUrl, { headers });
-    if (!response.ok) throw new Error(`Fetch failed: ${response.status}`);
+    const response = await fetchAuthenticatedDownload(store.client, mxc);
     
     const arrayBuffer = await response.arrayBuffer();
     const decryptedBuffer = await decryptAttachment(arrayBuffer, props.encryptedFile);

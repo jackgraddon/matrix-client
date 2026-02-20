@@ -133,7 +133,6 @@
 </template>
 
 <script setup lang="ts">
-import { useMatrixStore } from '~/stores/matrix';
 const store = useMatrixStore();
 const backupKeyInput = ref('');
 

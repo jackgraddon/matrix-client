@@ -79,8 +79,6 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch, onUnmounted } from 'vue';
-import { useMatrixStore } from '~/stores/matrix';
 import * as sdk from 'matrix-js-sdk';
 import MatrixAvatar from '~/components/MatrixAvatar.vue'; 
 import { Card as UiCard, CardHeader as UiCardHeader, CardTitle as UiCardTitle, CardDescription as UiCardDescription } from '~/components/ui/card';

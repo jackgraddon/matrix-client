@@ -53,7 +53,7 @@ pub fn set_scanner_enabled(state: tauri::State<'_, Arc<ScannerState>>, enabled: 
 pub fn update_watch_list(state: tauri::State<'_, Arc<ScannerState>>, games: Vec<DetectableGame>) {
     let count = games.len();
     for game in &games {
-        let exe_names: Vec<&str> = game.executables.iter().map(|e| e.name.as_str()).collect();
+        let _exe_names: Vec<&str> = game.executables.iter().map(|e| e.name.as_str()).collect();
     }
     let mut list = state.watch_list.lock().unwrap();
     *list = games;

@@ -16,8 +16,11 @@
         "title": "Matrix Client",
         "useHttpsScheme": true,
         "width": 1200,
+        "minWidth": 1000,
         "height": 800,
-        "resizable": true
+        "minHeight": 500,
+        "resizable": true,
+        "decorations": false
       }
     ],
     "security": {

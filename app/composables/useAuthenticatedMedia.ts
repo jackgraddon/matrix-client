@@ -1,5 +1,4 @@
-import { ref, watch, onUnmounted, type MaybeRefOrGetter, toValue } from 'vue';
-import { useMatrixStore } from '~/stores/matrix';
+import type { MaybeRefOrGetter } from 'vue';
 
 export function useAuthenticatedMedia(
     mxcUrlObj: MaybeRefOrGetter<string | null | undefined>,
@@ -31,33 +30,8 @@ export function useAuthenticatedMedia(
         isLoading.value = true;
         error.value = null;
 
-        // Manually construct the client/v1 URL for MSC3916 (Authenticated Media)
-        // client.mxcUrlToHttp uses the old _matrix/media/v3 API which returns 404 on this server
-        // We need: /_matrix/client/v1/media/thumbnail/{serverName}/{mediaId}
-
-        const mxcParts = mxc.replace('mxc://', '').split('/');
-        const serverName = mxcParts[0];
-        const mediaId = mxcParts[1];
-
-        // Base URL from client
-        const baseUrl = store.client.baseUrl;
-
-        let httpUrl = `${baseUrl}/_matrix/client/v1/media/thumbnail/${serverName}/${mediaId}?width=${width}&height=${height}&method=${resizeMethod}`;
-
-        // Fetch with authentication
-        const accessToken = store.client.getAccessToken();
-
         try {
-            const response = await fetch(httpUrl, {
-                headers: {
-                    'Authorization': `Bearer ${accessToken}`
-                }
-            });
-
-            if (!response.ok) {
-                throw new Error(`Failed to fetch image: ${response.status} ${response.statusText}`);
-            }
-
+            const response = await fetchAuthenticatedThumbnail(store.client, mxc, width, height, resizeMethod);
             const blob = await response.blob();
             activeUrl = URL.createObjectURL(blob);
             imageUrl.value = activeUrl;

@@ -1,16 +1,28 @@
 <template>
   <div class="flex flex-col h-full">
     <!-- Room Header -->
-    <header v-if="room" class="flex items-center gap-3 pb-4 border-b border-border shrink-0">
-      <MatrixAvatar 
-        class="h-10 w-10 border"
-        :mxc-url="roomAvatarUrl"
-        :name="room?.name"
-        :size="96"
-      />
-      <div class="flex flex-col min-w-0">
-        <h1 class="text-lg font-semibold leading-tight truncate">{{ room.name }}</h1>
-        <p v-if="roomTopic" class="text-xs text-muted-foreground truncate">{{ roomTopic }}</p>
+    <header v-if="room" class="pb-4 border-b border-border shrink-0">
+      <div class="flex items-center justify-between">
+        <ProfileHeader 
+          :avatar-url="roomAvatarUrl"
+          :name="room?.name"
+          :user-id="otherUserId"
+          :topic="roomTopic"
+          name-classes="text-lg font-semibold"
+          class="flex-1"
+        />
+        <div class="flex items-center gap-2 pr-2">
+            <!-- <UiButton 
+              variant="ghost" 
+              size="icon" 
+              @click="refreshRoomUI" 
+              :disabled="isLoadingHistory"
+              class="text-muted-foreground hover:text-foreground h-9 w-9"
+              title="Refresh messages"
+            >
+              <Icon :name="isLoadingHistory ? 'svg-spinners:ring-resize' : 'solar:refresh-linear'" class="h-5 w-5" />
+            </UiButton> -->
+        </div>
       </div>
     </header>
 
@@ -19,26 +31,16 @@
       <p class="text-muted-foreground">Loading room...</p>
     </div>
 
-    <!-- Message Timeline -->
     <div 
       v-else 
       ref="timelineContainer" 
-      class="flex-1 overflow-y-auto space-y-1 pr-1 pb-10 min-h-0"
-      @scroll="handleScroll"
+      class="flex-1 overflow-y-auto pr-1 pb-10 min-h-0 flex flex-col-reverse gap-y-1"
     >
-      <div v-if="isLoadingHistory" class="flex justify-center py-2">
-         <Icon name="svg-spinners:ring-resize" class="text-muted-foreground" />
-      </div>
-
-      <div v-if="messages.length === 0 && !isLoadingHistory" class="flex items-center justify-center h-full">
-        <p class="text-muted-foreground text-sm">No messages yet. Say hello!</p>
-      </div>
-
-      <template v-for="(msg, index) in messages" :key="msg.eventId">
-        <!-- Date separator -->
+      <template v-for="(msg, index) in displayMessages" :key="msg.eventId">
+        <!-- Date separator (Now logic looks forward to next older message) -->
         <div
-          v-if="index === 0 || !isSameDay(msg.timestamp, messages[index - 1]?.timestamp || 0)"
-          class="flex items-center gap-3 py-3"
+          v-if="index === displayMessages.length - 1 || !isSameDay(msg.timestamp, displayMessages[index + 1]?.timestamp || 0)"
+          class="flex items-center gap-3 py-3 w-full"
         >
           <div class="flex-1 h-px bg-border" />
           <span class="text-xs text-muted-foreground font-medium shrink-0">
@@ -49,115 +51,390 @@
 
         <!-- Message bubble -->
         <div
-          class="flex gap-2.5 group items-end"
-          :class="msg.isOwn ? 'flex-row-reverse' : 'flex-row'"
+          :data-event-id="msg.eventId"
+          class="flex gap-2.5 group items-end relative"
+          :class="[
+            msg.isOwn ? 'flex-row-reverse' : 'flex-row',
+            (msg.reactions?.length || msg.readReceipts?.length) ? 'mb-4' : ''
+          ]"
         >
-          <!-- Avatar (only shown for non-consecutive messages from same sender) -->
-          <div class="w-8 shrink-0">
-            <MatrixAvatar
-              v-if="!isPreviousSameSender(index)"
+          <!-- Avatar & Metadata Column -->
+          <div 
+            class="flex flex-col shrink-0 gap-0.5"
+            :class="[
+              msg.isOwn ? 'items-start' : 'items-end',
+              // Ensure minimum width to maintain alignment even if avatar is missing/timestamp is small
+              'min-w-[32px]'
+            ]"
+          >
+            <!-- Avatar -->
+            <MatrixAvatar 
+              v-if="!msg.isOwn && !isPreviousSameSender(index)"
+              :mxc-url="msg.avatarUrl" 
+              :name="msg.senderName" 
               class="h-8 w-8 border"
-              :mxc-url="msg.avatarUrl"
-              :name="msg.senderName"
-              :size="64"
             />
+            <!-- Spacer if no avatar but we still need the column to align (handled by flex parent alignment + min-width if timestamp is missing, but timestamp is always there) -->
+            
+            <!-- Timestamp & Edit Status -->
+            <div 
+              class="flex flex-col text-[10px] text-muted-foreground leading-none gap-0.5 mb-1 select-none"
+              :class="msg.isOwn ? 'items-start text-left' : 'items-end text-right'"
+            >
+               <span v-if="msg.isEdited" class="whitespace-nowrap">
+                 (edited)
+               </span>
+               <span class="whitespace-nowrap">
+                 {{ formatTime(msg.timestamp) }}
+               </span>
+            </div>
           </div>
 
           <!-- Message content -->
-          <div class="flex flex-col max-w-[75%] min-w-0" :class="msg.isOwn ? 'items-end' : 'items-start'">
-            <!-- Sender name (only for first in a group) -->
-            <span
-              v-if="!msg.isOwn && !isPreviousSameSender(index)"
-              class="text-xs font-medium text-muted-foreground mb-1 px-1"
-            >
-              {{ msg.senderName }}
-            </span>
+          <UiContextMenu>
+            <UiContextMenuTrigger as-child>
+            <div class="flex flex-col max-w-[75%] min-w-0 relative group/message" :class="msg.isOwn ? 'items-end' : 'items-start'">
+              <!-- Sender name (only for first in a group) -->
+              <span
+                v-if="!msg.isOwn && !isPreviousSameSender(index)"
+                class="text-xs font-medium text-muted-foreground mb-1 px-1"
+              >
+                {{ msg.senderName }}
+              </span>
 
-            <div
-              v-if="msg.type === MsgType.Image"
-              class="rounded-lg overflow-hidden flex flex-col items-end"
-              :class="msg.isOwn ? 'rounded-br-sm' : 'rounded-bl-sm'"
+              <!-- Reply Preview (Outside Bubble) -->
+              <div 
+                v-if="msg.replyTo" 
+                class="flex items-center gap-1.5 text-xs text-muted-foreground px-1 mt-1 cursor-pointer hover:text-muted-foreground transition-colors max-w-full"
+                @click.stop="scrollToEvent(msg.replyTo.eventId)"
+              >
+                 <Icon name="solar:reply-bold" class="h-3 w-3 shrink-0 opacity-70" />
+                 <span class="font-semibold shrink-0">{{ msg.replyTo.senderName }}:</span>
+                 <span class="truncate min-w-0">{{ msg.replyTo.body }}</span>
+              </div>
+  
+              <div
+                v-if="msg.type === MsgType.Image"
+                class="rounded-lg overflow-hidden flex flex-col items-end"
+                :class="msg.isOwn ? 'rounded-br-sm' : 'rounded-bl-sm'"
+              >
+                 <ChatImage 
+                   :mxc-url="msg.url" 
+                   :encrypted-file="msg.encryptedFile"
+                   :alt="msg.body" 
+                   :max-width="400"
+                   :intrinsic-width="msg.imageWidth"
+                   :intrinsic-height="msg.imageHeight"
+                   class="max-w-[400px]"
+                 />
+                 <div 
+                   v-if="msg.showCaption"
+                   class="rounded-2xl mt-1 px-3.5 py-2 text-sm w-fit leading-relaxed break-words whitespace-pre-wrap max-w-full"
+                   style="overflow-wrap: anywhere"
+                   :class="msg.isOwn
+                     ? 'bg-primary text-primary-foreground rounded-br-md'
+                     : 'bg-muted rounded-bl-md'"
+                 >
+                   {{ msg.body }}
+                 </div>
+              </div>
+  
+              <!-- Sticker (no bubble background, transparent) -->
+              <div
+                v-else-if="msg.type === 'm.sticker'"
+                class="mt-1 flex flex-col"
+                :class="msg.isOwn ? 'items-end' : 'items-start'"
+              >
+                 <ChatSticker 
+                   :mxc-url="msg.url" 
+                   :encrypted-file="msg.encryptedFile"
+                   :alt="msg.body" 
+                   class="max-w-[200px]"
+                 />
+              </div>
+              
+              <!-- Generic Files (Audio, Video, File) -->
+              <div
+                v-else-if="msg.isFile"
+                class="mt-1 flex flex-col"
+                :class="msg.isOwn ? 'items-end' : 'items-start'"
+              >
+                  <ChatFile
+                    :mxc-url="msg.url"
+                    :encrypted-file="msg.encryptedFile"
+                    :alt="msg.body"
+                  />
+              </div>
+
+              <div
+                v-else
+                class="rounded-2xl mt-1 px-3.5 py-2 overflow-hidden flex flex-col gap-1"
+                :class="msg.isOwn
+                  ? 'bg-primary rounded-br-md text-primary-foreground'
+                  : 'bg-background rounded-bl-md text-foreground'"
+              >
+                <MessageContent 
+                  :body="msg.body" 
+                  :formatted-body="msg.formattedBody" 
+                  :is-own="msg.isOwn" 
+                />
+              </div>
+
+              <!-- Reactions -->
+              <div 
+                v-if="msg.reactions && msg.reactions.length > 0"
+                class="absolute -bottom-3 flex gap-1 z-10"
+                :class="msg.isOwn ? 'right-0 justify-end' : 'left-0 justify-start'"
+              >
+                  <UiTooltipProvider v-for="reaction in msg.reactions" :key="reaction.key">
+                    <UiTooltip>
+                      <UiTooltipTrigger as-child>
+                        <UiBadge 
+                          variant="secondary"
+                          class="h-5 px-1.5 py-0 border border-background shadow-sm text-[10px] gap-1 hover:bg-muted cursor-pointer transition-colors"
+                          :class="{ 'bg-blue-100 dark:bg-blue-900 border-blue-200 dark:border-blue-800': reaction.myReactionEventId }"
+                          @click.stop="toggleReaction(msg, reaction.key, reaction.myReactionEventId)"
+                        >
+                            <span>{{ reaction.key }}</span>
+                            <span v-if="reaction.count > 1" class="font-bold">{{ reaction.count }}</span>
+                        </UiBadge>
+                      </UiTooltipTrigger>
+                      <UiTooltipContent side="top">
+                        <p class="text-xs">{{ formatReactors(reaction.senders) }}</p>
+                      </UiTooltipContent>
+                    </UiTooltip>
+                  </UiTooltipProvider>
+              </div>
+            </div>
+          </UiContextMenuTrigger>
+          <UiContextMenuContent class="w-64">
+            <UiContextMenuItem @click="handleReply(msg)">
+              Reply
+            </UiContextMenuItem>
+
+            <!-- Reaction Row (Custom div to avoid ContextMenu closing on mouse move) -->
+            <div 
+              class="relative flex items-center px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground rounded-sm transition-colors cursor-default select-none group/react"
+              @mousedown.stop
+              @mouseup.stop
+              @click.stop
             >
-               <ChatImage 
-                 :mxc-url="msg.url" 
-                 :encrypted-file="msg.encryptedFile"
-                 :alt="msg.body" 
-                 :max-width="400"
-                 :intrinsic-width="msg.imageWidth"
-                 :intrinsic-height="msg.imageHeight"
-                 class="max-w-[400px]"
-                 @load="scrollToBottomIfAtBottom"
-               />
-               <div 
-                 v-if="msg.showCaption"
-                 class="rounded-2xl mt-1 px-3.5 py-2 text-sm w-fit leading-relaxed break-words whitespace-pre-wrap max-w-full"
-                 style="overflow-wrap: anywhere"
-                 :class="msg.isOwn
-                   ? 'bg-primary text-primary-foreground rounded-br-md'
-                   : 'bg-muted rounded-bl-md'"
-               >
-                 {{ msg.body }}
-               </div>
+              <UiPopover v-model:open="showReactionPickerMap[msg.eventId]" :modal="false">
+                <UiPopoverTrigger as-child>
+                  <div class="flex items-center w-full gap-2 cursor-pointer">
+                    <span class="text-sm">React</span>
+                    <div class="flex items-center gap-1 ml-auto">
+                      <button 
+                        @click.stop="handleReaction(msg, '👍')" 
+                        class="hover:bg-accent rounded px-1.5 py-0.5 transition-colors text-base"
+                      >👍</button>
+                      <button 
+                        @click.stop="handleReaction(msg, '❤️')" 
+                        class="hover:bg-accent rounded px-1.5 py-0.5 transition-colors text-base"
+                      >❤️</button>
+                      <button 
+                        @click.stop="handleReaction(msg, '😂')" 
+                        class="hover:bg-accent rounded px-1.5 py-0.5 transition-colors text-base"
+                      >😂</button>
+                      <div class="w-px h-3.5 bg-border mx-0.5" />
+                      <div 
+                        class="hover:bg-accent rounded p-1 text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center w-6 h-6"
+                      >
+                        <Icon name="solar:add-circle-linear" class="w-4 h-4" />
+                      </div>
+                    </div>
+                  </div>
+                </UiPopoverTrigger>
+                <UiPopoverContent side="top" :side-offset="0" align="center" class="w-auto p-0 border-none shadow-2xl z-[100] bg-transparent">
+                  <EmojiPicker theme="auto" @select="(e) => onEmojiSelect(e, msg)" />
+                </UiPopoverContent>
+              </UiPopover>
             </div>
 
-            <!-- Sticker (no bubble background, transparent) -->
-            <div
-              v-else-if="msg.type === 'm.sticker'"
-              class="mt-1 flex flex-col"
-              :class="msg.isOwn ? 'items-end' : 'items-start'"
-            >
-               <ChatSticker 
-                 :mxc-url="msg.url" 
-                 :encrypted-file="msg.encryptedFile"
-                 :alt="msg.body" 
-                 @load="scrollToBottomIfAtBottom"
-               />
-            </div>
+            <UiContextMenuItem @click="copyToClipboard(msg.body)">
+              Copy Text
+            </UiContextMenuItem>
             
-            <div
-              v-else
-              class="rounded-2xl mt-1 px-3.5 py-2 overflow-hidden"
-              :class="msg.isOwn
-                ? 'bg-primary rounded-br-md'
-                : 'bg-background rounded-bl-md'"
-            >
-              <MessageContent 
-                :body="msg.body" 
-                :formatted-body="msg.formattedBody" 
-                :is-own="msg.isOwn" 
-              />
-            </div>
-          </div>
+            <UiContextMenuItem @click="handleViewSource(msg.eventId)">
+              View Source
+            </UiContextMenuItem>
 
-          <!-- Timestamp (visible on hover) -->
-          <span class="text-[10px] text-muted-foreground mb-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-            {{ formatTime(msg.timestamp) }}
-          </span>
+            <UiContextMenuSeparator v-if="msg.isOwn" />
+            <UiContextMenuItem v-if="msg.isOwn" @click="handleEdit(msg)">
+              Edit
+            </UiContextMenuItem>
+            <UiContextMenuItem v-if="msg.isOwn" @click="redactEvent(msg.eventId)" class="text-red-500 focus:text-red-500">
+              Delete
+            </UiContextMenuItem>
+          </UiContextMenuContent>
+        </UiContextMenu>
+
+        <!-- Read Receipts -->
+        <div v-if="msg.readReceipts && msg.readReceipts.length > 0" 
+             class="flex absolute -bottom-5 gap-0.5 z-10"
+             :class="msg.isOwn ? 'right-0' : 'left-0 justify-start'">
+            <UiTooltipProvider v-for="receipt in msg.readReceipts" :key="receipt.userId">
+              <UiTooltip>
+                 <UiTooltipTrigger as-child>
+                     <MatrixAvatar 
+                       :mxc-url="receipt.avatarUrl"
+                       :name="receipt.name"
+                       class="h-4 w-4 border shadow-sm shrink-0"
+                       :size="32"
+                     />
+                 </UiTooltipTrigger>
+                  <UiTooltipContent side="top">
+                    <p class="text-xs">Read by {{ receipt.name }}</p>
+                  </UiTooltipContent>
+              </UiTooltip>
+            </UiTooltipProvider>
+        </div>
+        
         </div>
       </template>
+
+      <!-- Infinite Scroll Trigger (Sentinel) -->
+      <!-- In flex-col-reverse, the bottom of the HTML is the top of the screen -->
+      <div ref="topSentinel" class="flex justify-center py-4 min-h-[40px] shrink-0 w-full">
+        <div v-if="isLoadingHistory" class="flex items-center gap-2 text-muted-foreground">
+           <Icon name="svg-spinners:ring-resize" class="h-5 w-5" />
+           <span class="text-xs font-medium">Loading history...</span>
+        </div>
+        <span 
+          v-else-if="!canLoadMore && messages.length > 0" 
+          class="text-xs text-muted-foreground italic bg-muted/30 px-3 py-1 rounded-full"
+        >
+          You've gone as far back in time as you can
+        </span>
+      </div>
+
+      <div v-if="messages.length === 0 && !isLoadingHistory" class="flex items-center justify-center h-full order-last">
+        <p class="text-muted-foreground text-sm">No messages yet. Say hello!</p>
+      </div>
     </div>
 
+    <!-- Event Source Viewer Dialog -->
+    <UiAlertDialog :open="!!sourceEvent" @update:open="(val: boolean) => { if (!val) sourceEvent = null }">
+      <UiAlertDialogContent class="max-w-2xl max-h-[80vh] flex flex-col p-0 gap-0 overflow-hidden">
+        <UiAlertDialogHeader class="p-6 border-b shrink-0 flex-row items-start justify-between text-left sm:text-left">
+          <div class="flex flex-col gap-1">
+            <UiAlertDialogTitle class="text-lg font-semibold flex items-center gap-2">
+              <Icon name="solar:code-bold" class="h-5 w-5 text-primary" />
+              Event Source
+            </UiAlertDialogTitle>
+            <UiAlertDialogDescription class="text-sm text-muted-foreground">
+              Raw Matrix event data for debugging and inspection.
+            </UiAlertDialogDescription>
+          </div>
+          <UiButton variant="ghost" size="icon" @click="sourceEvent = null" class="h-8 w-8 rounded-full shrink-0">
+            <Icon name="solar:close-circle-bold" class="h-5 w-5" />
+          </UiButton>
+        </UiAlertDialogHeader>
+        
+        <div class="p-6 overflow-auto bg-muted/30 flex-1 min-h-0">
+          <pre class="text-xs font-mono leading-relaxed select-all">{{ JSON.stringify(sourceEvent, null, 2) }}</pre>
+        </div>
+
+        <UiAlertDialogFooter class="p-4 border-t bg-muted/10 flex flex-row justify-end gap-3 sm:justify-end">
+           <UiAlertDialogCancel as-child>
+             <UiButton variant="outline">Close</UiButton>
+           </UiAlertDialogCancel>
+           <UiAlertDialogAction as-child @click="copyToClipboard(JSON.stringify(sourceEvent, null, 2))">
+             <UiButton variant="default">Copy JSON</UiButton>
+           </UiAlertDialogAction>
+        </UiAlertDialogFooter>
+      </UiAlertDialogContent>
+    </UiAlertDialog>
+
     <!-- Message Composer -->
-    <footer v-if="room" class="pt-4 border-t border-border shrink-0">
-      <form @submit.prevent="sendMessage" class="flex items-center gap-2">
-        <UiInput
-          v-model="newMessage"
-          placeholder="Write a message..."
-          class="flex-1"
-          :disabled="isSending"
-          @keydown.enter.exact.prevent="sendMessage"
+    <footer v-if="room" class="pt-4 border-t shrink-0">
+      
+      <!-- Reply / Edit Indicator -->
+      <div v-if="replyingTo || editingMessage" class="px-4 pb-2 flex items-center justify-between text-sm text-muted-foreground bg-muted/30">
+        <div class="flex items-center gap-2 overflow-hidden">
+          <Icon v-if="replyingTo" name="solar:reply-bold" class="h-4 w-4" />
+          <Icon v-else name="solar:pen-bold" class="h-4 w-4" />
+          <span class="truncate">
+            <template v-if="replyingTo">
+                 Replying to <strong>{{ replyingTo.senderName }}</strong>: {{ replyingTo.body }}
+            </template>
+            <template v-else>
+                 Editing message
+            </template>
+          </span>
+        </div>
+        <button @click="cancelAction" class="p-1 hover:bg-muted rounded-full">
+            <Icon name="solar:close-circle-bold" class="h-4 w-4" />
+        </button>
+      </div>
+
+      <form @submit.prevent="sendMessage">
+        <input
+          ref="fileInput"
+          type="file"
+          class="hidden"
+          @change="handleFileSelect"
         />
-        <UiButton type="submit" :disabled="!canSend" size="default">
-          <Icon name="solar:plain-bold" class="h-4 w-4" />
-        </UiButton>
+        <UiInputGroup class="bg-background rounded-2xl shadow flex items-end p-1 gap-1">
+          <UiInputGroupAddon align="inline-start">
+            <UiDropdownMenu>
+              <UiDropdownMenuTrigger as-child>
+                <UiInputGroupButton 
+                  class="relative rounded-full shrink-0"
+                  size="icon-sm"
+                  variant="outline">
+                  <Icon name="solar:menu-dots-bold" />
+                </UiInputGroupButton>
+              </UiDropdownMenuTrigger>
+              <UiDropdownMenuContent align="start">
+                <UiDropdownMenuItem @click="triggerFileUpload" class="cursor-pointer">
+                  <Icon name="solar:file-send-linear" />
+                  <span>Upload File</span>
+                </UiDropdownMenuItem>
+                <UiDropdownMenuSeparator />
+                <UiDropdownMenuItem disabled>
+                  <Icon name="solar:chart-square-linear" />
+                  <span>Poll (Coming Soon)</span>
+                </UiDropdownMenuItem>
+              </UiDropdownMenuContent>
+            </UiDropdownMenu>
+          </UiInputGroupAddon>
+
+          <UiInputGroupTextarea
+            ref="textareaRef"
+            v-model="newMessage"
+            placeholder="Type a message..."
+            rows="1" 
+            class="min-h-10 max-h-[200px] resize-none border-0 focus-visible:ring-0 shadow-none py-2.5 flex-1"
+            @keydown.enter.exact.prevent="sendMessage"
+            @input="autoResize"
+          />
+          <UiInputGroupAddon align="inline-end">
+            <UiInputGroupButton
+              type="submit" 
+              class="rounded-full shrink-0"
+              variant="default"
+              :disabled="!canSend" 
+              size="icon-sm">
+              <Icon v-if="editingMessage" name="solar:check-read-linear" />
+              <Icon v-else name="solar:plain-bold" />
+            </UiInputGroupButton>
+          </UiInputGroupAddon>
+        </UiInputGroup>
       </form>
     </footer>
   </div>
 </template>
 
 <script setup lang="ts">
-import { RoomEvent, EventType, MsgType, MatrixEventEvent, ClientEvent, type MatrixEvent, type Room, Direction, TimelineWindow, MatrixClient } from 'matrix-js-sdk';
+import { RoomEvent, EventType, MsgType, MatrixEventEvent, ClientEvent, type MatrixEvent, type Room, type RoomMember, Direction, TimelineWindow, MatrixClient, RelationType } from 'matrix-js-sdk';
+import { toast } from 'vue-sonner';
 import ChatImage from '~/components/ChatImage.vue';
+import ChatSticker from '~/components/ChatSticker.vue';
+import ChatFile from '~/components/ChatFile.vue';
+import EmojiPicker from 'vue3-emoji-picker';
+import 'vue3-emoji-picker/css';
+
 
 const props = defineProps<{
   isDm?: boolean;
@@ -185,16 +462,48 @@ interface ChatMessage {
   showCaption?: boolean;
   imageWidth?: number;
   imageHeight?: number;
+  isEdited?: boolean;
+  replyTo?: {
+    eventId: string;
+    senderName: string;
+    body: string;
+  };
+  reactions?: {
+    key: string;
+    count: number;
+    senders: string[];
+    myReactionEventId?: string; // If the current user reacted, store the event ID here for redaction
+  }[];
+  readReceipts?: {
+    userId: string;
+    avatarUrl: string | null;
+    name: string;
+    ts: number;
+  }[];
+  isFile?: boolean;
 }
 
 const messages = ref<ChatMessage[]>([]);
 const newMessage = ref('');
 const isSending = ref(false);
 const isLoadingHistory = ref(false);
+const isRecording = ref(false);
+const showEmojiPicker = ref(false);
+const showReactionPickerMap = ref<Record<string, boolean>>({}); // Track which message has its reaction picker open
+const typingUsers = ref<string[]>([]);
+let typingTimeout: NodeJS.Timeout | null = null;
+let lastTypingTime = 0;
+const TYPING_TIMEOUT = 5000;
+
+// Computed
 const room = ref<Room | null>(null);
 const timelineContainer = ref<HTMLElement | null>(null);
 const timelineWindow = ref<TimelineWindow | null>(null);
 const decryptionListenerIds = new Set<string>(); // Track events with registered decryption listeners
+const topSentinel = ref<HTMLElement | null>(null);
+const sourceEvent = ref<any>(null);
+let observer: IntersectionObserver | null = null;
+let lastRoomId: string | undefined = undefined;
 
 // --- Computed ---
 
@@ -202,6 +511,11 @@ const roomId = computed(() => {
   const params = route.params.id;
   // Catch-all route gives an array of path segments; join them back with '/'
   return Array.isArray(params) ? params.join('/') : params;
+});
+
+// Create a reactive, newest-first array for the template
+const displayMessages = computed(() => {
+  return [...messages.value].reverse();
 });
 
 const roomAvatarUrl = computed(() => {
@@ -222,15 +536,17 @@ const roomAvatarUrl = computed(() => {
   return null;
 });
 
-const roomInitials = computed(() => {
-  const name = room.value?.name || '?';
-  return name.slice(0, 2).toUpperCase();
-});
-
 const roomTopic = computed(() => {
   if (!room.value) return '';
   const topicEvent = room.value.currentState.getStateEvents('m.room.topic', '');
   return topicEvent?.getContent()?.topic || '';
+});
+
+const otherUserId = computed(() => {
+  if (!props.isDm || !room.value || !store.client) return undefined;
+  const myUserId = store.client.getUserId();
+  const members = room.value.getJoinedMembers();
+  return members.find(m => m.userId !== myUserId)?.userId;
 });
 
 const canSend = computed(() => newMessage.value.trim().length > 0 && !isSending.value);
@@ -239,12 +555,20 @@ const canSend = computed(() => newMessage.value.trim().length > 0 && !isSending.
 
 function mapEvent(event: MatrixEvent): ChatMessage | null {
   const type = event.getType();
+  
+  // Filter out replacement events (edits) from the timeline
+  // They are handled by the SDK updating the original event
+  if (event.isRelation(RelationType.Replace)) {
+      return null;
+  }
+
   const isEncrypted = type === 'm.room.encrypted';
   const isMessage = type === EventType.RoomMessage;
   const isSticker = type === 'm.sticker';
   
   if (!isMessage && !isEncrypted && !isSticker) return null;
 
+  // getContent() automatically returns the *edited* content if replaced
   const content = isEncrypted ? event.getClearContent() : event.getContent();
   
   if (!content || !content.body) return null; // Pending decryption or invalid
@@ -282,6 +606,163 @@ function mapEvent(event: MatrixEvent): ChatMessage | null {
     showCaption = false;
   }
 
+  // Check if edited
+  const isEdited = !!event.replacingEvent();
+
+  // Check if reply since we already have content
+  let replyTo: ChatMessage['replyTo'] | undefined;
+  const relation = content['m.relates_to']; // Direct content access is more reliable for raw structure
+  
+  if (relation && relation['m.in_reply_to']) {
+    const replyEventId = relation['m.in_reply_to'].event_id;
+    if (replyEventId) {
+       const replyEvent = room.value?.findEventById(replyEventId);
+       if (replyEvent) {
+         const replyContent = replyEvent.getContent();
+         const replySenderId = replyEvent.getSender() || '';
+         const replySender = room.value?.getMember(replySenderId)?.name || replySenderId;
+         replyTo = {
+           eventId: replyEventId,
+           senderName: replySender,
+           body: replyContent.body || 'Attachment',
+         };
+       } else {
+         // Event not locally available
+         replyTo = {
+             eventId: replyEventId,
+             senderName: 'Unknown',
+             body: 'Message loading...',
+         };
+       }
+    }
+  } else if (event.isRelation('m.replace')) {
+      // Logic for replace is handled separately (filtered out)
+  }
+
+  // Extract reactions
+  const reactions: ChatMessage['reactions'] = [];
+  const myUserId = store.client?.getUserId();
+  
+  // 1. Try server aggregated (for old events)
+  const serverRelations = event.getServerAggregatedRelation<any>('m.annotation');
+  if (serverRelations && serverRelations.chunk) {
+      serverRelations.chunk.forEach((reaction: any) => {
+        if (reaction.type === 'm.reaction') {
+            const existing = reactions.find(r => r.key === reaction.key);
+            if (existing) {
+                existing.count = reaction.count || existing.count;
+            } else {
+                reactions.push({
+                    key: reaction.key,
+                    count: reaction.count || 1,
+                    senders: [], // Server aggregation rarely gives full sender list
+                    // We can't know if *we* reacted from just the count aggregation easily without checking the full chunk if available
+                    // But often the chunk is just { count: 2, key: '👍' }
+                });
+            }
+        }
+      });
+  } 
+  
+  // 2. Try local relations (for recent events/local echo AND finding own reaction ID)
+  // We need to access the relations container to find if WE reacted
+  if (room.value) {
+      const timelineSet = room.value.getUnfilteredTimelineSet();
+      // Access relations via the relations container property
+      const relationsContainer = timelineSet.relations?.getChildEventsForEvent(event.getId()!, 'm.annotation', 'm.reaction');
+      
+      if (relationsContainer) {
+          const sortedAnnotations = relationsContainer.getSortedAnnotationsByKey();
+          if (sortedAnnotations) {
+              sortedAnnotations.forEach(([key, events]) => {
+                  if (events.size > 0) {
+                      let myReactionId: string | undefined;
+                      const senders: string[] = [];
+                      
+                      events.forEach(ev => {
+                          const sender = ev.getSender();
+                          if (sender) senders.push(sender);
+                          if (sender === myUserId) {
+                              myReactionId = ev.getId();
+                          }
+                      });
+
+                      const existing = reactions.find(r => r.key === key);
+                      if (existing) {
+                          existing.count = events.size;
+                          existing.senders = senders;
+                          existing.myReactionEventId = myReactionId;
+                      } else {
+                          reactions.push({
+                              key: key,
+                              count: events.size,
+                              senders: senders,
+                              myReactionEventId: myReactionId,
+                          });
+                      }
+                  }
+              });
+          }
+      }
+  }
+
+  // 3. Fallback for server aggregation limitation: 
+  // If we found a reaction via server aggregation but didn't find it in local relations (unlikely if we just synced),
+  // we might miss our own reaction ID. 
+  // However, for the purpose of "toggle", if we can't find our reaction ID, we assume we haven't reacted 
+  // (or at least we can't redact it easily without searching history).
+  // Current logic prioritizes local relations which is correct for active sessions.
+  // Check if it's a generic file (m.file, m.video, m.audio) or fallback with url/file
+  const fileMsgTypes = [MsgType.File, MsgType.Video, MsgType.Audio] as string[];
+  let isFile = false;
+  
+  if (!isSticker && (isMessage || isEncrypted)) {
+    if (content.msgtype && fileMsgTypes.includes(content.msgtype as string)) {
+      isFile = true;
+    } else if (content.msgtype !== MsgType.Image && content.msgtype !== MsgType.Text && content.msgtype !== MsgType.Notice && content.msgtype !== MsgType.Emote) {
+      // Fallback for custom file types if they have a URL or encrypted file but aren't explicitly text/images
+      if (content.url || content.file) {
+        isFile = true;
+      }
+    }
+  }
+
+  // Extract read receipts
+  const readReceipts: ChatMessage['readReceipts'] = [];
+  if (room.value) {
+      const receipts = room.value.getReceiptsForEvent(event);
+      const uniqueReaders = new Set<string>();
+      
+      receipts.forEach(r => {
+          // We exclude the event sender from their own message's read receipts
+          if (r.type === 'm.read' && r.userId !== senderId && !uniqueReaders.has(r.userId)) {
+              uniqueReaders.add(r.userId);
+              
+              let avatarUrl = null;
+              let name = r.userId;
+              
+              const readMember = room.value?.getMember(r.userId);
+              if (readMember) {
+                  name = readMember.name;
+                  avatarUrl = readMember.getMxcAvatarUrl() || null;
+              } else {
+                  const readUser = store.client?.getUser(r.userId);
+                  if (readUser) {
+                      name = readUser.displayName || r.userId;
+                      avatarUrl = readUser.avatarUrl || null;
+                  }
+              }
+
+              readReceipts.push({
+                  userId: r.userId,
+                  avatarUrl,
+                  name,
+                  ts: r.data.ts || 0
+              });
+          }
+      });
+  }
+
   return {
     eventId: event.getId() || '',
     senderId,
@@ -290,7 +771,6 @@ function mapEvent(event: MatrixEvent): ChatMessage | null {
     avatarUrl,
     body: content.body,
     // Strip the reply fallback from body when formatted HTML is available
-    // Reply fallback text like "> <@user> quote\n\n" creates duplicate content
     formattedBody: content.format === 'org.matrix.custom.html' ? content.formatted_body : undefined,
     timestamp: event.getTs(),
     isOwn: senderId === store.client?.getUserId(),
@@ -301,6 +781,11 @@ function mapEvent(event: MatrixEvent): ChatMessage | null {
     showCaption,
     imageWidth: content.info?.w,
     imageHeight: content.info?.h,
+    isEdited,
+    replyTo,
+    reactions: reactions.length > 0 ? reactions : undefined,
+    readReceipts: readReceipts.length > 0 ? readReceipts : undefined,
+    isFile,
   };
 }
 
@@ -314,13 +799,8 @@ function refreshMessagesFromWindow() {
   const events = timelineWindow.value.getEvents();
   const newMessages: ChatMessage[] = [];
 
-  let pendingDecryption = 0;
-  let filteredOut = 0;
-
   for (const event of events) {
     if (event.isEncrypted() && !event.getClearContent()) {
-      pendingDecryption++;
-      // Only register the decryption listener once per event
       const eventId = event.getId();
       if (eventId && !decryptionListenerIds.has(eventId)) {
         decryptionListenerIds.add(eventId);
@@ -332,41 +812,21 @@ function refreshMessagesFromWindow() {
     const mapped = mapEvent(event);
     if (mapped) {
       newMessages.push(mapped);
-    } else {
-      filteredOut++;
     }
   }
-
-  console.log(`[Chat] Timeline: ${events.length} events, ${newMessages.length} messages, ${pendingDecryption} pending decryption, ${filteredOut} filtered out`);
-
-  // Detect if a new live event was appended at the end
-  const lastOldId = messages.value.length > 0
-    ? messages.value[messages.value.length - 1]!.eventId
-    : null;
-  const lastNewId = newMessages.length > 0
-    ? newMessages[newMessages.length - 1]!.eventId
-    : null;
-  const newLiveEvent = newMessages.length > messages.value.length && lastNewId !== lastOldId;
 
   messages.value = newMessages;
-
-  if (newLiveEvent) {
-    const lastMsg = newMessages[newMessages.length - 1];
-    if (lastMsg?.isOwn) {
-      forceScrollToBottom();
-    } else {
-      scrollToBottomIfAtBottom();
-    }
-  }
 }
 
 function isPreviousSameSender(index: number): boolean {
-  if (index === 0) return false;
-  const current = messages.value[index];
-  const previous = messages.value[index - 1];
-  if (!current || !previous) return false;
-  return current.senderId === previous.senderId
-    && isSameDay(current.timestamp, previous.timestamp);
+  // We are looking at the newest-first displayMessages array
+  const current = displayMessages.value[index];
+  const older = displayMessages.value[index + 1]; // The message visually ABOVE it
+  
+  if (!current || !older) return false;
+  
+  return current.senderId === older.senderId
+    && isSameDay(current.timestamp, older.timestamp);
 }
 
 function isSameDay(a: number, b: number): boolean {
@@ -400,70 +860,31 @@ function forceScrollToBottom() {
   });
 }
 
-function scrollToBottomIfAtBottom() {
-  const el = timelineContainer.value;
-  if (!el) return;
-  const isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= 100;
-  if (isAtBottom) {
-    forceScrollToBottom();
-  }
-}
-
 function sendReadReceipt(event: MatrixEvent) {
   if (!room.value || !store.client) return;
-  store.client.sendReadReceipt(event);
+        store.client?.sendReadReceipt(event);
 }
 
 // --- Pagination (TimelineWindow) ---
 
-function handleScroll(e: Event) {
-  const target = e.target as HTMLElement;
-  // If close to top (e.g. within 50px)
-  if (target.scrollTop < 50 && !isLoadingHistory.value) {
-    loadMoreMessages();
-  }
-}
+const canLoadMore = computed(() => !!timelineWindow.value?.canPaginate(Direction.Backward));
 
 async function loadMoreMessages() {
   if (!timelineWindow.value || isLoadingHistory.value) return;
   
-  // Check if we can paginate back
   if (!timelineWindow.value.canPaginate(Direction.Backward)) {
-    // No more history to load
     return;
   }
 
   isLoadingHistory.value = true;
-  
-  // Capture current height to restore position
-  const el = timelineContainer.value;
-  const oldHeight = el ? el.scrollHeight : 0;
-  const oldScrollTop = el ? el.scrollTop : 0;
 
   try {
     await timelineWindow.value.paginate(Direction.Backward, 20);
-    
-    // Update messages from window
-    updateMessagesFromWindow(true, oldHeight, oldScrollTop);
+    refreshMessagesFromWindow(); 
   } catch (err) {
     console.error('Failed to load history:', err);
   } finally {
     isLoadingHistory.value = false;
-  }
-}
-
-function updateMessagesFromWindow(preserveScroll = false, oldHeight = 0, oldScrollTop = 0) {
-  refreshMessagesFromWindow();
-
-  if (preserveScroll) {
-    nextTick(() => {
-      const el = timelineContainer.value;
-      if (el) {
-        el.scrollTop = el.scrollHeight - oldHeight + oldScrollTop;
-      }
-    });
-  } else {
-    forceScrollToBottom();
   }
 }
 
@@ -484,29 +905,210 @@ function onTimelineEvent(event: MatrixEvent, eventRoom: Room | undefined, toStar
   sendReadReceipt(event);
 }
 
+function onReceiptEvent(event: MatrixEvent, triggeredRoom: Room) {
+  if (room.value && triggeredRoom.roomId === room.value.roomId) {
+      refreshMessagesFromWindow();
+  }
+}
+
+function scrollToEvent(eventId: string) {
+    if (!timelineContainer.value) return;
+    
+    const el = timelineContainer.value.querySelector(`[data-event-id="${eventId}"]`);
+    if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        // Highlight effect?
+        el.classList.add('bg-accent/20');
+        setTimeout(() => el.classList.remove('bg-accent/20'), 2000);
+    } else {
+        toast.info('Message not in current view');
+    }
+}
+
+// --- File Upload ---
+
+const fileInput = ref<HTMLInputElement | null>(null);
+const textareaRef = ref<any>(null);
+
+function triggerFileUpload() {
+  fileInput.value?.click();
+}
+
+async function onRoomMemberTyping(event: MatrixEvent, member: RoomMember) {
+    if (member.roomId !== room.value?.roomId) return;
+    
+    // Refresh the typing list based on current room members who are typing
+    const members = room.value?.getMembersWithMembership('join') || [];
+    const typing = members
+        .filter(m => m.typing && m.userId !== store.client?.getUserId())
+        .map(m => m.name || m.userId);
+        
+    typingUsers.value = typing;
+}
+
+const autoResize = (event: Event) => {
+  const target = event.target as HTMLTextAreaElement;
+  
+  // 1. Reset height to 'auto' so it can shrink if the user deletes text
+  target.style.height = 'auto';
+  
+  // 2. Set the height to match the scrollable content
+  target.style.height = `${target.scrollHeight}px`;
+  
+  // 3. Call your existing typing handler
+  handleTypingInput();
+}
+
+async function handleTypingInput() {
+    if (!room.value || !store.client) return;
+
+    const now = Date.now();
+    // Don't send too frequently (throttle to once per second) to avoid spamming server
+    if (now - lastTypingTime > 1000) {
+        store.client.sendTyping(room.value.roomId, true, TYPING_TIMEOUT);
+        lastTypingTime = now;
+    }
+    
+    // Always reset the auto-cancel timer on input
+    if (typingTimeout) clearTimeout(typingTimeout);
+    typingTimeout = setTimeout(() => {
+        if (room.value && store.client) {
+            store.client.sendTyping(room.value.roomId, false, 0);
+        }
+    }, TYPING_TIMEOUT);
+}
+
+async function handleFileSelect(event: Event) {
+  const input = event.target as HTMLInputElement;
+  if (!input.files?.length || !store.client) return;
+  
+  const file = input.files[0];
+  if (!file) return;
+
+  input.value = ''; // Reset input so same file can be selected again
+  
+  isSending.value = true;
+  try {
+    await store.uploadFile(roomId.value!, file);
+  } catch (err) {
+    console.error('Failed to upload file:', err);
+    toast.error('Failed to upload file');
+  } finally {
+    isSending.value = false;
+  }
+}
+
 // --- Send message ---
 
 async function sendMessage() {
   if (!canSend.value || !store.client) return;
   const text = newMessage.value.trim();
+  
+  if (!text) return;
+
+  const currentReply = replyingTo.value;
+  const currentEdit = editingMessage.value;
+
+  // Clear input immediately for UX (restore on fail)
   newMessage.value = '';
+  if (textareaRef.value) {
+    const el = textareaRef.value.$el || textareaRef.value;
+    if (el instanceof HTMLTextAreaElement) {
+        el.style.height = 'auto';
+    } else if (el.querySelector) {
+        const ta = el.querySelector('textarea');
+        if (ta) ta.style.height = 'auto';
+    }
+  }
+  
+  // Clear states
+  replyingTo.value = null;
+  editingMessage.value = null;
+  
   isSending.value = true;
 
   try {
-    await store.client.sendEvent(roomId.value!, EventType.RoomMessage, {
-      body: text,
-      msgtype: MsgType.Text,
-    });
+    if (currentEdit) {
+      const content = {
+        body: ` * ${text}`, // Fallback
+        msgtype: MsgType.Text,
+        'm.new_content': {
+            body: text,
+            msgtype: MsgType.Text,
+        },
+        'm.relates_to': {
+            rel_type: 'm.replace',
+            event_id: currentEdit.eventId,
+        }
+      } as any;
+      
+      await store.client.sendEvent(roomId.value!, EventType.RoomMessage, content);
+      
+    } else if (currentReply) {
+       const content = {
+           body: text,
+           msgtype: MsgType.Text,
+           'm.relates_to': {
+               'm.in_reply_to': {
+                   event_id: currentReply.eventId
+               }
+           }
+       } as any;
+       
+       await store.client.sendEvent(roomId.value!, EventType.RoomMessage, content);
+    } else {
+      await store.client.sendEvent(roomId.value!, EventType.RoomMessage, {
+        body: text,
+        msgtype: MsgType.Text,
+      });
+    }
   } catch (err) {
     console.error('Failed to send message:', err);
-    // Restore message on failure so the user doesn't lose it
+    // Restore message and states on failure
     newMessage.value = text;
+    if (currentEdit) editingMessage.value = currentEdit;
+    if (currentReply) replyingTo.value = currentReply;
+    
+    toast.error('Failed to send message');
   } finally {
     isSending.value = false;
   }
 }
 
 // --- Lifecycle ---
+
+async function refreshRoomUI() {
+    if (!roomId.value) return;
+    await store.refreshRoom(roomId.value);
+    await initRoom();
+}
+
+function setupObserver() {
+  if (observer) observer.disconnect();
+  
+  observer = new IntersectionObserver((entries) => {
+    const entry = entries[0];
+    if (entry && entry.isIntersecting && canLoadMore.value && !isLoadingHistory.value) {
+      loadMoreMessages();
+    }
+  }, {
+    root: timelineContainer.value, 
+    rootMargin: '200px 0px 0px 0px', 
+    threshold: 0.1
+  });
+
+  if (topSentinel.value) {
+    observer.observe(topSentinel.value);
+  }
+}
+
+watch(topSentinel, (newEl) => {
+  if (newEl) {
+    setupObserver();
+  } else if (observer) {
+    observer.disconnect();
+  }
+});
 
 async function initRoom() {
   if (!store.client) return;
@@ -528,17 +1130,38 @@ async function initRoom() {
   // Clear decryption tracking for the new room
   decryptionListenerIds.clear();
 
-  // Initialize TimelineWindow
-  const timelineSet = r.getLiveTimeline().getTimelineSet();
-  timelineWindow.value = new TimelineWindow(store.client as MatrixClient, timelineSet);
-  
   try {
+    isLoadingHistory.value = true;
+    
+    // ONLY clear messages if we are switching to a new room. 
+    // If it's a refresh of the same room, keep them visible to avoid scroll jumps.
+    if (lastRoomId !== roomId.value) {
+        messages.value = [];
+        lastRoomId = roomId.value;
+    }
+
+    // Initialize TimelineWindow
+    const timelineSet = r.getLiveTimeline().getTimelineSet();
+    timelineWindow.value = new TimelineWindow(store.client as MatrixClient, timelineSet);
+
     // Load initial window (latest messages)
     await timelineWindow.value.load(undefined, 30);
     
-    updateMessagesFromWindow(false);
+    // PROACTIVE LOADING: If we have very few messages, try to fetch more history immediately.
+    // We check the raw events in the window before rebuilding the UI messages.
+    const events = timelineWindow.value.getEvents();
+    if (events.length < 15 && timelineWindow.value.canPaginate(Direction.Backward)) {
+        console.log(`[Chat] Event count low (${events.length}), proactively fetching history...`);
+        await timelineWindow.value.paginate(Direction.Backward, 20);
+    }
+
+    // Now that everything is loaded (initial + proactive), update the UI once
+    refreshMessagesFromWindow();
   } catch (e) {
     console.error("Failed to load timeline window", e);
+    toast.error("Failed to load message history");
+  } finally {
+    isLoadingHistory.value = false;
   }
   
   // Mark last message as read on entry
@@ -560,14 +1183,6 @@ function onRoomAdded(room: Room) {
     }
 }
 
-function setupListener() {
-  store.client?.on(RoomEvent.Timeline, onTimelineEvent);
-}
-
-function teardownListener() {
-  store.client?.removeListener(RoomEvent.Timeline, onTimelineEvent);
-}
-
 onMounted(() => {
   if (store.client) {
     initRoom();
@@ -581,6 +1196,16 @@ watch(roomId, () => {
     initRoom();
   }
 });
+
+function setupListener() {
+  store.client?.on(RoomEvent.Timeline, onTimelineEvent);
+  store.client?.on(RoomEvent.Receipt, onReceiptEvent);
+}
+
+function teardownListener() {
+  store.client?.removeListener(RoomEvent.Timeline, onTimelineEvent);
+  store.client?.removeListener(RoomEvent.Receipt, onReceiptEvent);
+}
 
 // Handle late client init (e.g. page refresh)
 watch(
@@ -596,7 +1221,132 @@ watch(
 onUnmounted(() => {
   teardownListener();
   store.client?.removeListener(ClientEvent.Room, onRoomAdded);
+  if (observer) observer.disconnect();
 });
+
+// --- Context Menu Actions ---
+
+const replyingTo = ref<ChatMessage | null>(null);
+const editingMessage = ref<ChatMessage | null>(null);
+
+function cancelAction() {
+  replyingTo.value = null;
+  editingMessage.value = null;
+  newMessage.value = '';
+}
+
+function handleReply(msg: ChatMessage) {
+  cancelAction(); // clear any pending edit
+  replyingTo.value = msg;
+  // Focus input
+  nextTick(() => { document.querySelector('input')?.focus() });
+}
+
+function handleEdit(msg: ChatMessage) {
+  cancelAction(); // clear any pending reply
+  editingMessage.value = msg;
+  newMessage.value = msg.body;
+  // Focus input
+  nextTick(() => { document.querySelector('input')?.focus() });
+}
+
+async function handleReaction(msg: ChatMessage, key: string) {
+  if (!room.value || !store.client) return;
+  try {
+    // Cast event type to any or string to avoid strict enum check if 'm.reaction' isn't in it
+    await store.client.sendEvent(room.value.roomId, 'm.reaction' as any, {
+      'm.relates_to': {
+        rel_type: 'm.annotation',
+        event_id: msg.eventId,
+        key: key
+      }
+    });
+    toast.success('Reaction sent');
+    
+    // Close context menu and popovers by dispatching escape key
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+  } catch (err) {
+    console.error('Failed to send reaction', err);
+    toast.error('Failed to react');
+  }
+}
+
+function onEmojiSelect(emoji: any, msg: ChatMessage) {
+    if (emoji && emoji.i) {
+        handleReaction(msg, emoji.i);
+        // Also close the picker locally
+        if (msg.eventId) {
+            showReactionPickerMap.value[msg.eventId] = false;
+        }
+    }
+}
+
+async function handleViewSource(msgEventId: string) {
+  if (!room.value || !store.client) return;
+  try {
+      const event = await store.client.fetchRoomEvent(room.value.roomId, msgEventId);
+      sourceEvent.value = event;
+  } catch (e) {
+      toast.error('Failed to fetch event source');
+  }
+}
+
+async function toggleReaction(msg: ChatMessage, key: string, myReactionEventId?: string) {
+    if (!room.value || !store.client) return;
+
+    try {
+        if (myReactionEventId) {
+            // Remove reaction
+            await store.client.redactEvent(room.value.roomId, myReactionEventId);
+            // toast.success('Reaction removed'); // Optional feedback
+        } else {
+            // Add reaction
+            await handleReaction(msg, key);
+        }
+    } catch (err) {
+        console.error('Failed to toggle reaction', err);
+        toast.error('Failed to update reaction');
+    }
+}
+
+function formatReactors(senders: string[]): string {
+    if (!senders || senders.length === 0) return 'Unknown';
+    
+    // Resolve sender names if possible
+    const names = senders.map(id => {
+        const member = room.value?.getMember(id);
+        return member?.name || id;
+    });
+
+    if (names.length <= 3) {
+        return names.join(', ');
+    }
+    return `${names.slice(0, 3).join(', ')} and ${names.length - 3} others`;
+}
+
+async function copyToClipboard(text: string) {
+  try {
+    await navigator.clipboard.writeText(text);
+    toast.success('Copied to clipboard');
+  } catch (err) {
+    console.error('Failed to copy to clipboard', err);
+    toast.error('Failed to copy');
+  }
+}
+
+async function redactEvent(eventId: string) {
+  if (!room.value || !store.client) return;
+  
+  if (!confirm('Are you sure you want to delete this message?')) return;
+
+  try {
+    await store.client.redactEvent(room.value.roomId, eventId);
+    toast.success('Message deleted');
+  } catch (err) {
+    console.error('Failed to delete message', err);
+    toast.error('Failed to delete message');
+  }
+}
 </script>
 
 <style scoped>

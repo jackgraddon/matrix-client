@@ -1,24 +1,35 @@
-/* * {
+/* assets/css/main.css */
+html,
+body {
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+    position: fixed;
+    top: 0;
+    left: 0;
     margin: 0;
     padding: 0;
+
+    /* Disable the elastic "rubber band" scrolling on macOS */
+    overscroll-behavior: none;
+
+    /* Disable pinch-to-zoom on trackpads */
+    touch-action: none;
+
+    /* Disable highlighting UI text (buttons, headers, sidebars) */
+    -webkit-user-select: none;
+    user-select: none;
+
+    /* Disable the default blue tap highlight on mobile/touch screens */
+    -webkit-tap-highlight-color: transparent;
 }
 
-body {
-    font-family: 'Inter', sans-serif;
-    color: #000;
+/* Reenable text selection for inputs, textareas, and contenteditable elements */
+input,
+textarea,
+[contenteditable="true"],
+.selectable-text {
+    -webkit-user-select: text;
+    user-select: text;
+    cursor: text;
 }
-
-a {
-    color: #000;
-}
-
-@media (prefers-color-scheme: dark) {
-    body {
-        background-color: #1e1e1e;
-        color: #fff;
-    }
-
-    a {
-        color: #fff;
-    }
-} */

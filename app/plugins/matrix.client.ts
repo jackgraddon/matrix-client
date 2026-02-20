@@ -1,5 +1,3 @@
-import { defineNuxtPlugin } from '#app';
-import { useMatrixStore } from '~/stores/matrix';
 
 export default defineNuxtPlugin((nuxtApp) => {
     const store = useMatrixStore();

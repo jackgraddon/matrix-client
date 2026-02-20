@@ -12,6 +12,7 @@ import { getOidcConfig, registerClient, getLoginUrl, completeLoginFlow, getHomes
 // Tauri imports - explicit import is required as per user confirmation/config check
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { MsgType, EventType } from 'matrix-js-sdk';
 
 // Enhanced HTML for OAuth Loopback Response
 const authResponseHtml = `
@@ -265,7 +266,7 @@ export const useMatrixStore = defineStore('matrix', {
       }
     },
 
-    async startLogin() {
+    async startLogin(homeserverUrl: string) {
       this.isLoggingIn = true;
       // Stop any existing client to release DB locks
       if (this.client) {
@@ -328,7 +329,7 @@ export const useMatrixStore = defineStore('matrix', {
         const redirectUri = `http://127.0.0.1:${port}`;
         localStorage.setItem('matrix_oidc_redirect_uri', redirectUri);
 
-        const authConfig = await getOidcConfig();
+        const authConfig = await getOidcConfig(homeserverUrl);
         const clientId = await registerClient(authConfig, redirectUri);
         const nonce = generateNonce();
 
@@ -336,7 +337,7 @@ export const useMatrixStore = defineStore('matrix', {
         localStorage.setItem('matrix_oidc_client_id', clientId);
         localStorage.setItem('matrix_oidc_nonce', nonce);
 
-        const loginUrl = await getLoginUrl(authConfig, clientId, nonce, redirectUri);
+        const loginUrl = await getLoginUrl(authConfig, clientId, nonce, redirectUri, homeserverUrl);
 
         // Open the system browser (not the webview)
         const { open } = await import('@tauri-apps/plugin-shell');
@@ -344,7 +345,7 @@ export const useMatrixStore = defineStore('matrix', {
 
       } else {
         // --- Standard Web/PWA Flow ---
-        const authConfig = await getOidcConfig();
+        const authConfig = await getOidcConfig(homeserverUrl);
         const clientId = await registerClient(authConfig);
         const nonce = generateNonce();
 
@@ -353,7 +354,7 @@ export const useMatrixStore = defineStore('matrix', {
         localStorage.setItem('matrix_oidc_nonce', nonce);
         localStorage.setItem('matrix_oidc_redirect_uri', window.location.origin + '/auth/callback');
 
-        const url = await getLoginUrl(authConfig, clientId, nonce);
+        const url = await getLoginUrl(authConfig, clientId, nonce, undefined, homeserverUrl);
         window.location.href = url;
       }
     },
@@ -814,13 +815,135 @@ export const useMatrixStore = defineStore('matrix', {
       }
     },
 
+    // --- File Upload ---
+
+    async uploadFile(roomId: string, file: File) {
+      if (!this.client) return;
+
+      const isEncrypted = this.client.isRoomEncrypted(roomId);
+      let contentUrl: string | undefined;
+      let encryptedFile: any = undefined;
+
+      // Determine message type
+      let msgType = MsgType.File;
+      if (file.type.startsWith('image/')) msgType = MsgType.Image;
+      else if (file.type.startsWith('video/')) msgType = MsgType.Video;
+      else if (file.type.startsWith('audio/')) msgType = MsgType.Audio;
+
+      // Extract image dimensions if possible
+      let info: any = {
+        size: file.size,
+        mimetype: file.type,
+      };
+
+      if (msgType === MsgType.Image) {
+        try {
+          const dims = await this._getImageDimensions(file);
+          info.w = dims.w;
+          info.h = dims.h;
+        } catch (e) {
+          console.warn('Failed to get image dimensions', e);
+        }
+      }
+
+      if (isEncrypted) {
+        // Encrypt
+        const data = await file.arrayBuffer();
+        const encryptionResult = await this._encryptAttachment(data);
+
+        // Upload ciphertext
+        const blob = new Blob([encryptionResult.data], { type: 'application/octet-stream' });
+        const response = await this.client.uploadContent(blob, {
+          type: 'application/octet-stream',
+        });
+
+        encryptedFile = {
+          ...encryptionResult.info,
+          url: response.content_uri,
+          mimetype: file.type, // Spec says mimetype should be here too
+        };
+      } else {
+        // Plaintext
+        const response = await this.client.uploadContent(file);
+        contentUrl = response.content_uri;
+      }
+
+      // Construct content
+      const content: any = {
+        body: file.name || 'Attachment',
+        msgtype: msgType,
+        info,
+      };
+
+      if (isEncrypted) {
+        content.file = encryptedFile;
+      } else {
+        content.url = contentUrl!;
+      }
+
+      await this.client.sendEvent(roomId, EventType.RoomMessage, content);
+    },
+
+    async _encryptAttachment(data: ArrayBuffer) {
+      // 1. Generate 32-byte AES-CTR key
+      const keyFn = await window.crypto.subtle.generateKey(
+        { name: 'AES-CTR', length: 256 },
+        true,
+        ['encrypt', 'decrypt']
+      );
+      const exportedKey = await window.crypto.subtle.exportKey('jwk', keyFn);
+
+      // Generate IV (Counter Block)
+      const iv = window.crypto.getRandomValues(new Uint8Array(16));
+      if (iv[8]) iv[8] &= 0x7f;
+
+      // Encrypt
+      const ciphertext = await window.crypto.subtle.encrypt(
+        { name: 'AES-CTR', counter: iv, length: 64 },
+        keyFn,
+        data
+      );
+
+      // SHA-256 hash
+      const hashBuffer = await window.crypto.subtle.digest('SHA-256', ciphertext);
+
+      return {
+        data: ciphertext,
+        info: {
+          v: 'v2',
+          key: {
+            alg: 'A256CTR',
+            k: exportedKey.k!,
+            ext: true,
+            key_ops: ['encrypt', 'decrypt'],
+            kty: 'oct'
+          },
+          iv: sdk.encodeBase64(iv),
+          hashes: {
+            sha256: sdk.encodeUnpaddedBase64(new Uint8Array(hashBuffer))
+          }
+        }
+      };
+    },
+
+    _getImageDimensions(file: File): Promise<{ w: number, h: number }> {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        const url = URL.createObjectURL(file);
+        img.onload = () => {
+          resolve({ w: img.naturalWidth, h: img.naturalHeight });
+          URL.revokeObjectURL(url);
+        };
+        img.onerror = reject;
+        img.src = url;
+      });
+    },
+
     _resetVerificationState() {
       this.verificationRequest = null;
       this.verificationInitiatedByMe = false;
       this.sasEvent = null;
       this.isVerificationCompleted = false;
-      // Do NOT reset isCrossSigningReady or isSecretStorageReady here. 
-      // They are persistent until logout or manual check says otherwise.
       this.verificationModalOpen = false;
     },
 
@@ -935,6 +1058,17 @@ export const useMatrixStore = defineStore('matrix', {
 
       // Redirect to landing page
       await navigateTo('/');
+    },
+
+    async refreshRoom(roomId: string) {
+      if (!this.client) return;
+      console.log(`[MatrixStore] Manual refresh requested for room: ${roomId}`);
+
+      // If sync has stopped for some reason, restart it
+      if (!this.isSyncing) {
+        console.log('[MatrixStore] Sync was stopped, restarting...');
+        await this.client.startClient();
+      }
     },
 
     async _clearCryptoStore() {

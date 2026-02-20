@@ -17,10 +17,10 @@ const getRedirectUri = () => {
 }
 
 // Discovery
-export async function getOidcConfig(): Promise<OidcClientConfig> {
-  const homeserverUrl = getHomeserverUrl();
+export async function getOidcConfig(homeserverUrl?: string): Promise<OidcClientConfig> {
+  const url = homeserverUrl || getHomeserverUrl();
   // Create a temp client just to fetch metadata
-  const client = sdk.createClient({ baseUrl: homeserverUrl });
+  const client = sdk.createClient({ baseUrl: url });
   return await client.getAuthMetadata();
 }
 
@@ -52,17 +52,18 @@ export async function getLoginUrl(
   authConfig: OidcClientConfig,
   clientId: string,
   nonce: string,
-  redirectUri?: string
+  redirectUri?: string,
+  homeserverUrl?: string
 ): Promise<string> {
   const metadata = authConfig as unknown as ValidatedAuthMetadata;
-  const homeserverUrl = getHomeserverUrl();
+  const url = homeserverUrl || getHomeserverUrl();
   const effectiveRedirectUri = redirectUri || getRedirectUri();
 
   return await sdk.generateOidcAuthorizationUrl({
     metadata: metadata,
     clientId: clientId,
     redirectUri: effectiveRedirectUri, // Matches registration above
-    homeserverUrl: homeserverUrl,
+    homeserverUrl: url,
     nonce: nonce,
   });
 }

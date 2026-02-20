@@ -16,6 +16,7 @@ pub fn run() {
     let scanner_state_for_setup = scanner_state.clone();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_oauth::init())
         .plugin(tauri_plugin_shell::init())
         .manage(scanner_state)

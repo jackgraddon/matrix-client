@@ -22,9 +22,6 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onUnmounted } from 'vue';
-import { useMatrixStore } from '~/stores/matrix';
-import { useAuthenticatedMedia } from '~/composables/useAuthenticatedMedia';
 
 const props = defineProps<{
   mxcUrl?: string | null;
@@ -101,45 +98,6 @@ const placeholderStyle = computed(() => {
 
 // ...
 
-// Helper to decode Base64 (handling URL-safe variants)
-function decodeBase64(str: string): Uint8Array {
-  const padded = str.padEnd(str.length + (4 - str.length % 4) % 4, '=');
-  const base64 = padded.replace(/-/g, '+').replace(/_/g, '/');
-  const binaryString = atob(base64);
-  const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
-  return bytes;
-}
-
-async function decryptAttachment(data: ArrayBuffer, info: any): Promise<ArrayBuffer> {
-  if (!info.key || !info.iv) throw new Error('Missing key or iv');
-
-  // Import Key
-  const key = await window.crypto.subtle.importKey(
-    'jwk',
-    info.key,
-    { name: 'AES-CTR' },
-    false,
-    ['encrypt', 'decrypt']
-  );
-
-  // Decode IV
-  const iv = decodeBase64(info.iv);
-
-  // Decrypt
-  return await window.crypto.subtle.decrypt(
-    {
-      name: 'AES-CTR',
-      counter: iv as any,
-      length: 64 
-    },
-    key,
-    data
-  );
-}
-
 // Logic for encrypted file
 const loadEncrypted = async () => {
   if (!props.encryptedFile || !store.client) return;
@@ -157,28 +115,8 @@ const loadEncrypted = async () => {
     console.log('[ChatImage] Decrypting file:', props.encryptedFile);
     
     // 1. Download the encrypted file
-    // Manual construction for authenticated media (MSC3916)
-    // We need: /_matrix/client/v1/media/download/{serverName}/{mediaId}
     const mxc = props.encryptedFile.url;
-    if (!mxc || !mxc.startsWith('mxc://')) {
-        throw new Error('Invalid MXC URL');
-    }
-    
-    const mxcParts = mxc.replace('mxc://', '').split('/');
-    const serverName = mxcParts[0];
-    const mediaId = mxcParts[1];
-    const baseUrl = store.client.baseUrl;
-
-    const httpUrl = `${baseUrl}/_matrix/client/v1/media/download/${serverName}/${mediaId}`;
-
-    const headers: Record<string, string> = {};
-    const token = store.client.getAccessToken();
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-
-    const response = await fetch(httpUrl, { headers });
-    if (!response.ok) throw new Error(`Failed to fetch image: ${response.status}`);
+    const response = await fetchAuthenticatedDownload(store.client, mxc);
     const arrayBuffer = await response.arrayBuffer();
 
     // 2. Decrypt

@@ -50,39 +50,12 @@
           </div>
           
           <!-- Mock User Card -->
-          <div class="flex items-center gap-3 rounded-md border p-3 bg-background/50">
-             <MatrixAvatar
-               :mxc-url="store.user?.avatarUrl"
-               :name="store.user?.displayName"
-               class="h-10 w-10 border"
-             />
-             <div class="flex-1 overflow-hidden">
-                <p class="text-sm font-medium leading-none truncate">{{ store.user?.displayName || ' You' }}</p>
-                
-                <!-- Status Line -->
-                <div class="flex items-center gap-1.5 mt-1.5">
-                   <!-- Manual Status Override -->
-                   <template v-if="store.customStatus">
-                      <div class="h-2 w-2 rounded-full bg-emerald-500"></div>
-                      <p class="text-xs text-muted-foreground truncate">{{ store.customStatus }}</p>
-                   </template>
-
-                   <!-- Game Activity -->
-                   <template v-else-if="store.activityDetails?.is_running">
-                      <Icon name="solar:gamepad-bold" class="h-3.5 w-3.5 text-emerald-500" />
-                      <p class="text-xs text-emerald-600 dark:text-emerald-400 font-medium truncate">
-                        Playing {{ store.activityDetails.name }}
-                      </p>
-                   </template>
-
-                   <!-- Default Online -->
-                   <template v-else>
-                      <div class="h-2 w-2 rounded-full bg-emerald-500"></div>
-                      <p class="text-xs text-muted-foreground">Online</p>
-                   </template>
-                </div>
-             </div>
-          </div>
+          <ProfileHeader
+             :avatar-url="store.user?.avatarUrl"
+             :name="store.user?.displayName || ' You'"
+             :is-card="true"
+             name-classes="text-sm"
+          />
 
           <div v-if="gameActivity.isEnabled.value && !store.activityDetails?.is_running && !store.customStatus" class="flex items-center gap-2 text-xs text-muted-foreground">
              <Icon name="svg-spinners:ring-resize" class="h-3.5 w-3.5" />
@@ -103,13 +76,24 @@
           </div>
           <UiButton size="sm" variant="secondary" @click="store.requestVerification()">Verify</UiButton>
       </div>
-
-      <UiButton variant="destructive" @click="logout">Logout</UiButton>
+      
+      <div class="flex gap-3">
+        <UiButton variant="default" @click="manageDevices">
+          <Icon name="solar:user-outline" />
+          Manage Account
+        </UiButton>
+        <UiButton variant="destructive" @click="logout">
+          <Icon name="solar:logout-outline" />
+          Logout
+        </UiButton>
+      </div>
     </div>
   </div>
 </template>
 
 <script lang="ts" setup>
+import { toast } from 'vue-sonner';
+
 definePageMeta({
     middleware: "auth",
 });
@@ -132,6 +116,29 @@ function updateStatus() {
 function clearStatus() {
   manualStatusInput.value = '';
   store.setCustomStatus(null);
+}
+
+async function manageDevices() {
+  const oidcConfigStr = localStorage.getItem('matrix_oidc_config');
+  if (oidcConfigStr) {
+    try {
+      const oidcConfig = JSON.parse(oidcConfigStr);
+      if (oidcConfig.issuer) {
+        const accountUrl = new URL('/account', oidcConfig.issuer).toString();
+        const isTauri = !!(window as any).__TAURI_INTERNALS__;
+        if (isTauri) {
+          const { open } = await import('@tauri-apps/plugin-shell');
+          await open(accountUrl);
+        } else {
+          window.open(accountUrl, '_blank');
+        }
+        return;
+      }
+    } catch(e) {
+      console.error('Failed to parse OIDC config', e);
+    }
+  }
+  toast.error("Could not determine account management URL");
 }
 
 function logout () {

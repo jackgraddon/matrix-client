@@ -13,8 +13,6 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick } from 'vue';
-import { useMatrixStore } from '~/stores/matrix';
 
 const props = defineProps<{
   body: string;
@@ -73,7 +71,32 @@ const processedHtml = computed(() => {
     if (src?.startsWith('mxc://')) {
       img.dataset.mxc = src;
       img.removeAttribute('src');
-      img.classList.add('loading-image', 'rounded-md', 'max-w-full', 'h-auto', 'my-2', 'opacity-50');
+      
+      const isEmote = img.hasAttribute('data-mx-emoticon');
+
+      if (isEmote) {
+        // Style it to flow seamlessly inside a sentence
+        img.classList.add(
+          'loading-image', 
+          'inline-block', 
+          'h-[1.5em]', // Scales with text size
+          'w-auto', 
+          'align-middle', 
+          'mx-0.5',
+          'opacity-50'
+        );
+      } else {
+        // Style it as a standard, standalone embedded image attachment
+        img.classList.add(
+          'loading-image', 
+          'block', 
+          'max-w-full', 
+          'h-auto', 
+          'my-2', 
+          'rounded-md', 
+          'opacity-50'
+        );
+      }
     }
   });
 
@@ -155,8 +178,7 @@ onUnmounted(() => {
 /* Placeholder for loading images */
 :deep(.loading-image) {
   background-color: hsl(var(--muted));
-  min-height: 60px;
-  display: block;
+  min-height: 1em;
 }
 
 /* Style HTML content from formatted messages */

@@ -1,4 +1,3 @@
-import { useMatrixStore } from '~/stores/matrix';
 
 export default defineNuxtRouteMiddleware((to, from) => {
     // We can check localStorage directly for speed, 

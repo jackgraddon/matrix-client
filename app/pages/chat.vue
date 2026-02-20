@@ -1,18 +1,19 @@
 <template>
-    <div class="flex flex-col h-screen overflow-hidden">
-        <header class="h-16 flex items-center px-4 gap-2 justify-between">
-            <h2 class="text-lg font-semibold flex items-center gap-2">
-                <Icon name="solar:chat-round-dots-bold" class="h-5 w-5" />
-                Ruby Chat
-            </h2>
-            <div class="flex items-center gap-2">
-                <ColorModeToggle />
-            </div>
-        </header>
-        <UiResizablePanelGroup class="flex-1" direction="horizontal">
+    <div class="flex flex-row h-full overflow-hidden">
+        <!-- <UiResizablePanelGroup class="flex-1" direction="horizontal"> -->
             <!-- Sidebar -->
-            <UiResizablePanel :min-size="15" :default-size="25" :max-size="30">
-                <aside class="flex h-full flex-col">
+            <div>
+            <!-- <UiResizablePanel :min-size="15" :default-size="25" :max-size="30"> -->
+                <aside class="flex h-full flex-col w-[300px]">
+                    <header class="h-16 flex items-center px-4 gap-2 justify-between">
+                        <h2 class="text-lg font-semibold flex items-center gap-2">
+                            <Icon name="solar:chat-round-dots-bold" class="h-5 w-5" />
+                            Ruby Chat
+                        </h2>
+                        <div class="flex items-center gap-2">
+                            <ColorModeToggle />
+                        </div>
+                    </header>
                     <nav class="grow flex-1 flex flex-row p-2 gap-2 overflow-y-auto">
                         <div class="flex flex-col gap-2 flex-0">
                             <UiButton
@@ -32,6 +33,26 @@
                             </UiButton>
                         </div>
                         <div class="flex flex-col gap-2 flex-1">
+                            <!-- Sidebar Home actions -->
+                            <template v-if="isLinkActive('/chat')">
+                                <!-- Create Room -->
+                                <UiButton>
+                                </UiButton>
+                                <!-- <UiButton 
+                                    v-for="action in homeActions"
+                                    :key="action.name"
+                                    :disabled="isLinkActive(action.to)"
+                                    :variant="isLinkActive(action.to) ? 'secondary' : 'ghost'"
+                                    as-child
+                                >
+                                    <NuxtLink :to="action.to" :aria-label="action.name">
+                                        <Icon
+                                            :name="isLinkActive(action.to) ? `${action.icon}-bold` : `${action.icon}-linear`"
+                                            class="h-4 w-4"
+                                        />
+                                    </NuxtLink>
+                                </UiButton> -->
+                            </template>
                             <!-- Sidebar DM List -->
                             <UiButton 
                                 v-if="isLinkActive('/chat/people')"
@@ -88,17 +109,18 @@
                         </UiButton>
                     </footer>
                 </aside>
-            </UiResizablePanel>
-            <UiResizableHandle class="bg-transparent" />
+            <!-- </UiResizablePanel> -->
+            </div>
+            <!-- <UiResizableHandle class="bg-transparent" /> -->
             <!-- Main Content -->
-            <UiResizablePanel :min-size="70" :default-size="75" :max-size="85">
-            <main class="flex h-full max-w-full flex-col">
+            <!-- <UiResizablePanel :min-size="70" :default-size="75" :max-size="85"> -->
+            <main class="flex flex-1 h-full max-w-full flex-col">
                 <div class="overflow-auto mb-2 mr-2 p-5 rounded-lg h-full bg-neutral-100 dark:bg-neutral-900">
                     <NuxtPage />
                 </div>
             </main>
-            </UiResizablePanel>
-        </UiResizablePanelGroup>
+            <!-- </UiResizablePanel> -->
+        <!-- </UiResizablePanelGroup> -->
     </div>
     <VerificationWarning />
     <VerificationModal />
