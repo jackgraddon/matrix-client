@@ -9,7 +9,6 @@
       />
       
       <!-- Verification Status Indicator -->
-      <!-- @click.stop="store.openVerificationModal()" -->
       <button 
         class="absolute -bottom-1 -right-1 p-0.5 rounded-full bg-background border shadow-sm hover:bg-muted transition-colors"
         :title="store.isCrossSigningReady ? 'Session Verified' : 'Verify Session'"
@@ -28,7 +27,7 @@
     <div class="flex flex-col min-w-0">
       <span class="text-sm font-medium leading-none">{{ user?.displayName }}</span>
       <span class="text-xs text-muted-foreground">{{ user?.userId }}</span>
-      <ActivityStatus class="mt-1" />
+      <ActivityStatus />
     </div>
   </div>
 </template>

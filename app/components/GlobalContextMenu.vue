@@ -1,44 +1,40 @@
 <template>
-  <ContextMenu>
-    <ContextMenuTrigger class="block h-full w-full">
+  <UiContextMenu>
+    <UiContextMenuTrigger class="block h-full w-full">
       <slot />
-    </ContextMenuTrigger>
-    <ContextMenuContent class="w-64">
-      <ContextMenuItem inset @click="reloadPage">
+    </UiContextMenuTrigger>
+    <UiContextMenuContent class="w-64">
+      <UiContextMenuItem inset @click="reloadPage" class="cursor-pointer">
         Reload
-        <ContextMenuShortcut>⌘R</ContextMenuShortcut>
-      </ContextMenuItem>
-      <ContextMenuItem inset disabled>
+      </UiContextMenuItem>
+      <UiContextMenuItem inset @click="goBack" class="cursor-pointer">
         Back
-        <ContextMenuShortcut>⌘[</ContextMenuShortcut>
-      </ContextMenuItem>
-      <ContextMenuItem inset disabled>
+      </UiContextMenuItem>
+      <UiContextMenuItem inset @click="goForward" class="cursor-pointer">
         Forward
-        <ContextMenuShortcut>⌘]</ContextMenuShortcut>
-      </ContextMenuItem>
-      <ContextMenuSeparator />
-      <ContextMenuItem inset disabled>
-        Show DevTools
-        <ContextMenuShortcut>⌥⌘I</ContextMenuShortcut>
-      </ContextMenuItem>
-      <ContextMenuSeparator />
-      <ContextMenuLabel inset>Matrix Client v0.0.1</ContextMenuLabel>
-    </ContextMenuContent>
-  </ContextMenu>
+      </UiContextMenuItem>
+      <UiContextMenuSeparator />
+      <UiContextMenuItem inset @click="openAboutModal" class="cursor-pointer">
+        About
+      </UiContextMenuItem>
+    </UiContextMenuContent>
+  </UiContextMenu>
 </template>
 
 <script setup lang="ts">
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuLabel,
-  ContextMenuSeparator,
-  ContextMenuShortcut,
-  ContextMenuTrigger,
-} from '@/components/ui/context-menu'
-
 const reloadPage = () => {
   window.location.reload();
+}
+
+const goBack = () => {
+  window.history.back();
+}
+
+const goForward = () => {
+  window.history.forward();
+}
+
+const openAboutModal = () => {
+  
 }
 </script>

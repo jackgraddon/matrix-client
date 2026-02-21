@@ -32,13 +32,12 @@ const matrixStore = useMatrixStore();
 const { isAuthenticated } = storeToRefs(matrixStore);
 const { logout } = matrixStore; // Actions can be destructured directly
 
-// onMounted(() => {
-//     console.log("[Index] isReady", isReady.value);
-//     // Delay to try again
-//     setTimeout(() => {
-//         console.log("[Index] isReady", isReady.value);
-//     }, 5000);
-// });
+// Auto navigate to chat if already logged in
+onMounted(() => {
+    if (isAuthenticated.value) {
+        navigateTo('/chat');
+    }
+});
 </script>
 
 <style scoped>

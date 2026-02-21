@@ -35,8 +35,9 @@
                         <div class="flex flex-col gap-2 flex-1">
                             <!-- Sidebar Home actions -->
                             <template v-if="isLinkActive('/chat')">
-                                <!-- Create Room -->
-                                <UiButton>
+                                <UiButton variant="default" @click="store.openGlobalSearchModal()">
+                                    <Icon name="solar:add-circle-line-duotone" class="h-4 w-4" />
+                                    Find or start a chat
                                 </UiButton>
                                 <!-- <UiButton 
                                     v-for="action in homeActions"
@@ -124,6 +125,7 @@
     </div>
     <VerificationWarning />
     <VerificationModal />
+    <GlobalSearchModal :friends="friends" :rooms="rooms" />
 </template>
 
 <script setup lang="ts">

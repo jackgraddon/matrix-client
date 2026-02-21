@@ -4,7 +4,7 @@
 
     <!-- Activity Status (Desktop Only) -->
     <div class="space-y-4">
-      <h2 class="text-xl font-semibold tracking-tight">Custom Status</h2>
+      <h2 class="text-xl font-semibold tracking-tight">Status</h2>
       <div class="flex gap-2">
         <UiInput 
           v-model="manualStatusInput" 
@@ -16,13 +16,9 @@
         </UiButton>
         <UiButton size="sm" @click="updateStatus">Set Status</UiButton>
       </div>
-      <p v-if="store.customStatus" class="text-xs text-emerald-600 dark:text-emerald-400">
-        Manual status is overriding game detection.
-      </p>
     </div>
 
     <div v-if="gameActivity.isSupported.value" class="space-y-4">
-      <h2 class="text-xl font-semibold tracking-tight">Activity Status</h2>
       <p class="text-sm text-muted-foreground">
         Automatically detect running games and show them as your Matrix status.
         Uses Discord's detectable games database for recognition.
@@ -40,27 +36,27 @@
         </div>
         <UiSwitch v-model="gameDetectionToggle" />
       </div>
+    </div>
+    
+    <!-- Status Preview -->
+    <div class="rounded-lg border bg-card text-card-foreground shadow-sm">
+      <div class="p-6 space-y-4">
+        <div class="space-y-1.5">
+          <h3 class="font-semibold leading-none tracking-tight">Status Preview</h3>
+          <p class="text-sm text-muted-foreground">This is how your status appears to others.</p>
+        </div>
+        
+        <!-- Mock User Card -->
+        <UserProfile
+            :avatar-url="store.user?.avatarUrl"
+            :name="store.user?.displayName || ' You'"
+            :is-card="true"
+            name-classes="text-sm"
+        />
 
-      <!-- Status Preview -->
-      <div class="rounded-lg border bg-card text-card-foreground shadow-sm">
-        <div class="p-6 space-y-4">
-          <div class="space-y-1.5">
-            <h3 class="font-semibold leading-none tracking-tight">Status Preview</h3>
-            <p class="text-sm text-muted-foreground">This is how your status appears to others.</p>
-          </div>
-          
-          <!-- Mock User Card -->
-          <ProfileHeader
-             :avatar-url="store.user?.avatarUrl"
-             :name="store.user?.displayName || ' You'"
-             :is-card="true"
-             name-classes="text-sm"
-          />
-
-          <div v-if="gameActivity.isEnabled.value && !store.activityDetails?.is_running && !store.customStatus" class="flex items-center gap-2 text-xs text-muted-foreground">
-             <Icon name="svg-spinners:ring-resize" class="h-3.5 w-3.5" />
-             <span>Scanning for games...</span>
-          </div>
+        <div v-if="gameActivity.isEnabled.value && !store.activityDetails?.is_running && !store.customStatus" class="flex items-center gap-2 text-xs text-muted-foreground">
+            <Icon name="svg-spinners:ring-resize" class="h-3.5 w-3.5" />
+            <span>Scanning for games...</span>
         </div>
       </div>
     </div>

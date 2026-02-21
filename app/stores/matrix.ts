@@ -106,6 +106,7 @@ export const useMatrixStore = defineStore('matrix', {
     sasEvent: null as ShowSasCallbacks | null,
     isVerificationCompleted: false,
     verificationModalOpen: false,
+    globalSearchModalOpen: false,
     // Secret Storage / Backup Code Verification
     secretStoragePrompt: null as {
       promise: { resolve: (val: [string, Uint8Array<ArrayBuffer>] | null) => void, reject: (err?: any) => void },
@@ -1081,5 +1082,47 @@ export const useMatrixStore = defineStore('matrix', {
       await deleteDb('matrix-js-sdk::matrix-sdk-crypto');
       await deleteDb('matrix-js-sdk::matrix-sdk-crypto-meta');
     },
+
+    // --- Room Creation ---
+    openGlobalSearchModal() {
+      this.globalSearchModalOpen = true;
+    },
+
+    closeGlobalSearchModal() {
+      this.globalSearchModalOpen = false;
+    },
+
+    async joinRoom(roomIdOrAlias: string): Promise<any> {
+      if (!this.client) throw new Error("Matrix client not initialized.");
+      console.log(`[MatrixStore] Joining room ${roomIdOrAlias}...`);
+
+      try {
+        const result = await this.client.joinRoom(roomIdOrAlias);
+        console.log(`[MatrixStore] Joined room ${result.roomId}`);
+        return result;
+      } catch (err: any) {
+        console.error("[MatrixStore] Failed to join room:", err);
+        throw new Error(err.message || "Failed to join room.");
+      }
+    },
+
+    async createDirectRoom(userId: string): Promise<string | undefined> {
+      if (!this.client) throw new Error("Matrix client not initialized.");
+      console.log(`[MatrixStore] Creating direct room with ${userId}...`);
+
+      try {
+        const result = await this.client.createRoom({
+          is_direct: true,
+          invite: [userId],
+          preset: sdk.Preset.TrustedPrivateChat,
+        });
+
+        console.log(`[MatrixStore] Created room ${result.room_id}`);
+        return result.room_id;
+      } catch (err: any) {
+        console.error("[MatrixStore] Failed to create direct room:", err);
+        throw new Error(err.message || "Failed to create room.");
+      }
+    }
   }
 });

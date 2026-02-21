@@ -545,7 +545,7 @@ const roomTopic = computed(() => {
 const otherUserId = computed(() => {
   if (!props.isDm || !room.value || !store.client) return undefined;
   const myUserId = store.client.getUserId();
-  const members = room.value.getJoinedMembers();
+  const members = room.value.getMembers(); // Include invites/left members
   return members.find(m => m.userId !== myUserId)?.userId;
 });
 
