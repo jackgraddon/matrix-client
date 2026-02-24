@@ -43,13 +43,20 @@ onMounted(() => {
     await store.goOffline();
   };
 
-  // Browser/Web: Handle tab/window close
-  window.addEventListener('beforeunload', handleClose);
-
   // Tauri: Handle app closure
   // We use onCloseRequested to ensure we have a moment to fire the offline flare
   appWindow.onCloseRequested(async (event) => {
-    await handleClose();
+    // Prevent the default close behavior
+    event.preventDefault();
+
+    try {
+      await handleClose();
+    } catch (err) {
+      console.error("Failed to set offline status, closing anyway", err);
+    } finally {
+      // Force the window to close
+      await appWindow.destroy();
+    }
   });
 
   // Idle Detection: Handle "Unavailable" status after 5 minutes of inactivity
@@ -83,7 +90,6 @@ onMounted(() => {
   // }
 
   onBeforeUnmount(() => {
-    window.removeEventListener('beforeunload', handleClose);
     window.removeEventListener('mousemove', resetIdleTimer);
     window.removeEventListener('keydown', resetIdleTimer);
     clearTimeout(idleTimer);
