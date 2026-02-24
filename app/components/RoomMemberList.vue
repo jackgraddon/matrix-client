@@ -1,5 +1,5 @@
 <template>
-  <aside class="w-60 flex flex-col shrink-0 h-full backdrop-blur-xl border-l border-border select-none relative z-10">
+  <aside class="w-60 flex flex-col shrink-0 h-full relative">
     <div class="p-4 border-b border-border/50">
       <h3 class="text-sm font-bold flex items-center gap-2">
         <Icon name="solar:users-group-rounded-bold" class="text-primary w-5 h-5" />

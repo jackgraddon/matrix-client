@@ -1,5 +1,8 @@
 mod game_scanner;
 
+use std::io::{Read, Write};
+use std::net::TcpListener;
+use std::time::Duration;
 use std::sync::{Arc, Mutex};
 use tokio::sync::Notify;
 
@@ -17,12 +20,12 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_os::init())
-        .plugin(tauri_plugin_oauth::init())
         .plugin(tauri_plugin_shell::init())
         .manage(scanner_state)
         .invoke_handler(tauri::generate_handler![
             game_scanner::update_watch_list,
-            game_scanner::set_scanner_enabled
+            game_scanner::set_scanner_enabled,
+            start_oauth_server
         ])
         .setup(move |app| {
             #[cfg(any(target_os = "windows", target_os = "linux"))]
@@ -50,4 +53,67 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[tauri::command]
+async fn start_oauth_server() -> Result<String, String> {
+    // Run in a blocking thread to keep the Tauri UI completely responsive
+    tokio::task::spawn_blocking(|| {
+        let listener = TcpListener::bind("127.0.0.1:1420").map_err(|e| e.to_string())?;
+        let start_time = std::time::Instant::now();
+        let timeout = Duration::from_secs(300);
+
+        for stream in listener.incoming() {
+            if start_time.elapsed() >= timeout {
+                return Err("OAuth server timed out after 5 minutes.".to_string());
+            }
+            match stream {
+                Ok(mut stream) => {
+                    // Set a read timeout on the stream itself
+                    let _ = stream.set_read_timeout(Some(Duration::from_secs(10)));
+                    let mut buffer = [0; 4096];
+                    if let Ok(bytes_read) = stream.read(&mut buffer) {
+                        let request = String::from_utf8_lossy(&buffer[..bytes_read]);
+
+                        // 1. The Greedy Trap: Ignore favicons and keep the server alive!
+                        if request.contains("GET /favicon.ico") {
+                            let _ = stream.write_all(b"HTTP/1.1 404 NOT FOUND\r\n\r\n");
+                            continue;
+                        }
+
+                        // 2. Look for the actual GET request
+                        if request.starts_with("GET /") {
+                            let first_line = request.lines().next().unwrap_or("");
+                            let parts: Vec<&str> = first_line.split_whitespace().collect();
+
+                            if parts.len() >= 2 {
+                                let path = parts[1]; // Extracts "/callback?code=..."
+
+                                // 3. ONLY terminate the server if MAS actually sent the OAuth payload
+                                if path.contains("code=") || path.contains("error=") {
+                                    // A sleek, dark-mode success screen!
+                                    let html = "<html><body style=\"background: #0f1115; color: #fff; font-family: system-ui, sans-serif; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; margin: 0;\"><h2>Authentication Successful</h2><p style=\"color: #888;\">You can close this tab and return to Ruby Chat.</p><script>setTimeout(() => window.close(), 2000);</script></body></html>";
+                                    let response = format!("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\n\r\n{}", html.len(), html);
+
+                                    let _ = stream.write_all(response.as_bytes());
+                                    let _ = stream.flush();
+
+                                    // Break the loop and hand the URL back to Vue
+                                    return Ok(format!("http://localhost:1420{}", path));
+                                }
+                            }
+                        }
+                        // Default response for any other random browser pings
+                        let _ = stream.write_all(b"HTTP/1.1 404 NOT FOUND\r\n\r\n");
+                    }
+                }
+                Err(_) => {
+                    return Err("OAuth server timed out after 5 minutes.".to_string());
+                }
+            }
+        }
+        Err("Listener closed unexpectedly.".to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }

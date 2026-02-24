@@ -25,6 +25,5 @@ tauri = { version = "2.10.0", features = ["devtools"] }
 tauri-plugin-log = "2"
 sysinfo = "0.38"
 tokio = { version = "1", features = ["macros", "sync", "time", "rt"] }
-tauri-plugin-oauth = "2.0.0"
 tauri-plugin-shell = "2.3.5"
 tauri-plugin-os = "2"

@@ -491,47 +491,11 @@ export const useMatrixStore = defineStore('matrix', {
       const isTauri = !!(window as any).__TAURI_INTERNALS__;
 
       if (isTauri) {
-        // --- Loopback OAuth Flow (Desktop) ---
-        // Use tauri-plugin-oauth to spawn a local HTTP server on a random port.
-        // The OIDC provider redirects the system browser to http://127.0.0.1:<port>
-        // and the plugin fires an event with the full URL.
-        const { start, cancel, onUrl } = await import('@fabianlars/tauri-plugin-oauth');
+        // --- Custom Loopback OAuth Flow (Desktop) ---
+        // Start the custom Rust server
+        const oauthPromise = invoke<string>('start_oauth_server');
 
-        // Start the loopback server with a branded response page
-        const port = await start({
-          ports: [12345, 12346, 12347, 12348, 12349],
-          response: authResponseHtml,
-        });
-
-        // Listen for the redirect URL from the OIDC provider
-        const unlisten = await onUrl(async (url: string) => {
-          try {
-            const parsed = new URL(url);
-            const code = parsed.searchParams.get('code');
-            const state = parsed.searchParams.get('state');
-            const error = parsed.searchParams.get('error');
-
-            if (error) {
-              console.error("OAuth flow failed or was cancelled:", error);
-              this.cancelLogin(error);
-            } else if (code && state) {
-              await this.handleCallback(code, state);
-              await navigateTo('/chat', { replace: true });
-            } else {
-              console.error('[OAuth Loopback] Missing code or state in callback URL:', url);
-              this.cancelLogin('missing_credentials');
-            }
-          } catch (err: any) {
-            console.error('[OAuth Loopback] Callback handling failed:', err);
-            this.cancelLogin(err?.message || 'callback_failed');
-          } finally {
-            // Clean up: stop listening and shut down the temporary server
-            unlisten();
-            await cancel(port);
-          }
-        });
-
-        const redirectUri = `http://127.0.0.1:${port}`;
+        const redirectUri = "http://localhost:1420";
         localStorage.setItem('matrix_oidc_redirect_uri', redirectUri);
 
         const authConfig = await getOidcConfig(fullUrl);
@@ -548,6 +512,28 @@ export const useMatrixStore = defineStore('matrix', {
         const { open } = await import('@tauri-apps/plugin-shell');
         await open(loginUrl);
 
+        // Wait for the Rust server to capture the code
+        try {
+          const callbackUrl = await oauthPromise;
+          const parsed = new URL(callbackUrl);
+          const code = parsed.searchParams.get('code');
+          const state = parsed.searchParams.get('state');
+          const error = parsed.searchParams.get('error');
+
+          if (error) {
+            console.error("OAuth flow failed or was cancelled:", error);
+            this.cancelLogin(error);
+          } else if (code && state) {
+            await this.handleCallback(code, state);
+            await navigateTo('/chat', { replace: true });
+          } else {
+            console.error('[OAuth Loopback] Missing code or state in callback URL:', callbackUrl);
+            this.cancelLogin('missing_credentials');
+          }
+        } catch (err: any) {
+          console.error('[OAuth Loopback] Custom server failed or timed out:', err);
+          this.cancelLogin(err?.message || 'callback_failed');
+        }
       } else {
         // --- Standard Web/PWA Flow ---
         const authConfig = await getOidcConfig(fullUrl);
