@@ -60,7 +60,7 @@ const handleLogin = async () => {
     // 2. Register Client (Dynamic)
     // 3. Generate URL
     // 4. Redirect window
-    await matrixStore.startLogin();
+    await matrixStore.startLogin(homeserver.value);
   } catch (err: any) {
     console.error("Login initialization failed:", err);
     error.value = err.message || "Failed to connect to the authentication server.";
