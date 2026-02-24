@@ -263,11 +263,24 @@ const buildSpaceHierarchy = (spaceId: string, visited: Set<string> = new Set()):
     .map(ss => buildSpaceHierarchy(ss.roomId, visited))
     .filter((c): c is SpaceCategory => c !== null);
 
+  // Sort by user-defined room order (falls back to bottom for un-indexed items)
+  const sortByIndex = (a: any, b: any) => {
+    const idxA = store.roomOrder.indexOf(a.roomId || a.id);
+    const idxB = store.roomOrder.indexOf(b.roomId || b.id);
+    if (idxA === -1 && idxB === -1) return 0;
+    if (idxA === -1) return 1;
+    if (idxB === -1) return -1;
+    return idxA - idxB;
+  };
+
+  directRooms.sort((a, b) => sortByIndex({ roomId: a.roomId }, { roomId: b.roomId }));
+  children.sort(sortByIndex);
+
   return {
     id: spaceId,
     name: space.name,
     avatarUrl: space.getMxcAvatarUrl(),
-    rooms: directRooms.map(mapRoom).sort((a, b) => b.lastActive - a.lastActive),
+    rooms: directRooms.map(mapRoom),
     children
   };
 };

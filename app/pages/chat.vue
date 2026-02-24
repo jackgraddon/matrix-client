@@ -41,40 +41,51 @@
             <div class="w-8 h-[2px] bg-neutral-300 dark:bg-neutral-800 shrink-0" />
 
             <!-- Server List -->
-            <UiContextMenu v-for="server in store.hierarchy.rootSpaces" :key="server.roomId">
-                <UiContextMenuTrigger>
-                    <UiButton 
-                        variant="ghost" 
-                        class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 overflow-hidden group shrink-0"
-                        :class="{ 'rounded-[16px]': isLinkActive(`/chat/spaces/${server.roomId}`) }"
-                        as-child
-                    >
-                        <NuxtLink 
-                            :to="store.lastVisitedRooms.spaces[server.roomId] 
-                                ? `/chat/spaces/${server.roomId}/${store.lastVisitedRooms.spaces[server.roomId]}` 
-                                : `/chat/spaces/${server.roomId}`" 
-                            :aria-label="server.name"
-                        >
-                            <MatrixAvatar 
-                                :mxc-url="server.getMxcAvatarUrl()" 
-                                :name="server.name" 
-                                class="h-full w-full border-0 rounded-none group-hover:rounded-none" 
-                                :size="64"
-                            />
-                        </NuxtLink>
-                    </UiButton>
-                </UiContextMenuTrigger>
-                <UiContextMenuContent>
-                    <UiContextMenuItem v-if="store.pinnedSpaces.includes(server.roomId)" @click="store.unpinSpace(server.roomId)" class="text-destructive focus:text-destructive">
-                        <Icon name="solar:pin-broken-bold" class="mr-2 h-4 w-4" />
-                        Unpin from Sidebar
-                    </UiContextMenuItem>
-                    <UiContextMenuItem v-else disabled>
-                        <Icon name="solar:info-circle-bold" class="mr-2 h-4 w-4" />
-                        Root Space
-                    </UiContextMenuItem>
-                </UiContextMenuContent>
-            </UiContextMenu>
+            <draggable 
+                v-model="draggableSpaces" 
+                item-key="roomId" 
+                group="spaces"
+                class="flex flex-col items-center w-full gap-2"
+                ghost-class="opacity-30"
+                :animation="200"
+            >
+                <template #item="{ element: server }">
+                    <UiContextMenu>
+                        <UiContextMenuTrigger>
+                            <UiButton 
+                                variant="ghost" 
+                                class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 overflow-hidden group shrink-0 cursor-grab active:cursor-grabbing"
+                                :class="{ 'rounded-[16px]': isLinkActive(`/chat/spaces/${server.roomId}`) }"
+                                as-child
+                            >
+                                <NuxtLink 
+                                    :to="store.lastVisitedRooms.spaces[server.roomId] 
+                                        ? `/chat/spaces/${server.roomId}/${store.lastVisitedRooms.spaces[server.roomId]}` 
+                                        : `/chat/spaces/${server.roomId}`" 
+                                    :aria-label="server.name"
+                                >
+                                    <MatrixAvatar 
+                                        :mxc-url="server.getMxcAvatarUrl()" 
+                                        :name="server.name" 
+                                        class="h-full w-full border-0 rounded-none group-hover:rounded-none pointer-events-none" 
+                                        :size="64"
+                                    />
+                                </NuxtLink>
+                            </UiButton>
+                        </UiContextMenuTrigger>
+                        <UiContextMenuContent>
+                            <UiContextMenuItem v-if="store.pinnedSpaces.includes(server.roomId)" @click="store.unpinSpace(server.roomId)" class="text-destructive focus:text-destructive">
+                                <Icon name="solar:pin-broken-bold" class="mr-2 h-4 w-4" />
+                                Unpin from Sidebar
+                            </UiContextMenuItem>
+                            <UiContextMenuItem v-else disabled>
+                                <Icon name="solar:info-circle-bold" class="mr-2 h-4 w-4" />
+                                Root Space
+                            </UiContextMenuItem>
+                        </UiContextMenuContent>
+                    </UiContextMenu>
+                </template>
+            </draggable>
 
             <!-- Add Server / Explorer -->
             <UiButton 
@@ -116,6 +127,7 @@ definePageMeta({
 });
 
 import { Room, ClientEvent, RoomEvent, EventType, NotificationCountType, MatrixClient, MatrixEvent } from 'matrix-js-sdk';
+import draggable from 'vuedraggable';
 import { PushProcessor } from 'matrix-js-sdk/lib/pushprocessor';
 const route = useRoute();
 
@@ -280,6 +292,16 @@ const isLinkActive = (to: string) => {
     if (to === "/chat") return route.path === "/chat";
     return route.path.startsWith(to);
 };
+
+// Writable computed for vuedraggable
+const draggableSpaces = computed({
+    get: () => store.hierarchy.rootSpaces,
+    set: (newSpacesArray) => {
+        const newOrder = newSpacesArray.map(space => space.roomId);
+        const mergedOrder = [...new Set([...newOrder, ...store.spaceOrder])];
+        store.setOrderData('space', mergedOrder);
+    }
+});
 </script>
 
 <style scoped>
@@ -295,4 +317,5 @@ const isLinkActive = (to: string) => {
   opacity: 0;
   transform: translateX(10px);
 }
+
 </style>

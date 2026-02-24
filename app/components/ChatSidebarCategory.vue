@@ -41,123 +41,140 @@
         
         <div v-show="!isCollapsed" class="flex flex-col gap-1">
             <!-- Nested Categories -->
-            <ChatSidebarCategory 
-                v-for="childCategory in category.children" 
-                :key="childCategory.id"
-                :category="childCategory"
-                :active-space-id="activeSpaceId"
-                :is-link-active="isLinkActive"
-                :depth="depth + 1"
-                :collapsed-categories="collapsedCategories"
-                @toggle-category="$emit('toggle-category', $event)"
-            />
+            <draggable 
+                v-if="category.children && category.children.length > 0"
+                v-model="draggableCategories" 
+                item-key="id" 
+                group="categories"
+                class="flex flex-col gap-1"
+                ghost-class="opacity-30"
+                :animation="200"
+            >
+                <template #item="{ element: childCategory }">
+                    <ChatSidebarCategory 
+                        :category="childCategory"
+                        :active-space-id="activeSpaceId"
+                        :is-link-active="isLinkActive"
+                        :depth="depth + 1"
+                        :collapsed-categories="collapsedCategories"
+                        @toggle-category="$emit('toggle-category', $event)"
+                    />
+                </template>
+            </draggable>
 
             <!-- Rooms in this category -->
-            <div 
-                v-for="room in category.rooms"
-                :key="room.roomId"
+            <draggable 
+                v-model="draggableRooms" 
+                item-key="roomId" 
+                group="rooms"
                 class="flex flex-col"
+                ghost-class="opacity-30"
+                :animation="200"
             >
-                <!-- Voice Channel (Click to Join) -->
-                <div 
-                    v-if="isVoiceChannel(store.client?.getRoom(room.roomId))"
-                    role="button"
-                    class="inline-flex items-center justify-start px-2 h-9 w-full rounded-md text-sm font-medium transition-colors cursor-pointer hover:bg-accent/50 group relative"
-                    :class="[(isLinkActive(`/chat/spaces/${activeSpaceId}/${room.roomId}`) || store.activeVoiceCall?.roomId === room.roomId) ? 'bg-secondary text-secondary-foreground' : '']"
-                    @click="store.joinVoiceChannel(room.roomId)"
-                >
-                    <div class="h-6 w-6 mr-1 flex items-center justify-center shrink-0">
-                        <Icon name="solar:soundwave-square-bold-duotone" class="h-5 w-5" />
-                    </div>
-                    <span class="truncate">{{ room.name }}</span>
-                    
-                    <!-- Voice Active Indicator (Pulse) -->
-                    <div v-if="getVoiceParticipants(room.roomId).length > 0" class="ml-2 flex items-center">
-                        <Icon name="solar:volume-loud-bold" class="h-3 w-3 text-green-500 animate-pulse" />
-                    </div>
-
-                    <div class="ml-auto flex items-center gap-1">
-                        <!-- Navigation to Text Chat -->
-                        <NuxtLink :to="`/chat/spaces/${activeSpaceId}/${room.roomId}`" @click.stop>
-                            <UiButton 
-                                variant="ghost" 
-                                size="icon" 
-                                class="h-6 w-6 text-muted-foreground hover:text-foreground shrink-0"
-                                title="Open text chat"
-                            >
-                                <Icon name="solar:chat-line-linear" class="h-4 w-4" />
-                            </UiButton>
-                        </NuxtLink>
-
-                        <!-- Leave Button -->
-                        <UiButton 
-                            v-if="store.activeVoiceCall?.roomId === room.roomId"
-                            variant="destructive" 
-                            size="icon" 
-                            class="h-6 w-6 shrink-0 shadow-sm"
-                            @click.prevent.stop="store.leaveVoiceChannel(room.roomId)"
-                            title="Leave voice channel"
+                <template #item="{ element: room }">
+                    <div class="flex flex-col">
+                        <!-- Voice Channel (Click to Join) -->
+                        <div 
+                            v-if="isVoiceChannel(store.client?.getRoom(room.roomId))"
+                            role="button"
+                            class="inline-flex items-center justify-start px-2 h-9 w-full rounded-md text-sm font-medium transition-colors cursor-pointer hover:bg-accent/50 group relative"
+                            :class="[(isLinkActive(`/chat/spaces/${activeSpaceId}/${room.roomId}`) || store.activeVoiceCall?.roomId === room.roomId) ? 'bg-secondary text-secondary-foreground' : '']"
+                            @click="store.joinVoiceChannel(room.roomId)"
                         >
-                            <Icon name="solar:end-call-bold" class="h-3 w-3" />
-                        </UiButton>
-                        
-                        <div v-if="room.unreadCount > 0" class="bg-primary text-primary-foreground text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0">
-                            {{ room.unreadCount }}
-                        </div>
-                    </div>
-                </div>
+                            <div class="h-6 w-6 mr-1 flex items-center justify-center shrink-0">
+                                <Icon name="solar:soundwave-square-bold-duotone" class="h-5 w-5" />
+                            </div>
+                            <span class="truncate">{{ room.name }}</span>
+                            
+                            <!-- Voice Active Indicator (Pulse) -->
+                            <div v-if="getVoiceParticipants(room.roomId).length > 0" class="ml-2 flex items-center">
+                                <Icon name="solar:volume-loud-bold" class="h-3 w-3 text-green-500 animate-pulse" />
+                            </div>
 
-                <!-- Regular Room (Click to Open Chat) -->
-                <UiButton 
-                    v-else
-                    :disabled="isLinkActive(`/chat/spaces/${activeSpaceId}/${room.roomId}`)"
-                    :variant="isLinkActive(`/chat/spaces/${activeSpaceId}/${room.roomId}`) ? 'secondary' : 'ghost'"
-                    class="justify-start px-2 h-9 w-full"
-                    as-child
-                >
-                    <NuxtLink :to="`/chat/spaces/${activeSpaceId}/${room.roomId}`">
-                        <div v-if="!room.avatarUrl" class="h-6 w-6 mr-1 flex items-center justify-center shrink-0">
-                            <Icon name="solar:hashtag-square-bold-duotone" class="h-5 w-5" />
-                        </div>
-                        <MatrixAvatar
-                            v-else
-                            :mxc-url="room.avatarUrl"
-                            :name="room.name"
-                            class="h-6 w-6 mr-1"
-                            :size="64"
-                        />
-                        <span class="truncate">
-                            {{ room.name.startsWith('#') ? room.name.slice(1) : room.name }}
-                        </span>
-                        
-                        <div class="ml-auto flex items-center gap-1">
-                            <div v-if="room.unreadCount > 0" class="bg-primary text-primary-foreground text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0">
-                                {{ room.unreadCount }}
+                            <div class="ml-auto flex items-center gap-1">
+                                <!-- Navigation to Text Chat -->
+                                <NuxtLink :to="`/chat/spaces/${activeSpaceId}/${room.roomId}`" @click.stop>
+                                    <UiButton 
+                                        variant="ghost" 
+                                        size="icon" 
+                                        class="h-6 w-6 text-muted-foreground hover:text-foreground shrink-0"
+                                        title="Open text chat"
+                                    >
+                                        <Icon name="solar:chat-line-linear" class="h-4 w-4" />
+                                    </UiButton>
+                                </NuxtLink>
+
+                                <!-- Leave Button -->
+                                <UiButton 
+                                    v-if="store.activeVoiceCall?.roomId === room.roomId"
+                                    variant="destructive" 
+                                    size="icon" 
+                                    class="h-6 w-6 shrink-0 shadow-sm"
+                                    @click.prevent.stop="store.leaveVoiceChannel(room.roomId)"
+                                    title="Leave voice channel"
+                                >
+                                    <Icon name="solar:end-call-bold" class="h-3 w-3" />
+                                </UiButton>
+                                
+                                <div v-if="room.unreadCount > 0" class="bg-primary text-primary-foreground text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0">
+                                    {{ room.unreadCount }}
+                                </div>
                             </div>
                         </div>
-                    </NuxtLink>
-                </UiButton>
 
-                <!-- Voice Participants List -->
-                <div 
-                    v-if="getVoiceParticipants(room.roomId).length > 0"
-                    class="ml-9 flex flex-col gap-1 mt-1 mb-2"
-                >
-                    <div 
-                        v-for="user in getVoiceParticipants(room.roomId)" 
-                        :key="user.id" 
-                        class="flex items-center gap-2"
-                    >
-                        <MatrixAvatar 
-                            :mxc-url="user.avatarUrl" 
-                            :name="user.name" 
-                            class="w-4 h-4 rounded-full" 
-                            :size="32"
-                        />
-                        <span class="text-[11px] text-muted-foreground truncate">{{ user.name }}</span>
+                        <!-- Regular Room (Click to Open Chat) -->
+                        <UiButton 
+                            v-else
+                            :disabled="isLinkActive(`/chat/spaces/${activeSpaceId}/${room.roomId}`)"
+                            :variant="isLinkActive(`/chat/spaces/${activeSpaceId}/${room.roomId}`) ? 'secondary' : 'ghost'"
+                            class="justify-start px-2 h-9 w-full"
+                            as-child
+                        >
+                            <NuxtLink :to="`/chat/spaces/${activeSpaceId}/${room.roomId}`">
+                                <div v-if="!room.avatarUrl" class="h-6 w-6 mr-1 flex items-center justify-center shrink-0">
+                                    <Icon name="solar:hashtag-square-bold-duotone" class="h-5 w-5" />
+                                </div>
+                                <MatrixAvatar
+                                    v-else
+                                    :mxc-url="room.avatarUrl"
+                                    :name="room.name"
+                                    class="h-6 w-6 mr-1"
+                                    :size="64"
+                                />
+                                <span class="truncate">
+                                    {{ room.name.startsWith('#') ? room.name.slice(1) : room.name }}
+                                </span>
+                                
+                                <div class="ml-auto flex items-center gap-1">
+                                    <div v-if="room.unreadCount > 0" class="bg-primary text-primary-foreground text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0">
+                                        {{ room.unreadCount }}
+                                    </div>
+                                </div>
+                            </NuxtLink>
+                        </UiButton>
+
+                        <!-- Voice Participants List -->
+                        <div 
+                            v-if="getVoiceParticipants(room.roomId).length > 0"
+                            class="ml-9 flex flex-col gap-1 mt-1 mb-2"
+                        >
+                            <div 
+                                v-for="user in getVoiceParticipants(room.roomId)" 
+                                :key="user.id" 
+                                class="flex items-center gap-2"
+                            >
+                                <MatrixAvatar 
+                                    :mxc-url="user.avatarUrl" 
+                                    :name="user.name" 
+                                    class="w-4 h-4 rounded-full" 
+                                    :size="32"
+                                />
+                                <span class="text-[11px] text-muted-foreground truncate">{{ user.name }}</span>
+                            </div>
+                        </div>
                     </div>
-                </div>
-            </div>
+                </template>
+            </draggable>
         </div>
     </div>
 </template>
@@ -166,6 +183,7 @@
 import MatrixAvatar from '~/components/MatrixAvatar.vue';
 import { useMatrixStore } from '~/stores/matrix';
 import { isVoiceChannel } from '~/utils/room';
+import draggable from 'vuedraggable';
 
 const store = useMatrixStore();
 
@@ -217,4 +235,23 @@ const toggleCategory = () => {
 const getVoiceParticipants = (roomId: string) => {
     return store.getVoiceParticipants(roomId);
 };
+
+// Writable computed properties for vuedraggable
+const draggableCategories = computed({
+    get: () => props.category.children || [],
+    set: (newCategoriesArray) => {
+        const newOrder = newCategoriesArray.map(c => c.id);
+        const mergedOrder = [...new Set([...newOrder, ...store.roomOrder])];
+        store.setOrderData('room', mergedOrder);
+    }
+});
+
+const draggableRooms = computed({
+    get: () => props.category.rooms || [],
+    set: (newRoomsArray) => {
+        const newOrder = newRoomsArray.map(r => r.roomId);
+        const mergedOrder = [...new Set([...newOrder, ...store.roomOrder])];
+        store.setOrderData('room', mergedOrder);
+    }
+});
 </script>

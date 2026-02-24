@@ -163,6 +163,8 @@ export const useMatrixStore = defineStore('matrix', {
     } | null,
     isIdle: false,
     pinnedSpaces: [] as string[],
+    spaceOrder: [] as string[],
+    roomOrder: [] as string[],
     lastPresenceUpdate: 0,
     lastPresenceState: null as { presence: string; status_msg: string } | null,
 
@@ -300,6 +302,16 @@ export const useMatrixStore = defineStore('matrix', {
         if (!allRootSpaces.find(s => s.roomId === room.roomId)) {
           allRootSpaces.push(room);
         }
+      });
+
+      // Sort root spaces by user-defined order
+      allRootSpaces.sort((a, b) => {
+        const indexA = state.spaceOrder.indexOf(a.roomId);
+        const indexB = state.spaceOrder.indexOf(b.roomId);
+        if (indexA === -1 && indexB === -1) return 0;
+        if (indexA === -1) return 1;
+        if (indexB === -1) return -1;
+        return indexA - indexB;
       });
 
       // DMs: Normal rooms that exist in the m.direct payload
@@ -866,6 +878,8 @@ export const useMatrixStore = defineStore('matrix', {
       this.client.on(sdk.ClientEvent.AccountData, (event) => {
         if (event.getType() === sdk.EventType.Direct) this.updateHierarchy();
         if (event.getType() === 'cc.jackg.ruby.pinned_spaces') this.updatePinnedSpaces();
+        if (event.getType() === 'cc.jackg.ruby.space_order') this.updateOrderData('space');
+        if (event.getType() === 'cc.jackg.ruby.room_order') this.updateOrderData('room');
       });
       // Listen for parent/child changes
       this.client.on(sdk.RoomStateEvent.Events, (event) => {
@@ -877,6 +891,8 @@ export const useMatrixStore = defineStore('matrix', {
 
       // Initial trigger
       this.updatePinnedSpaces();
+      this.updateOrderData('space');
+      this.updateOrderData('room');
       this.updateHierarchy();
     },
 
@@ -888,6 +904,35 @@ export const useMatrixStore = defineStore('matrix', {
         if (content && Array.isArray(content.rooms)) {
           this.pinnedSpaces = content.rooms;
         }
+      }
+    },
+
+    updateOrderData(type: 'space' | 'room') {
+      if (!this.client) return;
+      const key = type === 'space' ? 'cc.jackg.ruby.space_order' : 'cc.jackg.ruby.room_order';
+      const event = (this.client as any).getAccountData(key);
+
+      if (event) {
+        const content = event.getContent();
+        if (content && Array.isArray(content.order)) {
+          if (type === 'space') this.spaceOrder = content.order;
+          else this.roomOrder = content.order;
+        }
+      }
+    },
+
+    async setOrderData(type: 'space' | 'room', newOrder: string[]) {
+      if (!this.client) return;
+      const key = type === 'space' ? 'cc.jackg.ruby.space_order' : 'cc.jackg.ruby.room_order';
+
+      // Update locally instantly for snappy UI
+      if (type === 'space') this.spaceOrder = newOrder;
+      else this.roomOrder = newOrder;
+
+      try {
+        await (this.client as any).setAccountData(key, { order: newOrder });
+      } catch (err) {
+        console.error(`Failed to sync ${type} order:`, err);
       }
     },
 
