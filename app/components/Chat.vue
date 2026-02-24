@@ -14,7 +14,14 @@
     <!-- Room Header -->
     <header v-if="room" class="pb-4 border-b border-border shrink-0">
       <div class="flex items-center justify-between">
+        <RoomHeader 
+          v-if="!isDm"
+          :name="room?.name || 'Unknown Room'"
+          :topic="roomTopic"
+          class="flex-1"
+        />
         <UserProfile 
+          v-else
           :avatar-url="roomAvatarUrl"
           :name="room?.name"
           :user-id="otherUserId"
@@ -487,6 +494,8 @@ import 'vue3-emoji-picker/css';
 import { Room as LiveKitRoom, RoomEvent as LKRoomEvent, Track as LKTrack } from 'livekit-client';
 import { isVoiceChannel } from '~/utils/room';
 import MatrixVoiceCall from '~/components/MatrixVoiceCall.vue';
+import RoomHeader from '~/components/RoomHeader.vue';
+
 
 function extractUrls(text: string): string[] {
   if (!text) return [];
