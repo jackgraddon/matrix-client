@@ -41,15 +41,7 @@
         
         <div v-show="!isCollapsed" class="flex flex-col gap-1">
             <!-- Nested Categories -->
-            <draggable 
-                v-if="category.children && category.children.length > 0"
-                v-model="draggableCategories" 
-                item-key="id" 
-                group="categories"
-                class="flex flex-col gap-1"
-                ghost-class="opacity-30"
-                :animation="200"
-            >
+            <draggable v-model="draggableChildren" item-key="id">
                 <template #item="{ element: childCategory }">
                     <ChatSidebarCategory 
                         :category="childCategory"
@@ -63,14 +55,7 @@
             </draggable>
 
             <!-- Rooms in this category -->
-            <draggable 
-                v-model="draggableRooms" 
-                item-key="roomId" 
-                group="rooms"
-                class="flex flex-col"
-                ghost-class="opacity-30"
-                :animation="200"
-            >
+            <draggable v-model="draggableRooms" item-key="roomId" class="flex flex-col">
                 <template #item="{ element: room }">
                     <div class="flex flex-col">
                         <!-- Voice Channel (Click to Join) -->
@@ -180,10 +165,10 @@
 </template>
 
 <script setup lang="ts">
+import draggable from 'vuedraggable';
 import MatrixAvatar from '~/components/MatrixAvatar.vue';
 import { useMatrixStore } from '~/stores/matrix';
 import { isVoiceChannel } from '~/utils/room';
-import draggable from 'vuedraggable';
 
 const store = useMatrixStore();
 
@@ -236,22 +221,43 @@ const getVoiceParticipants = (roomId: string) => {
     return store.getVoiceParticipants(roomId);
 };
 
-// Writable computed properties for vuedraggable
-const draggableCategories = computed({
-    get: () => props.category.children || [],
-    set: (newCategoriesArray) => {
-        const newOrder = newCategoriesArray.map(c => c.id);
-        const mergedOrder = [...new Set([...newOrder, ...store.roomOrder])];
-        store.setOrderData('room', mergedOrder);
+const draggableChildren = computed({
+    get: () => {
+        const children = props.category.children || [];
+        const order = store.ui.uiOrder.categories[props.category.id];
+        if (!order || order.length === 0) return children;
+
+        return [...children].sort((a, b) => {
+            const indexA = order.indexOf(a.id);
+            const indexB = order.indexOf(b.id);
+            if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+            if (indexA !== -1) return -1;
+            if (indexB !== -1) return 1;
+            return 0;
+        });
+    },
+    set: (val: SpaceCategory[]) => {
+        store.updateCategoryOrder(props.category.id, val.map(c => c.id));
     }
 });
 
 const draggableRooms = computed({
-    get: () => props.category.rooms || [],
-    set: (newRoomsArray) => {
-        const newOrder = newRoomsArray.map(r => r.roomId);
-        const mergedOrder = [...new Set([...newOrder, ...store.roomOrder])];
-        store.setOrderData('room', mergedOrder);
+    get: () => {
+        const rooms = props.category.rooms || [];
+        const order = store.ui.uiOrder.rooms[props.category.id];
+        if (!order || order.length === 0) return rooms;
+
+        return [...rooms].sort((a, b) => {
+            const indexA = order.indexOf(a.roomId);
+            const indexB = order.indexOf(b.roomId);
+            if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+            if (indexA !== -1) return -1;
+            if (indexB !== -1) return 1;
+            return 0;
+        });
+    },
+    set: (val: MappedRoom[]) => {
+        store.updateRoomOrder(props.category.id, val.map(r => r.roomId));
     }
 });
 </script>

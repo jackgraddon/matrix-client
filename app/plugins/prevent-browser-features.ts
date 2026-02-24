@@ -20,7 +20,8 @@ export default defineNuxtPlugin(() => {
     // Disable "Ghost Dragging" of images and links
     window.addEventListener('dragstart', (e: DragEvent) => {
         const target = e.target as HTMLElement;
-        if (target.getAttribute('draggable') !== 'true') {
+        // Allow dragging if the element itself OR any parent has draggable="true"
+        if (!target.closest('[draggable="true"]')) {
             e.preventDefault();
         }
     });

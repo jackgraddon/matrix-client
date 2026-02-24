@@ -91,16 +91,18 @@
 
                 <!-- Sidebar Space Categories List -->
                 <template v-if="isLinkActive('/chat/spaces') && activeSpaceId">
-                    <ChatSidebarCategory 
-                        v-for="category in spaceCategories" 
-                        :key="category.id"
-                        :category="category"
-                        :active-space-id="activeSpaceId"
-                        :is-link-active="isLinkActive"
-                        :depth="0"
-                        :collapsed-categories="collapsedCategories"
-                        @toggle-category="toggleCategory"
-                    />
+                    <draggable v-model="draggableCategories" item-key="id">
+                        <template #item="{ element: category }">
+                            <ChatSidebarCategory 
+                                :category="category"
+                                :active-space-id="activeSpaceId"
+                                :is-link-active="isLinkActive"
+                                :depth="0"
+                                :collapsed-categories="collapsedCategories"
+                                @toggle-category="toggleCategory"
+                            />
+                        </template>
+                    </draggable>
                 </template>
             </div>
         </nav>
@@ -134,6 +136,7 @@
 
 <script setup lang="ts">
 import { Room, EventType, NotificationCountType } from 'matrix-js-sdk';
+import draggable from 'vuedraggable';
 import MatrixAvatar from '~/components/MatrixAvatar.vue';
 import ChatSidebarCategory from '~/components/ChatSidebarCategory.vue';
 import { isVoiceChannel } from '~/utils/room';
@@ -263,24 +266,11 @@ const buildSpaceHierarchy = (spaceId: string, visited: Set<string> = new Set()):
     .map(ss => buildSpaceHierarchy(ss.roomId, visited))
     .filter((c): c is SpaceCategory => c !== null);
 
-  // Sort by user-defined room order (falls back to bottom for un-indexed items)
-  const sortByIndex = (a: any, b: any) => {
-    const idxA = store.roomOrder.indexOf(a.roomId || a.id);
-    const idxB = store.roomOrder.indexOf(b.roomId || b.id);
-    if (idxA === -1 && idxB === -1) return 0;
-    if (idxA === -1) return 1;
-    if (idxB === -1) return -1;
-    return idxA - idxB;
-  };
-
-  directRooms.sort((a, b) => sortByIndex({ roomId: a.roomId }, { roomId: b.roomId }));
-  children.sort(sortByIndex);
-
   return {
     id: spaceId,
     name: space.name,
     avatarUrl: space.getMxcAvatarUrl(),
-    rooms: directRooms.map(mapRoom),
+    rooms: directRooms.map(mapRoom).sort((a, b) => b.lastActive - a.lastActive),
     children
   };
 };
@@ -314,6 +304,27 @@ const spaceCategories = computed(() => {
 
   console.log(`[ChatSidebar] Built hierarchy for space ${activeSpaceId.value}`);
   return categories;
+});
+
+const draggableCategories = computed({
+    get: () => {
+        const order = activeSpaceId.value ? store.ui.uiOrder.categories[activeSpaceId.value] : [];
+        if (!order || order.length === 0) return spaceCategories.value;
+        
+        return [...spaceCategories.value].sort((a, b) => {
+            const indexA = order.indexOf(a.id);
+            const indexB = order.indexOf(b.id);
+            if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+            if (indexA !== -1) return -1;
+            if (indexB !== -1) return 1;
+            return 0;
+        });
+    },
+    set: (val) => {
+        if (activeSpaceId.value) {
+            store.updateCategoryOrder(activeSpaceId.value, val.map(c => c.id));
+        }
+    }
 });
 
 const isLinkActive = (to: string) => {
