@@ -31,11 +31,20 @@ function escapeHtml(text: string): string {
   return div.innerHTML;
 }
 
+function linkify(text: string): string {
+  // Basic URL regex that handles most common cases
+  const urlRegex = /(https?:\/\/[^\s<]+[^.,\s<])/g;
+  return text.replace(urlRegex, (url) => {
+    return `<a href="${url}" class="hover:underline cursor-pointer" target="_blank" rel="noopener noreferrer">${url}</a>`;
+  });
+}
+
 // Prepare HTML content
 const processedHtml = computed(() => {
   // Plain text: escape HTML entities (whitespace-pre-wrap handles newlines)
   if (!props.formattedBody) {
-    return escapeHtml(props.body);
+    const escaped = escapeHtml(props.body);
+    return linkify(escaped);
   }
 
   // HTML formatted body: parse and clean up

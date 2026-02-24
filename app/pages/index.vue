@@ -34,9 +34,18 @@ const { logout } = matrixStore; // Actions can be destructured directly
 
 // Auto navigate to chat if already logged in
 onMounted(() => {
+  // Check every second to see if user is logged in
+  const interval = setInterval(() => {
     if (isAuthenticated.value) {
-        navigateTo('/chat');
+      navigateTo('/chat');
+      clearInterval(interval);
     }
+  }, 1000);
+
+  // Cleanup interval on unmount
+  onUnmounted(() => {
+    clearInterval(interval);
+  });
 });
 </script>
 

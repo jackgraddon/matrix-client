@@ -1,6 +1,6 @@
 <template>
   <div>
-    <h1>Rooms</h1>
+    <h1>People</h1>
   </div>
 </template>
 
@@ -8,8 +8,8 @@
 const store = useMatrixStore();
 
 onMounted(() => {
-  if (store.lastVisitedRooms.rooms) {
-    navigateTo(`/chat/rooms/${store.lastVisitedRooms.rooms}`, { replace: true });
+  if (store.lastVisitedRooms.dm) {
+    navigateTo(`/chat/dms/${store.lastVisitedRooms.dm}`, { replace: true });
   }
 });
 </script>

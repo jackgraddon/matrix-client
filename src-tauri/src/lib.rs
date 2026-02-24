@@ -25,6 +25,16 @@ pub fn run() {
             game_scanner::set_scanner_enabled
         ])
         .setup(move |app| {
+            #[cfg(any(target_os = "windows", target_os = "linux"))]
+            {
+                use tauri::Manager;
+                let window = app.get_webview_window("main").unwrap();
+                // 1. Strip the clunky default OS title bar
+                window.set_decorations(false).unwrap();
+                // 2. Force the OS to redraw the native drop shadow and rounded corners!
+                window.set_shadow(true).unwrap();
+            }
+
             if cfg!(debug_assertions) {
                 app.handle().plugin(
                     tauri_plugin_log::Builder::default()

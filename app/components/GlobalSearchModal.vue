@@ -112,7 +112,7 @@ const navigateToRoom = (roomId: string) => {
     
     const isFriend = props.friends.some(f => f.roomId === roomId);
     if (isFriend) {
-      navigateTo(`/chat/people/${roomId}`);
+      navigateTo(`/chat/dms/${roomId}`);
     } else {
       navigateTo(`/chat/rooms/${roomId}`);
     }
@@ -127,7 +127,7 @@ const createChatFromQuery = async () => {
         if (roomId) {
             store.closeGlobalSearchModal();
             searchQuery.value = '';
-            await navigateTo(`/chat/people/${roomId}`);
+            await navigateTo(`/chat/dms/${roomId}`);
         }
     } catch (e: any) {
         console.error("Failed to create room:", e);

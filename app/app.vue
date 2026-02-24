@@ -6,8 +6,9 @@
     <div class="flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground transition-colors">
       <CustomTitlebar />
       <NuxtRouteAnnouncer />
-      <NuxtPage />
+      <NuxtPage class="flex-1 min-h-0" />
       <UiSonner />
+      <VerificationModal />
     </div>
   </GlobalContextMenu>
 </template>
@@ -19,6 +20,7 @@ const colorMode = useColorMode();
 
 onMounted(() => {
   const appWindow = getCurrentWindow();
+  const store = useMatrixStore();
 
   // Watch for the resolved color mode ('light' or 'dark')
   watch(() => colorMode.value, async (newMode) => {
@@ -35,5 +37,57 @@ onMounted(() => {
       console.error("Failed to sync native theme/background:", err);
     }
   }, { immediate: true });
+
+  // Polite Disconnect: Go offline when the app is closed
+  const handleClose = async () => {
+    await store.goOffline();
+  };
+
+  // Browser/Web: Handle tab/window close
+  window.addEventListener('beforeunload', handleClose);
+
+  // Tauri: Handle app closure
+  // We use onCloseRequested to ensure we have a moment to fire the offline flare
+  appWindow.onCloseRequested(async (event) => {
+    await handleClose();
+  });
+
+  // Idle Detection: Handle "Unavailable" status after 5 minutes of inactivity
+  let idleTimer: ReturnType<typeof setTimeout>;
+  const resetIdleTimer = () => {
+    store.setIdle(false);
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
+      store.setIdle(true);
+    }, 5 * 60 * 1000); // 5 minutes
+  };
+
+  window.addEventListener('mousemove', resetIdleTimer);
+  window.addEventListener('keydown', resetIdleTimer);
+  resetIdleTimer(); // Initial start
+
+  // Debug: Looping console log for active user presence
+  // let debugInterval: ReturnType<typeof setInterval>;
+  // if (process.dev) {
+  //   debugInterval = setInterval(() => {
+  //     if (store.client && store.isAuthenticated && store.user) {
+  //       const user = store.client.getUser(store.user.userId);
+  //       console.log('[Presence Debug] Status:', {
+  //         presence: user?.presence || 'unknown',
+  //         status_msg: user?.presenceStatusMsg || '',
+  //         isIdle: store.isIdle,
+  //         activity: store.activityDetails?.name || 'none'
+  //       });
+  //     }
+  //   }, 10000); // Every 10 seconds
+  // }
+
+  onBeforeUnmount(() => {
+    window.removeEventListener('beforeunload', handleClose);
+    window.removeEventListener('mousemove', resetIdleTimer);
+    window.removeEventListener('keydown', resetIdleTimer);
+    clearTimeout(idleTimer);
+    // if (debugInterval) clearInterval(debugInterval);
+  });
 });
 </script>

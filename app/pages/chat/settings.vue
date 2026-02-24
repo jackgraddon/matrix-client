@@ -48,8 +48,7 @@
         
         <!-- Mock User Card -->
         <UserProfile
-            :avatar-url="store.user?.avatarUrl"
-            :name="store.user?.displayName || ' You'"
+            :user="store.user"
             :is-card="true"
             name-classes="text-sm"
         />

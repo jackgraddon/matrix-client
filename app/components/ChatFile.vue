@@ -1,75 +1,237 @@
 <template>
-  <div class="flex items-center justify-between p-3 rounded-md bg-muted/50 border min-w-[250px] max-w-full gap-3">
-    <div class="flex items-center gap-3 overflow-hidden">
-      <div class="flex items-center justify-center w-10 h-10 rounded bg-background shrink-0 text-muted-foreground shadow-sm">
-        <Icon name="solar:document-text-bold" class="w-6 h-6" />
+  <div class="chat-file-container w-full">
+    
+    <!-- Image Player -->
+    <div v-if="isImage" class="relative overflow-hidden rounded-lg bg-muted/20" :style="placeholderStyle">
+      <div v-if="isLoading" class="absolute inset-0 flex items-center justify-center bg-black/5 backdrop-blur-sm z-10">
+        <Icon name="svg-spinners:ring-resize" class="h-6 w-6 text-primary" />
       </div>
-      <div class="flex flex-col overflow-hidden">
-        <span class="text-sm font-medium truncate" :title="alt || 'File'">{{ alt || 'File' }}</span>
-        <span class="text-[10px] text-muted-foreground uppercase mt-0.5">
-          {{ encryptedFile ? 'Encrypted File' : 'File' }}
-        </span>
+      <img
+        v-if="imageUrl"
+        :src="imageUrl"
+        :alt="alt || 'Image'"
+        class="max-w-full h-auto object-contain rounded-md"
+        :width="displayWidth || undefined"
+        :height="displayHeight || undefined"
+        loading="lazy"
+      />
+      <div v-else-if="!isLoading" class="w-full h-48 flex items-center justify-center text-muted-foreground text-sm bg-muted/50">
+        <span>Failed to load image</span>
       </div>
     </div>
-    
-    <UiButton 
-      variant="secondary" 
-      size="sm" 
-      class="shrink-0 h-8 rounded-full px-3"
-      @click="downloadFile"
-      :disabled="isDownloading"
-    >
-      <Icon v-if="isDownloading" name="svg-spinners:ring-resize" class="h-4 w-4 mr-1.5" />
-      <Icon v-else name="solar:download-linear" class="h-4 w-4 mr-1.5" />
-      <span>{{ isDownloading ? '...' : 'Save' }}</span>
-    </UiButton>
+
+    <!-- Video Player -->
+    <div v-else-if="isVideo" class="relative overflow-hidden rounded-lg border border-border bg-black/5 max-w-[400px]">
+      <div v-if="isLoading" class="absolute inset-0 flex items-center justify-center bg-black/10 backdrop-blur-sm z-10">
+        <Icon name="svg-spinners:ring-resize" class="h-6 w-6 text-primary" />
+      </div>
+      <video 
+        v-if="imageUrl"
+        :src="imageUrl" 
+        controls 
+        class="w-full max-h-[400px] object-contain"
+        preload="metadata"
+      ></video>
+      <div v-else class="w-full h-48 flex items-center justify-center text-muted-foreground text-sm">
+        <span v-if="!isLoading">Failed to load video</span>
+      </div>
+    </div>
+
+    <!-- Audio Player -->
+    <div v-else-if="isAudio" class="relative rounded-lg border border-border bg-card p-2 min-w-[250px] max-w-[400px]">
+      <div v-if="isLoading" class="absolute inset-0 flex items-center justify-center bg-black/5 backdrop-blur-sm z-10 rounded-lg">
+        <Icon name="svg-spinners:ring-resize" class="h-5 w-5 text-primary" />
+      </div>
+      <div class="flex flex-col gap-1">
+        <span class="text-xs font-medium text-muted-foreground truncate px-1">{{ alt || 'Audio File' }}</span>
+        <audio v-if="imageUrl" :src="imageUrl" controls class="w-full h-10"></audio>
+      </div>
+    </div>
+
+    <!-- Generic File Card -->
+    <div v-else class="flex items-center justify-between p-3 rounded-md bg-muted/50 border min-w-[250px] max-w-sm gap-3">
+      <div class="flex items-center gap-3 overflow-hidden">
+        <div class="flex items-center justify-center w-10 h-10 rounded bg-background shrink-0 text-muted-foreground shadow-sm">
+          <Icon name="solar:document-text-bold" class="w-6 h-6" />
+        </div>
+        <div class="flex flex-col overflow-hidden">
+          <span class="text-sm font-medium truncate" :title="alt || 'File'">{{ alt || 'File' }}</span>
+          <span class="text-[10px] text-muted-foreground uppercase mt-0.5">
+            {{ encryptedFile ? 'Encrypted File' : 'File' }}
+          </span>
+        </div>
+      </div>
+      
+      <UiButton 
+        variant="secondary" 
+        size="sm" 
+        class="shrink-0 h-8 rounded-full px-3"
+        @click="downloadFile"
+        :disabled="isDownloading"
+      >
+        <Icon v-if="isDownloading" name="svg-spinners:ring-resize" class="h-4 w-4 mr-1.5" />
+        <Icon v-else name="solar:download-linear" class="h-4 w-4 mr-1.5" />
+        <span>{{ isDownloading ? '...' : 'Save' }}</span>
+      </UiButton>
+    </div>
+
   </div>
 </template>
 
 <script setup lang="ts">
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { toast } from 'vue-sonner';
+import { fetchAuthenticatedDownload, decryptAttachment } from '~/utils/matrix-media';
 
 const props = defineProps<{
   mxcUrl?: string;
-  encryptedFile?: any; // EncryptedFile from Matrix
+  encryptedFile?: any;
   alt?: string;
+  mimetype?: string;
+  msgtype?: string;
+  // Dimension props primarily for images
+  maxWidth?: number;
+  maxHeight?: number;
+  intrinsicWidth?: number;
+  intrinsicHeight?: number;
 }>();
 
 const store = useMatrixStore();
+
+// --- 1. Media Type Detection ---
+const isImage = computed(() => props.mimetype?.startsWith('image/') || props.msgtype === 'm.image');
+const isVideo = computed(() => props.mimetype?.startsWith('video/') || props.msgtype === 'm.video');
+const isAudio = computed(() => props.mimetype?.startsWith('audio/') || props.msgtype === 'm.audio');
+const isInlineMedia = computed(() => isImage.value || isVideo.value || isAudio.value);
+
+// --- 2. State & Hooks ---
+const mediaUrl = ref<string | null>(null);
+const isMediaLoading = ref(false);
 const isDownloading = ref(false);
 
-async function downloadFile() {
-  if (isDownloading.value) return;
-  if (!store.client) {
-    toast.error('Client not initialized');
+// Use standard hook for unencrypted images to get thumbnails
+const validStandardMxc = computed(() => {
+  if (isImage.value && !props.encryptedFile && props.mxcUrl?.startsWith('mxc://')) {
+    return props.mxcUrl;
+  }
+  return null;
+});
+
+const { imageUrl: standardUrl, isLoading: standardLoading } = useAuthenticatedMedia(
+  validStandardMxc,
+  props.maxWidth || 800,
+  props.maxHeight || 600,
+  'scale'
+);
+
+// Unified URL & Loading State
+const imageUrl = computed(() => {
+  if (isImage.value && standardUrl.value) return standardUrl.value;
+  return mediaUrl.value;
+});
+
+const isLoading = computed(() => isMediaLoading.value || (isImage.value && standardLoading.value));
+
+// --- 3. Dimension Handling (For Images) ---
+const displayWidth = computed(() => {
+  if (!props.intrinsicWidth || !props.intrinsicHeight) return null;
+  const maxW = props.maxWidth || 400;
+  return Math.min(props.intrinsicWidth, maxW);
+});
+
+const displayHeight = computed(() => {
+  if (!props.intrinsicWidth || !props.intrinsicHeight) return null;
+  const maxW = props.maxWidth || 400;
+  if (props.intrinsicWidth <= maxW) return props.intrinsicHeight;
+  return Math.round(props.intrinsicHeight * (maxW / props.intrinsicWidth));
+});
+
+const placeholderStyle = computed(() => {
+  if (!isImage.value || !displayWidth.value || !displayHeight.value) return {};
+  return {
+    width: `${displayWidth.value}px`,
+    aspectRatio: `${displayWidth.value} / ${displayHeight.value}`,
+  };
+});
+
+// --- 4. Memory Management ---
+onUnmounted(() => {
+  if (mediaUrl.value && mediaUrl.value.startsWith('blob:')) {
+    URL.revokeObjectURL(mediaUrl.value);
+  }
+});
+
+// --- 5. Loading Logic ---
+const loadMedia = async () => {
+  if (!isInlineMedia.value || !store.client) return;
+
+  // FAST PATH: Unencrypted (Streaming / Direct Web URLs)
+  if (props.mxcUrl && !props.encryptedFile) {
+    if (props.mxcUrl.startsWith('mxc://')) {
+      // For images, useAuthenticatedMedia (standardUrl) handles the thumbnailing
+      // For video/audio, we use mxcUrlToHttp for streaming
+      if (!isImage.value) {
+        mediaUrl.value = store.client.mxcUrlToHttp(props.mxcUrl);
+      }
+    } else {
+      // Direct web URL (https://...) - use as-is
+      mediaUrl.value = props.mxcUrl;
+    }
     return;
   }
+
+  // SLOW PATH: Encrypted (Decryption required)
+  if (props.encryptedFile && props.encryptedFile.url) {
+    if (mediaUrl.value) {
+      URL.revokeObjectURL(mediaUrl.value);
+      mediaUrl.value = null;
+    }
+
+    isMediaLoading.value = true;
+    try {
+      const mxc = props.encryptedFile.url;
+      const response = await fetchAuthenticatedDownload(store.client, mxc);
+      const arrayBuffer = await response.arrayBuffer();
+      const decryptedBuffer = await decryptAttachment(arrayBuffer, props.encryptedFile);
+      
+      const mimetype = props.encryptedFile.mimetype || props.mimetype || 'application/octet-stream';
+      const blob = new Blob([decryptedBuffer], { type: mimetype });
+      
+      mediaUrl.value = URL.createObjectURL(blob);
+    } catch (err) {
+      console.error('Failed to decrypt inline media:', err);
+    } finally {
+      isMediaLoading.value = false;
+    }
+  }
+};
+
+onMounted(loadMedia);
+watch(() => props.encryptedFile, loadMedia);
+
+// --- 6. Manual File Download ---
+async function downloadFile() {
+  if (!store.client) return;
 
   isDownloading.value = true;
   try {
     let blob: Blob;
 
     if (props.encryptedFile && props.encryptedFile.url) {
-      // 1. Download encrypted blob
       const mxcUrl = props.encryptedFile.url;
       const response = await fetchAuthenticatedDownload(store.client, mxcUrl);
       const arrayBuffer = await response.arrayBuffer();
-
-      // 2. Decrypt
       const decryptedBuffer = await decryptAttachment(arrayBuffer, props.encryptedFile);
       
-      // Determine mimetype from encrypted info or fallback
-      const mimetype = props.encryptedFile.mimetype || 'application/octet-stream';
+      const mimetype = props.encryptedFile.mimetype || props.mimetype || 'application/octet-stream';
       blob = new Blob([decryptedBuffer], { type: mimetype });
     } else if (props.mxcUrl) {
-      // Unencrypted file
       const response = await fetchAuthenticatedDownload(store.client, props.mxcUrl);
       blob = await response.blob();
     } else {
       throw new Error('No URL provided');
     }
 
-    // Trigger download
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;

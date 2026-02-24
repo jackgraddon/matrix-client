@@ -1,9 +1,20 @@
 <template>
-  <div class="flex flex-col h-full">
+  <div class="flex flex-col h-full relative">
+    <!-- Voice Call Overlay -->
+    <!-- Voice Call UI -->
+    <MatrixVoiceCall 
+      v-if="lkRoom && isConnected && isVoiceOverlayVisible" 
+      :room="toRaw(lkRoom) as any" 
+      :room-id="roomId as string"
+      :room-name="room?.name || 'Voice Room'"
+      @disconnect="disconnectVoice"
+      class="absolute inset-0 z-50"
+    />
+
     <!-- Room Header -->
     <header v-if="room" class="pb-4 border-b border-border shrink-0">
       <div class="flex items-center justify-between">
-        <ProfileHeader 
+        <UserProfile 
           :avatar-url="roomAvatarUrl"
           :name="room?.name"
           :user-id="otherUserId"
@@ -12,17 +23,38 @@
           class="flex-1"
         />
         <div class="flex items-center gap-2 pr-2">
-            <!-- <UiButton 
-              variant="ghost" 
-              size="icon" 
-              @click="refreshRoomUI" 
-              :disabled="isLoadingHistory"
-              class="text-muted-foreground hover:text-foreground h-9 w-9"
-              title="Refresh messages"
+          <UiButton 
+            v-if="isVoiceChannel(room as any) && store.activeVoiceCall?.roomId !== roomId "
+            variant="outline" 
+            size="sm" 
+            @click="store.joinVoiceChannel(roomId as string)"
+            title="Join Voice Room"
+          >
+            <Icon name="solar:phone-calling-linear" class="h-4 w-4 text-green-500" />
+            Join Voice
+          </UiButton>
+            <UiButton
+              v-if="isVoiceChannel(room as any) && store.activeVoiceCall?.roomId === roomId"
+              variant="outline"
+              size="sm"
+              @click="disconnectVoice"
+              title="Disconnect Voice Room"
+              class="gap-2">
+              <Icon name="solar:end-call-bold" class="h-5 w-5 text-red-500" />
+              Disconnect
+            </UiButton>
+
+            <UiButton
+              variant="ghost"
+              size="icon-sm"
+              @click="store.toggleMemberList()"
+              :class="{ 'bg-accent text-accent-foreground': store.isMemberListVisible }"
+              title="Toggle Member List"
+              class="rounded-full"
             >
-              <Icon :name="isLoadingHistory ? 'svg-spinners:ring-resize' : 'solar:refresh-linear'" class="h-5 w-5" />
-            </UiButton> -->
-        </div>
+              <Icon name="solar:users-group-rounded-linear" class="h-5 w-5" />
+            </UiButton>
+          </div>
       </div>
     </header>
 
@@ -31,24 +63,12 @@
       <p class="text-muted-foreground">Loading room...</p>
     </div>
 
-    <div 
-      v-else 
-      ref="timelineContainer" 
-      class="flex-1 overflow-y-auto pr-1 pb-10 min-h-0 flex flex-col-reverse gap-y-1"
-    >
-      <template v-for="(msg, index) in displayMessages" :key="msg.eventId">
-        <!-- Date separator (Now logic looks forward to next older message) -->
-        <div
-          v-if="index === displayMessages.length - 1 || !isSameDay(msg.timestamp, displayMessages[index + 1]?.timestamp || 0)"
-          class="flex items-center gap-3 py-3 w-full"
+    <div v-else class="flex-1 flex flex-col min-w-0 relative overflow-hidden">
+        <div 
+          ref="timelineContainer" 
+          class="flex-1 overflow-y-auto pr-1 pb-10 min-h-0 flex flex-col-reverse gap-y-1"
         >
-          <div class="flex-1 h-px bg-border" />
-          <span class="text-xs text-muted-foreground font-medium shrink-0">
-            {{ formatDate(msg.timestamp) }}
-          </span>
-          <div class="flex-1 h-px bg-border" />
-        </div>
-
+      <template v-for="(msg, index) in displayMessages" :key="msg.eventId">
         <!-- Message bubble -->
         <div
           :data-event-id="msg.eventId"
@@ -69,7 +89,7 @@
           >
             <!-- Avatar -->
             <MatrixAvatar 
-              v-if="!msg.isOwn && !isPreviousSameSender(index)"
+              v-if="!isPreviousSameSender(index)"
               :mxc-url="msg.avatarUrl" 
               :name="msg.senderName" 
               class="h-8 w-8 border"
@@ -118,13 +138,15 @@
                 class="rounded-lg overflow-hidden flex flex-col items-end"
                 :class="msg.isOwn ? 'rounded-br-sm' : 'rounded-bl-sm'"
               >
-                 <ChatImage 
+                 <ChatFile 
                    :mxc-url="msg.url" 
                    :encrypted-file="msg.encryptedFile"
                    :alt="msg.body" 
                    :max-width="400"
                    :intrinsic-width="msg.imageWidth"
                    :intrinsic-height="msg.imageHeight"
+                   :msgtype="msg.msgtype"
+                   :mimetype="msg.mimetype"
                    class="max-w-[400px]"
                  />
                  <div 
@@ -163,21 +185,36 @@
                     :mxc-url="msg.url"
                     :encrypted-file="msg.encryptedFile"
                     :alt="msg.body"
+                    :msgtype="msg.msgtype"
+                    :mimetype="msg.mimetype"
                   />
               </div>
 
               <div
                 v-else
-                class="rounded-2xl mt-1 px-3.5 py-2 overflow-hidden flex flex-col gap-1"
-                :class="msg.isOwn
-                  ? 'bg-primary rounded-br-md text-primary-foreground'
-                  : 'bg-background rounded-bl-md text-foreground'"
+                class="flex flex-col"
+                :class="msg.isOwn ? 'items-end' : 'items-start'"
               >
-                <MessageContent 
-                  :body="msg.body" 
-                  :formatted-body="msg.formattedBody" 
-                  :is-own="msg.isOwn" 
-                />
+                <div
+                  class="rounded-2xl mt-1 px-3.5 py-2 overflow-hidden flex flex-col gap-1"
+                  :class="msg.isOwn
+                    ? 'bg-primary rounded-br-md text-primary-foreground'
+                    : 'bg-background border border-border/50 rounded-bl-md text-foreground'"
+                >
+                  <MessageContent 
+                    v-if="!msg.isUrlOnly"
+                    :body="msg.body" 
+                    :formatted-body="msg.formattedBody" 
+                    :is-own="msg.isOwn" 
+                  />
+                  <LinkPreview 
+                    v-for="url in msg.urls"
+                    :key="url"
+                    :url="url"
+                    :timestamp="msg.timestamp"
+                    :is-own="msg.isOwn"
+                  />
+                </div>
               </div>
 
               <!-- Reactions -->
@@ -291,6 +328,19 @@
         </div>
         
         </div>
+
+        <!-- Date separator (Now logic looks forward to next older message) -->
+        <div
+          v-if="index === displayMessages.length - 1 || !isSameDay(msg.timestamp, displayMessages[index + 1]?.timestamp || 0)"
+          class="flex items-center gap-3 py-3 w-full"
+        >
+          <div class="flex-1 h-px bg-border" />
+          <span class="text-xs text-muted-foreground font-medium shrink-0">
+            {{ formatDate(msg.timestamp) }}
+          </span>
+          <div class="flex-1 h-px bg-border" />
+        </div>
+
       </template>
 
       <!-- Infinite Scroll Trigger (Sentinel) -->
@@ -423,17 +473,41 @@
         </UiInputGroup>
       </form>
     </footer>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { RoomEvent, EventType, MsgType, MatrixEventEvent, ClientEvent, type MatrixEvent, type Room, type RoomMember, Direction, TimelineWindow, MatrixClient, RelationType } from 'matrix-js-sdk';
 import { toast } from 'vue-sonner';
-import ChatImage from '~/components/ChatImage.vue';
 import ChatSticker from '~/components/ChatSticker.vue';
 import ChatFile from '~/components/ChatFile.vue';
 import EmojiPicker from 'vue3-emoji-picker';
 import 'vue3-emoji-picker/css';
+import { Room as LiveKitRoom, RoomEvent as LKRoomEvent, Track as LKTrack } from 'livekit-client';
+import { isVoiceChannel } from '~/utils/room';
+import MatrixVoiceCall from '~/components/MatrixVoiceCall.vue';
+
+function extractUrls(text: string): string[] {
+  if (!text) return [];
+  const urlRegex = /https?:\/\/[^\s<]+[^.,\s<]/gi;
+  const matches = text.match(urlRegex);
+  return matches ? [...new Set(matches)] : []; // Return unique URLs
+}
+
+function isUrlOnly(text: string): boolean {
+  if (!text) return false;
+  const urls = extractUrls(text);
+  if (urls.length === 0) return false;
+  
+  // Check if text contains only URLs and whitespace
+  let remainingText = text;
+  urls.forEach(url => {
+    remainingText = remainingText.replace(url, '');
+  });
+  
+  return remainingText.trim().length === 0;
+}
 
 
 const props = defineProps<{
@@ -442,6 +516,81 @@ const props = defineProps<{
 
 const route = useRoute();
 const store = useMatrixStore();
+
+// LiveKit State
+const lkRoom = ref<LiveKitRoom | null>(null);
+const isConnected = ref(false);
+
+watch(isConnected, (val) => {
+  console.log('[Voice] isConnected changed to:', val);
+});
+
+// Watch for the user clicking "Join" in any room
+// We connect to the audio bridge regardless of which room is currently "viewed"
+watch(() => store.activeVoiceCall, async (newCall, oldCall) => {
+  console.log('[Voice] store.activeVoiceCall changed:', { newCall, oldCall, isConnected: isConnected.value });
+  // If the call room ID changed or we left, disconnect the old one
+  if (isConnected.value && (!newCall || newCall.roomId !== oldCall?.roomId)) {
+    console.log('[Voice] Disconnecting old call');
+    await disconnectVoice();
+  }
+  
+  // If we have an call in the store but no connection yet, connect!
+  if (newCall && !isConnected.value) {
+    console.log('[Voice] Initiating connection to LiveKit');
+    await connectToAudio();
+  }
+}, { immediate: true });
+
+async function connectToAudio() {
+  console.log('[Voice] connectToAudio called with:', store.activeVoiceCall);
+  if (!store.activeVoiceCall) return;
+  const { url, token } = store.activeVoiceCall;
+  
+  try {
+    // 1. Initialize the core SDK
+    const newRoom = new LiveKitRoom({ adaptiveStream: true });
+
+    // 2. Connect to Matrix.org's free LiveKit server
+    await newRoom.connect(url, token);
+    console.log('[Voice] LiveKit room connected');
+    isConnected.value = true;
+    lkRoom.value = newRoom;
+    
+    // 3. Turn on our local microphone
+    await newRoom.localParticipant.setMicrophoneEnabled(true);
+    console.log('[Voice] Local microphone enabled');
+    
+    toast.success('Voice connected');
+  } catch (e) {
+    console.error('LiveKit connection failed:', e);
+    toast.error('Voice connection failed');
+  }
+}
+
+async function disconnectVoice() {
+  if (lkRoom.value) {
+    try {
+      await lkRoom.value.disconnect();
+    } catch (e) {
+      console.warn('Error during LiveKit disconnect:', e);
+    }
+    lkRoom.value = null;
+    isConnected.value = false;
+  }
+  
+  // Also clear the store if it's still pointing to a call
+  // We check the roomId to make sure we don't accidentally clear a *new* call if we are switching
+  if (store.activeVoiceCall) {
+    store.leaveVoiceChannel(store.activeVoiceCall.roomId);
+  }
+}
+
+onUnmounted(() => {
+  if (lkRoom.value) {
+    lkRoom.value.disconnect();
+  }
+});
 
 // --- Reactive state ---
 
@@ -463,6 +612,8 @@ interface ChatMessage {
   imageWidth?: number;
   imageHeight?: number;
   isEdited?: boolean;
+  urls?: string[];
+  isUrlOnly?: boolean;
   replyTo?: {
     eventId: string;
     senderName: string;
@@ -481,6 +632,8 @@ interface ChatMessage {
     ts: number;
   }[];
   isFile?: boolean;
+  msgtype?: string;
+  mimetype?: string;
 }
 
 const messages = ref<ChatMessage[]>([]);
@@ -507,15 +660,31 @@ let lastRoomId: string | undefined = undefined;
 
 // --- Computed ---
 
+const isVoiceOverlayVisible = computed(() => {
+  return store.activeVoiceCall?.roomId === roomId.value;
+});
+
 const roomId = computed(() => {
   const params = route.params.id;
-  // Catch-all route gives an array of path segments; join them back with '/'
-  return Array.isArray(params) ? params.join('/') : params;
+  if (Array.isArray(params)) {
+    // For space routes like /chat/spaces/[spaceId]/[roomId], the actual room we want to load
+    // is the last segment of the catch-all route.
+    return params[params.length - 1];
+  }
+  return params;
 });
 
 // Create a reactive, newest-first array for the template
+const isActiveCallBarVisible = computed(() => {
+  return !!store.activeVoiceCall;
+});
+
 const displayMessages = computed(() => {
-  return [...messages.value].reverse();
+  return messages.value.map(msg => ({
+    ...msg,
+    urls: extractUrls(msg.body),
+    isUrlOnly: isUrlOnly(msg.body)
+  })).reverse();
 });
 
 const roomAvatarUrl = computed(() => {
@@ -786,6 +955,8 @@ function mapEvent(event: MatrixEvent): ChatMessage | null {
     reactions: reactions.length > 0 ? reactions : undefined,
     readReceipts: readReceipts.length > 0 ? readReceipts : undefined,
     isFile,
+    msgtype: content.msgtype,
+    mimetype: content.info?.mimetype,
   };
 }
 
@@ -1184,9 +1355,35 @@ function onRoomAdded(room: Room) {
 }
 
 onMounted(() => {
-  if (store.client) {
-    initRoom();
+  if (store.client && roomId.value) {
+    initRoom(); // Assuming initializeRoom is a typo and it should be initRoom
     setupListener();
+  }
+});
+
+// Watch for room changes to track last opened
+watch(room, (newRoom) => {
+  if (newRoom && store.client) {
+    // Determine context based on route
+    let context: 'dm' | 'rooms' | string | null = null;
+    
+    if (route.path.startsWith('/chat/dms')) {
+      context = 'dm';
+    } else if (route.path.startsWith('/chat/rooms')) {
+      context = 'rooms';
+    } else if (route.path.startsWith('/chat/spaces')) {
+      // For spaces, context is the space ID (first segment of id catch-all)
+      const params = route.params.id;
+      if (Array.isArray(params) && params.length > 0) {
+        context = params[0] as string;
+      } else if (typeof params === 'string') {
+        context = params;
+      }
+    }
+
+    if (context && !newRoom.isSpaceRoom()) {
+      store.setLastVisitedRoom(context, newRoom.roomId);
+    }
   }
 });
 

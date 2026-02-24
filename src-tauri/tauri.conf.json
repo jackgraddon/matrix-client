@@ -13,14 +13,16 @@
     "windows": [
       {
         "label": "main",
-        "title": "Matrix Client",
+        "title": "Ruby Chat",
         "useHttpsScheme": true,
         "width": 1200,
         "minWidth": 1000,
         "height": 800,
         "minHeight": 500,
         "resizable": true,
-        "decorations": false
+        "decorations": true,
+        "hiddenTitle": true,
+        "titleBarStyle": "Overlay"
       }
     ],
     "security": {

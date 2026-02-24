@@ -1,125 +1,107 @@
 <template>
-    <div class="flex flex-row h-full overflow-hidden">
-        <!-- <UiResizablePanelGroup class="flex-1" direction="horizontal"> -->
-            <!-- Sidebar -->
-            <div>
-            <!-- <UiResizablePanel :min-size="15" :default-size="25" :max-size="30"> -->
-                <aside class="flex h-full flex-col w-[300px]">
-                    <header class="h-16 flex items-center px-4 gap-2 justify-between">
-                        <h2 class="text-lg font-semibold flex items-center gap-2">
-                            <Icon name="solar:chat-round-dots-bold" class="h-5 w-5" />
-                            Ruby Chat
-                        </h2>
-                        <div class="flex items-center gap-2">
-                            <ColorModeToggle />
-                        </div>
-                    </header>
-                    <nav class="grow flex-1 flex flex-row p-2 gap-2 overflow-y-auto">
-                        <div class="flex flex-col gap-2 flex-0">
-                            <UiButton
-                                v-for="link in links"
-                                :key="link.name"
-                                :disabled="isLinkActive(link.to)"
-                                :variant="isLinkActive(link.to) ? 'secondary' : 'ghost'"
-                                as-child
-                            >
-                                <NuxtLink :to="link.to" :aria-label="link.name">
-                                    <Icon
-                                        :name="isLinkActive(link.to) ? `${link.icon}-bold` : `${link.icon}-linear`"
-                                        class="h-4 w-4"
-                                    />
-                                    <!-- {{ link.name }} -->
-                                </NuxtLink>
-                            </UiButton>
-                        </div>
-                        <div class="flex flex-col gap-2 flex-1">
-                            <!-- Sidebar Home actions -->
-                            <template v-if="isLinkActive('/chat')">
-                                <UiButton variant="default" @click="store.openGlobalSearchModal()">
-                                    <Icon name="solar:add-circle-line-duotone" class="h-4 w-4" />
-                                    Find or start a chat
-                                </UiButton>
-                                <!-- <UiButton 
-                                    v-for="action in homeActions"
-                                    :key="action.name"
-                                    :disabled="isLinkActive(action.to)"
-                                    :variant="isLinkActive(action.to) ? 'secondary' : 'ghost'"
-                                    as-child
-                                >
-                                    <NuxtLink :to="action.to" :aria-label="action.name">
-                                        <Icon
-                                            :name="isLinkActive(action.to) ? `${action.icon}-bold` : `${action.icon}-linear`"
-                                            class="h-4 w-4"
-                                        />
-                                    </NuxtLink>
-                                </UiButton> -->
-                            </template>
-                            <!-- Sidebar DM List -->
-                            <UiButton 
-                                v-if="isLinkActive('/chat/people')"
-                                v-for="friend in friends"
-                                :key="friend.roomId"
-                                :disabled="isLinkActive(`/chat/people/${friend.roomId}`)"
-                                :variant="isLinkActive(`/chat/people/${friend.roomId}`) ? 'secondary' : 'ghost'"
-                                class="justify-start"
-                                as-child
-                            >
-                                <NuxtLink :to="`/chat/people/${friend.roomId}`">
-                                    <MatrixAvatar
-                                        :mxc-url="friend.avatarUrl"
-                                        :name="friend.name"
-                                        class="h-6 w-6 mr-1"
-                                        :size="64"
-                                    />
-                                    {{ friend.name }}
-                                    <div v-if="friend.unreadCount > 0" class="ml-auto bg-primary text-primary-foreground text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-                                        {{ friend.unreadCount }}
-                                    </div>
-                                </NuxtLink>
-                            </UiButton>
-                            <!-- Sidebar Room List -->
-                            <UiButton 
-                                v-if="isLinkActive('/chat/rooms')"
-                                v-for="room in rooms"
-                                :key="room.roomId"
-                                :disabled="isLinkActive(`/chat/rooms/${room.roomId}`)"
-                                :variant="isLinkActive(`/chat/rooms/${room.roomId}`) ? 'secondary' : 'ghost'"
-                                class="justify-start"
-                                as-child
-                            >
-                                <NuxtLink :to="`/chat/rooms/${room.roomId}`">
-                                    <MatrixAvatar
-                                        :mxc-url="room.avatarUrl"
-                                        :name="room.name"
-                                        class="h-6 w-6 mr-1"
-                                        :size="64"
-                                    />
-                                    {{ room.name }}
-                                    <div v-if="room.unreadCount > 0" class="ml-auto bg-primary text-primary-foreground text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-                                        {{ room.unreadCount }}
-                                    </div>
-                                </NuxtLink>
-                            </UiButton>
-                        </div>
-                    </nav>
-                    <footer class="p-2">
-                        <UiButton variant="ghost" as-child>
-                            <div class="p-4 h-fit w-full flex justify-start cursor-pointer" @click="navigateTo('/chat/settings')">
-                                <UserProfile />
-                            </div>
-                        </UiButton>
-                    </footer>
-                </aside>
-            <!-- </UiResizablePanel> -->
-            </div>
-            <!-- <UiResizableHandle class="bg-transparent" /> -->
-            <!-- Main Content -->
+    <div class="flex flex-row h-full overflow-hidden bg-neutral-200 dark:bg-background">
+        <!-- Servers Sidebar (Guild Bar) -->
+        <aside class="bg-background dark:bg-neutral-900 rounded-lg ml-2 mb-2 flex flex-col items-center p-2 gap-2 shrink-0 overflow-y-auto overflow-x-hidden">
+            <!-- Home Button -->
+            <UiButton 
+                class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 overflow-hidden flex items-center justify-center shrink-0" 
+                :class="isLinkActive('/chat') ? 'rounded-[16px]' : ''"
+                :variant="isLinkActive('/chat') ? 'default' : 'secondary'"
+                as-child
+            >
+                <NuxtLink to="/chat" aria-label="Home">
+                    <Icon name="solar:home-angle-bold" class="h-6 w-6" />
+                </NuxtLink>
+            </UiButton>
+
+            <!-- DMs Button -->
+            <UiButton 
+                class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 overflow-hidden flex items-center justify-center shrink-0" 
+                :class="isLinkActive('/chat/dms') ? 'rounded-[16px]' : ''"
+                :variant="isLinkActive('/chat/dms') ? 'default' : 'secondary'"
+                as-child
+            >
+                <NuxtLink :to="store.lastVisitedRooms.dm ? `/chat/dms/${store.lastVisitedRooms.dm}` : '/chat/dms'" aria-label="Direct Messages">
+                    <Icon name="solar:users-group-rounded-bold" class="h-6 w-6" />
+                </NuxtLink>
+            </UiButton>
+
+            <!-- Rooms Button -->
+            <UiButton 
+                class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 overflow-hidden flex items-center justify-center shrink-0" 
+                :class="isLinkActive('/chat/rooms') ? 'rounded-[16px]' : ''"
+                :variant="isLinkActive('/chat/rooms') ? 'default' : 'secondary'"
+                as-child
+            >
+                <NuxtLink :to="store.lastVisitedRooms.rooms ? `/chat/rooms/${store.lastVisitedRooms.rooms}` : '/chat/rooms'" aria-label="Rooms">
+                    <Icon name="solar:inbox-archive-bold" class="h-6 w-6" />
+                </NuxtLink>
+            </UiButton>
+
+            <div class="w-8 h-[2px] bg-neutral-300 dark:bg-neutral-800 shrink-0" />
+
+            <!-- Server List -->
+            <UiContextMenu v-for="server in store.hierarchy.rootSpaces" :key="server.roomId">
+                <UiContextMenuTrigger>
+                    <UiButton 
+                        variant="ghost" 
+                        class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 overflow-hidden group shrink-0"
+                        :class="{ 'rounded-[16px]': isLinkActive(`/chat/spaces/${server.roomId}`) }"
+                        as-child
+                    >
+                        <NuxtLink 
+                            :to="store.lastVisitedRooms.spaces[server.roomId] 
+                                ? `/chat/spaces/${server.roomId}/${store.lastVisitedRooms.spaces[server.roomId]}` 
+                                : `/chat/spaces/${server.roomId}`" 
+                            :aria-label="server.name"
+                        >
+                            <MatrixAvatar 
+                                :mxc-url="server.getMxcAvatarUrl()" 
+                                :name="server.name" 
+                                class="h-full w-full border-0 rounded-none group-hover:rounded-none" 
+                                :size="64"
+                            />
+                        </NuxtLink>
+                    </UiButton>
+                </UiContextMenuTrigger>
+                <UiContextMenuContent>
+                    <UiContextMenuItem v-if="store.pinnedSpaces.includes(server.roomId)" @click="store.unpinSpace(server.roomId)" class="text-destructive focus:text-destructive">
+                        <Icon name="solar:pin-broken-bold" class="mr-2 h-4 w-4" />
+                        Unpin from Sidebar
+                    </UiContextMenuItem>
+                    <UiContextMenuItem v-else disabled>
+                        <Icon name="solar:info-circle-bold" class="mr-2 h-4 w-4" />
+                        Root Space
+                    </UiContextMenuItem>
+                </UiContextMenuContent>
+            </UiContextMenu>
+
+            <!-- Add Server / Explorer -->
+            <UiButton 
+                variant="secondary"
+                class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 flex items-center justify-center shrink-0 hover:bg-neutral-300 dark:hover:bg-neutral-800" 
+                @click="store.openGlobalSearchModal()"
+            >
+                <Icon name="solar:add-circle-linear" class="h-6 w-6" />
+            </UiButton>
+        </aside>
+
+        <!-- Sidebar -->
+        <ChatSidebar ref="sidebarRef"/>
+
+        <!-- Main Content -->
             <!-- <UiResizablePanel :min-size="70" :default-size="75" :max-size="85"> -->
-            <main class="flex flex-1 h-full max-w-full flex-col">
-                <div class="overflow-auto mb-2 mr-2 p-5 rounded-lg h-full bg-neutral-100 dark:bg-neutral-900">
-                    <NuxtPage />
-                </div>
-            </main>
+        <main class="flex flex-1 h-full max-w-full flex-col min-w-0 min-h-0">
+            <div class="overflow-hidden mb-2 mr-2 p-5 rounded-lg h-full bg-neutral-100 dark:bg-neutral-900 min-w-0 flex flex-col min-h-0">
+                <NuxtPage class="flex-1 min-h-0" />
+            </div>
+        </main>
+        
+        <Transition name="slide-pane">
+            <div v-if="store.isMemberListVisible && currentRoom" class="mb-2 mr-2 overflow-hidden shrink-0">
+                <RoomMemberList :room="(currentRoom as any)" class="h-full" />
+            </div>
+        </Transition>
             <!-- </UiResizablePanel> -->
         <!-- </UiResizablePanelGroup> -->
     </div>
@@ -137,91 +119,28 @@ import { Room, ClientEvent, RoomEvent, EventType, NotificationCountType, MatrixC
 import { PushProcessor } from 'matrix-js-sdk/lib/pushprocessor';
 const route = useRoute();
 
-const links = [
-    { name: "Home", to: "/chat", icon: "solar:home-angle" },
-    { name: "People", to: "/chat/people", icon: "solar:users-group-rounded" },
-    { name: "Rooms", to: "/chat/rooms", icon: "solar:inbox-archive" },
-];
-
 const store = useMatrixStore();
 useGameActivity(); // Initialize game detection at layout level
-import MatrixAvatar from '~/components/MatrixAvatar.vue';
 
-// Reactive state for the UI
-interface MappedRoom {
-  roomId: string;
-  name: string;
-  lastMessage: string;
-  lastActive: number;
-  avatarUrl?: string | null;
-  unreadCount: number;
-}
+const sidebarRef = ref<any>(null);
 
-const friends = ref<(MappedRoom & { dmUserId: string })[]>([]);
-const rooms = ref<MappedRoom[]>([]);
-
-// Helper to format rooms for display, split by type
-const updateRooms = () => {
-  if (!store.client) return;
-  
-  // Get all joined rooms
-  const matrixRooms = store.client.getVisibleRooms();
-
-  // Build a set of DM room IDs from m.direct account data
-  const directEvent = store.client.getAccountData(EventType.Direct);
-  const directContent: Record<string, string[]> = directEvent ? directEvent.getContent() as Record<string, string[]> : {};
-  const dmRoomIds = new Set<string>();
-  for (const roomIds of Object.values(directContent)) {
-    for (const id of roomIds) dmRoomIds.add(id);
+const roomId = computed(() => {
+  const params = route.params.id;
+  if (Array.isArray(params)) {
+    return params[params.length - 1];
   }
+  return params;
+});
 
-  const dmList: (MappedRoom & { dmUserId: string })[] = [];
-  const roomList: MappedRoom[] = [];
+const currentRoom = computed(() => {
+  if (!roomId.value || !store.client) return null;
+  return store.client.getRoom(roomId.value as string);
+});
 
-  for (const room of matrixRooms) {
-    // Skip spaces — they aren't chat rooms
-    if (room.isSpaceRoom()) continue;
+const friends = computed(() => sidebarRef.value?.friends ?? []);
+const rooms = computed(() => sidebarRef.value?.rooms ?? []);
 
-    // Attempt to get the last message event for the preview text
-    const lastEvent = room.timeline.length > 0 
-      ? room.timeline[room.timeline.length - 1] 
-      : null;
-
-    const mapped: MappedRoom = {
-      roomId: room.roomId,
-      name: room.name || 'Unnamed Room',
-      lastMessage: lastEvent ? lastEvent.getContent().body : 'No messages',
-      lastActive: room.getLastActiveTimestamp() ?? 0,
-      avatarUrl: room.getMxcAvatarUrl(),
-      unreadCount: room.getUnreadNotificationCount(NotificationCountType.Total) ?? 0,
-    };
-
-    if (dmRoomIds.has(room.roomId)) {
-      // Find which user this DM is with
-      const dmUserId = Object.entries(directContent)
-        .find(([, ids]) => ids.includes(room.roomId))?.[0] ?? '';
-      
-      // Try to get the specific user's avatar for DMs
-      let avatarUrl = mapped.avatarUrl;
-      const user = store.client.getUser(dmUserId);
-      if (user?.avatarUrl) {
-          avatarUrl = user.avatarUrl;
-      }
-
-      dmList.push({ ...mapped, dmUserId, avatarUrl });
-    } else {
-      roomList.push(mapped);
-    }
-  }
-
-  // Sort both lists newest-first
-  dmList.sort((a, b) => b.lastActive - a.lastActive);
-  roomList.sort((a, b) => b.lastActive - a.lastActive);
-
-  // Update the reactive state
-  friends.value = dmList;
-  rooms.value = roomList;
-};
+const updateRooms = () => {};
 
 // Hook up listeners so the UI updates when messages come in
 const handleTimelineEvent = (event: MatrixEvent, room: Room | undefined, toStartOfTimeline: boolean | undefined) => {
@@ -264,8 +183,16 @@ const setupListeners = () => {
   updateRooms();
 };
 
+const handleKeyDown = (event: KeyboardEvent) => {
+    if ((event.metaKey || event.ctrlKey) && event.key === 'k') {
+        event.preventDefault();
+        store.openGlobalSearchModal();
+    }
+};
+
 // 1. If client is ready on mount, set it up
 onMounted(() => {
+  window.addEventListener('keydown', handleKeyDown);
   if (store.client) {
     setupListeners();
   }
@@ -340,6 +267,7 @@ watch(
 
 // 3. Clean up listeners when leaving the page to prevent memory leaks
 onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeyDown);
   if (store.client) {
     store.client.removeListener(ClientEvent.Room, updateRooms);
     store.client.removeListener(RoomEvent.Timeline, handleTimelineEvent);
@@ -353,3 +281,18 @@ const isLinkActive = (to: string) => {
     return route.path.startsWith(to);
 };
 </script>
+
+<style scoped>
+.slide-pane-enter-active,
+.slide-pane-leave-active {
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  max-width: 240px; /* Width of RoomMemberList */
+}
+
+.slide-pane-enter-from,
+.slide-pane-leave-to {
+  max-width: 0;
+  opacity: 0;
+  transform: translateX(10px);
+}
+</style>

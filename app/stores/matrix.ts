@@ -8,11 +8,19 @@ import type { VerificationRequest, Verifier, ShowSasCallbacks } from 'matrix-js-
 import { deriveRecoveryKeyFromPassphrase } from 'matrix-js-sdk/lib/crypto-api/key-passphrase';
 import { decodeRecoveryKey } from 'matrix-js-sdk/lib/crypto-api/recovery-key';
 import type { IdTokenClaims } from 'oidc-client-ts';
-import { getOidcConfig, registerClient, getLoginUrl, completeLoginFlow, getHomeserverUrl } from '~/utils/matrix-auth';
+import { getOidcConfig, registerClient, getLoginUrl, completeLoginFlow, getHomeserverUrl, getDeviceDisplayName } from '~/utils/matrix-auth';
 // Tauri imports - explicit import is required as per user confirmation/config check
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { hostname, type, version } from '@tauri-apps/plugin-os';
 import { MsgType, EventType } from 'matrix-js-sdk';
+import { useRouter } from '#app';
+
+export interface LastVisitedRooms {
+  dm: string | null;
+  rooms: string | null;
+  spaces: Record<string, string>;
+}
 
 // Enhanced HTML for OAuth Loopback Response
 const authResponseHtml = `
@@ -87,6 +95,9 @@ function generateNonce(): string {
     .join('');
 }
 
+// Outside your Pinia store, create a memory cache
+const secretStorageKeys = new Map<string, Uint8Array<ArrayBuffer>>();
+
 export const useMatrixStore = defineStore('matrix', {
   state: () => ({
     client: null as sdk.MatrixClient | null,
@@ -101,10 +112,11 @@ export const useMatrixStore = defineStore('matrix', {
     // Verification state
     isCrossSigningReady: false,
     isSecretStorageReady: false,
-    verificationRequest: null as VerificationRequest | null,
+    activeVerificationRequest: null as VerificationRequest | null,
     verificationInitiatedByMe: false,
-    sasEvent: null as ShowSasCallbacks | null,
+    activeSas: null as ShowSasCallbacks | null,
     isVerificationCompleted: false,
+    verificationPhase: null as VerificationPhase | null,
     verificationModalOpen: false,
     globalSearchModalOpen: false,
     // Secret Storage / Backup Code Verification
@@ -113,7 +125,12 @@ export const useMatrixStore = defineStore('matrix', {
       keyId: string,
       keyInfo: any // SecretStorageKeyDescription
     } | null,
-    secretStorageKeyCache: {} as Record<string, Uint8Array<ArrayBuffer>>,
+    secretStorageKeyCache: {} as Record<string, Uint8Array>,
+    secretStorageSetup: null as {
+      defaultKeyId: string;
+      needsPassphrase: boolean;
+      passphraseInfo?: any;
+    } | null,
     // Activity Status (Game Detection)
     activityStatus: null as string | null,
     activityDetails: null as { name: string; is_running: boolean } | null,
@@ -121,7 +138,170 @@ export const useMatrixStore = defineStore('matrix', {
 
     customStatus: null as string | null,
     isLoggingIn: false,
+    isRestoringKeys: false,
+
+    lastVisitedRooms: (typeof localStorage !== 'undefined' ?
+      JSON.parse(localStorage.getItem('matrix_last_visited_rooms') || '{"dm":null,"rooms":null,"spaces":{}}') :
+      { dm: null, rooms: null, spaces: {} }) as LastVisitedRooms,
+    hierarchyTrigger: 0,
+    activeVoiceCall: null as {
+      roomId: string;
+      roomName: string;
+      url: string;
+      token: string;
+    } | null,
+    isMemberListVisible: (typeof localStorage !== 'undefined' ?
+      localStorage.getItem('matrix_member_list_visible') === 'true' :
+      false) as boolean,
+    isIdle: false,
+    pinnedSpaces: [] as string[],
   }),
+
+  getters: {
+    isVerificationRequested: (state) => state.verificationPhase === VerificationPhase.Requested,
+    isVerificationReady: (state) => state.verificationPhase === VerificationPhase.Ready,
+    isVerificationStarted: (state) => state.verificationPhase === VerificationPhase.Started,
+    getVoiceParticipants: (state) => (roomId: string) => {
+      // Access hierarchyTrigger for reactivity
+      state.hierarchyTrigger; // This line is for reactivity, not direct use
+
+      if (!state.client) return [];
+
+      const room = state.client.getRoom(roomId);
+      if (!room) return [];
+
+      const rtcSession = state.client.matrixRTC.getRoomSession(room);
+
+      // Filter for non-expired memberships
+      const participants = rtcSession.memberships
+        .filter((member: any) => {
+          // Safeguard: If this is US and we don't think we're in a call, hide us immediately
+          if (member.userId === state.client?.getUserId() && state.activeVoiceCall?.roomId !== roomId) {
+            return false;
+          }
+
+          const isExp = member.isExpired?.() ?? false;
+          const isLeave = member.membership === 'leave';
+          return !isExp && !isLeave;
+        })
+        .map((member: any) => {
+          const user = room.getMember(member.sender);
+          return {
+            id: member.sender,
+            name: user?.name || member.sender.split(':')[0].replace('@', ''), // Fallback to displayable username
+            avatarUrl: user?.getMxcAvatarUrl() || null
+          };
+        });
+
+      return participants;
+    },
+
+    hierarchy(state) {
+      // Access hierarchyTrigger for reactivity
+      state.hierarchyTrigger;
+
+      if (!state.client) return { rootSpaces: [], directMessages: [], orphanRooms: [] };
+
+      const allRooms = state.client.getVisibleRooms();
+      const spaces: sdk.Room[] = [];
+      const normalRooms: sdk.Room[] = [];
+
+      // Separate by type
+      allRooms.forEach(room => {
+        if (room.isSpaceRoom()) {
+          spaces.push(room);
+        } else {
+          normalRooms.push(room);
+        }
+      });
+
+      // Map the Space Hierarchy
+      const childRoomIds = new Set<string>();
+      const spacesWithChildren = new Set<string>(); // To track active servers
+
+      spaces.forEach(space => {
+        const childEvents = space.currentState.getStateEvents('m.space.child');
+        let hasValidChild = false;
+
+        childEvents.forEach(event => {
+          const content = event.getContent();
+          if (content && Array.isArray(content.via) && content.via.length > 0) {
+            childRoomIds.add(event.getStateKey() as string);
+            hasValidChild = true;
+          }
+        });
+
+        if (hasValidChild) {
+          spacesWithChildren.add(space.roomId);
+        }
+      });
+
+      // Also check m.space.parent in the rooms themselves for robustness
+      allRooms.forEach(room => {
+        const parentEvents = room.currentState.getStateEvents('m.space.parent');
+        parentEvents.forEach(event => {
+          const content = event.getContent();
+          // If a canonical parent is set, mark it as a child
+          if (content && content.via) {
+            childRoomIds.add(room.roomId);
+          }
+        });
+      });
+
+      // Find the DMs (Read from the user's account data)
+      const mDirectEvent = state.client.getAccountData(sdk.EventType.Direct);
+      const mDirectContent = mDirectEvent ? mDirectEvent.getContent() : {};
+      const dmRoomIds = new Set<string>();
+
+      Object.values(mDirectContent).forEach((roomList: any) => {
+        if (Array.isArray(roomList)) {
+          roomList.forEach(roomId => dmRoomIds.add(roomId));
+        }
+      });
+
+      // --- THE FINAL CATEGORIES ---
+
+      // Servers: Spaces that have NO parents AND HAVE at least one child
+      const rootSpaces = spaces.filter(space =>
+        !childRoomIds.has(space.roomId) && spacesWithChildren.has(space.roomId)
+      );
+
+      // Pinned Spaces: Spaces that the user has pinned
+      const pinnedRooms = state.pinnedSpaces
+        .map(roomId => state.client?.getRoom(roomId))
+        .filter((room): room is sdk.Room => !!room && room.isSpaceRoom());
+
+      // Merge and deduplicate
+      const allRootSpaces = [...rootSpaces];
+      pinnedRooms.forEach(room => {
+        if (!allRootSpaces.find(s => s.roomId === room.roomId)) {
+          allRootSpaces.push(room);
+        }
+      });
+
+      // DMs: Normal rooms that exist in the m.direct payload
+      const directMessages = normalRooms.filter(room =>
+        dmRoomIds.has(room.roomId)
+      );
+
+      // Orphan Rooms: Normal rooms that are NOT in a space, and are NOT DMs
+      const orphanRooms = normalRooms.filter(room =>
+        !childRoomIds.has(room.roomId) && !dmRoomIds.has(room.roomId)
+      );
+
+      return {
+        rootSpaces: allRootSpaces,
+        directMessages,
+        orphanRooms,
+      };
+    },
+
+    activeVoiceRoom(state) {
+      if (!state.client || !state.activeVoiceCall) return null;
+      return state.client.getRoom(state.activeVoiceCall.roomId);
+    },
+  },
+
   actions: {
     initGameDetection() {
       // Check if localStorage has "game_activity_enabled"
@@ -208,23 +388,12 @@ export const useMatrixStore = defineStore('matrix', {
 
           if (is_running) {
             this.activityDetails = { name, is_running };
-            // Only update presence if no custom status is set
-            if (!this.customStatus) {
-              this.client?.setPresence({
-                presence: 'online',
-                status_msg: `Playing ${name}`
-              });
-            }
+            this.refreshPresence();
           } else {
             // Game stopped
             if (this.activityDetails?.name === name) {
               this.activityDetails = null;
-              if (!this.customStatus) {
-                this.client?.setPresence({
-                  presence: 'online',
-                  status_msg: ''
-                });
-              }
+              this.refreshPresence();
             }
           }
         });
@@ -235,13 +404,43 @@ export const useMatrixStore = defineStore('matrix', {
 
     setCustomStatus(status: string | null) {
       this.customStatus = status;
-      // If we set a custom status, push it to Matrix immediately
-      if (this.client && this.isClientReady) {
-        this.client.setPresence({
-          presence: 'online',
-          status_msg: status || (this.activityDetails?.is_running ? `Playing ${this.activityDetails.name}` : '')
-        });
+      this.refreshPresence();
+    },
+
+    async goOffline() {
+      if (this.client && this.isAuthenticated) {
+        console.log('[MatrixStore] Sending offline flare...');
+        try {
+          await this.client.setPresence({
+            presence: 'offline',
+            status_msg: this.customStatus || (this.activityDetails?.is_running ? `Playing ${this.activityDetails.name}` : '')
+          });
+        } catch (e) {
+          console.error('[MatrixStore] Failed to send offline flare:', e);
+        }
       }
+    },
+
+    setIdle(idle: boolean) {
+      if (this.isIdle === idle) return;
+      this.isIdle = idle;
+      console.log('[MatrixStore] User idle status changed:', idle);
+      this.refreshPresence();
+    },
+
+    refreshPresence() {
+      if (!this.client || !this.isAuthenticated || !this.isClientReady) return;
+
+      const presence = this.isIdle ? 'unavailable' : 'online';
+      const status_msg = this.customStatus || (this.activityDetails?.is_running ? `Playing ${this.activityDetails.name}` : '');
+
+      console.log(`[MatrixStore] Refreshing presence: ${presence} ("${status_msg}")`);
+      this.client.setPresence({ presence, status_msg });
+    },
+
+    toggleMemberList() {
+      this.isMemberListVisible = !this.isMemberListVisible;
+      localStorage.setItem('matrix_member_list_visible', String(this.isMemberListVisible));
     },
 
     cancelLogin(errorReason?: string | null) {
@@ -442,31 +641,31 @@ export const useMatrixStore = defineStore('matrix', {
         tokenRefreshFunction,
         cryptoStore: new sdk.IndexedDBCryptoStore(window.indexedDB, "matrix-js-sdk-crypto"),
         cryptoCallbacks: {
-          getSecretStorageKey: async ({ keys }, name) => {
-            console.log(`getSecretStorageKey called for ${name}`, keys);
+          getSecretStorageKey: async ({ keys }: { keys: Record<string, any> }): Promise<[string, Uint8Array<ArrayBuffer>] | null> => {
+            const keyIds = Object.keys(keys);
+            const keyId = keyIds.find(id => secretStorageKeys.get(id) instanceof Uint8Array);
+            if (!keyId) {
+              // This tells the SDK to pause and wait!
+              return new Promise<[string, Uint8Array<ArrayBuffer>] | null>((resolve, reject) => {
+                const firstKeyId = Object.keys(keys)[0];
+                if (!firstKeyId) {
+                  resolve(null);
+                  return;
+                }
+                const keyInfo = keys[firstKeyId];
 
-            for (const keyId of Object.keys(keys)) {
-              if (this.secretStorageKeyCache[keyId]) {
-                return [keyId, this.secretStorageKeyCache[keyId]];
-              }
+                this.secretStoragePrompt = {
+                  promise: { resolve, reject: (err: any) => reject(err) },
+                  keyId: firstKeyId,
+                  keyInfo
+                } as any;
+              }) as Promise<[string, Uint8Array<ArrayBuffer>] | null>;
             }
-
-            return new Promise<[string, Uint8Array<ArrayBuffer>] | null>((resolve, reject) => {
-              const keyId = Object.keys(keys)[0];
-              if (!keyId) {
-                // Should not happen if keys are requested properly, but handle it safely
-                resolve(null);
-                return;
-              }
-              const keyInfo = keys[keyId];
-
-              this.secretStoragePrompt = {
-                promise: { resolve, reject },
-                keyId,
-                keyInfo
-              };
-            });
-          }
+            return [keyId, secretStorageKeys.get(keyId)!] as [string, Uint8Array<ArrayBuffer>];
+          },
+          cacheSecretStorageKey: (keyId: string, _keyInfo: any, privateKey: Uint8Array) => {
+            secretStorageKeys.set(keyId, privateKey as Uint8Array<ArrayBuffer>);
+          },
         }
       });
 
@@ -509,22 +708,29 @@ export const useMatrixStore = defineStore('matrix', {
             tokenRefreshFunction,
             cryptoStore: new sdk.IndexedDBCryptoStore(window.indexedDB, 'matrix-js-sdk-crypto'),
             cryptoCallbacks: {
-              getSecretStorageKey: async ({ keys }, name) => {
-                for (const keyId of Object.keys(keys)) {
-                  if (this.secretStorageKeyCache[keyId]) {
-                    return [keyId, this.secretStorageKeyCache[keyId]];
-                  }
+              getSecretStorageKey: async ({ keys }: { keys: Record<string, any> }): Promise<[string, Uint8Array<ArrayBuffer>] | null> => {
+                const keyIds = Object.keys(keys);
+                const keyId = keyIds.find(id => secretStorageKeys.get(id) instanceof Uint8Array);
+                if (!keyId) {
+                  return new Promise<[string, Uint8Array<ArrayBuffer>] | null>((resolve, reject) => {
+                    const firstKeyId = Object.keys(keys)[0];
+                    if (!firstKeyId) {
+                      resolve(null);
+                      return;
+                    }
+                    const keyInfo = keys[firstKeyId];
+                    this.secretStoragePrompt = {
+                      promise: { resolve, reject: (err: any) => reject(err) },
+                      keyId: firstKeyId,
+                      keyInfo
+                    } as any;
+                  }) as Promise<[string, Uint8Array<ArrayBuffer>] | null>;
                 }
-                return new Promise<[string, Uint8Array<ArrayBuffer>] | null>((resolve, reject) => {
-                  const keyId = Object.keys(keys)[0];
-                  if (!keyId) {
-                    resolve(null);
-                    return;
-                  }
-                  const keyInfo = keys[keyId];
-                  this.secretStoragePrompt = { promise: { resolve, reject }, keyId, keyInfo };
-                });
-              }
+                return [keyId, secretStorageKeys.get(keyId)!] as [string, Uint8Array<ArrayBuffer>];
+              },
+              cacheSecretStorageKey: (keyId: string, _keyInfo: any, privateKey: Uint8Array) => {
+                secretStorageKeys.set(keyId, privateKey as Uint8Array<ArrayBuffer>);
+              },
             }
           });
           // Retry init
@@ -549,33 +755,77 @@ export const useMatrixStore = defineStore('matrix', {
         this.isSyncing = state === sdk.SyncState.Syncing || state === sdk.SyncState.Prepared;
         if (state === sdk.SyncState.Prepared) {
           this.isClientReady = true;
-          // Optional: Trigger a fresh presence update now that we are ready
-          if (this.activityDetails?.is_running) {
-            this.client?.setPresence({ presence: 'online', status_msg: `Playing ${this.activityDetails.name}` });
-          }
+          // Refresh presence now that we are ready
+          this.refreshPresence();
         }
       });
 
+      // Listen for MatrixRTC memberships to update sidebar icons/lists
+      this.client.on(sdk.RoomStateEvent.Events, (event) => {
+        const type = event.getType();
+        if (type === 'org.matrix.msc3401.call.member' || type === 'm.call.member' || type === 'm.rtc.member') {
+          console.log(`[Voice] State event received: ${type}, trigger refresh`);
+          this.hierarchyTrigger++;
+        }
+      });
+
+      this.client.on(sdk.ClientEvent.Event, (event) => {
+        const type = event.getType();
+        if (type === 'org.matrix.msc3401.call.member' || type === 'm.call.member' || type === 'm.rtc.member') {
+          console.log(`[Voice] Event received: ${type}, trigger refresh`);
+          this.hierarchyTrigger++;
+        }
+      });
+
+      // Sync device name to Matrix homeserver (re-overwrites "Unknown Device")
+      this.updateDeviceName();
+
       if (cryptoReady) {
-        // Listen for incoming verification requests from other devices
-        this.client.on(CryptoEvent.VerificationRequestReceived, (request: VerificationRequest) => {
-          if (request.isSelfVerification) {
-            this.verificationRequest = request;
-            this.verificationInitiatedByMe = false;
-            this._setupVerificationListeners(request);
-          }
-        });
-
-        // Listen for security status changes to update UI in real-time
-        this.client.on(CryptoEvent.KeysChanged, () => this.checkDeviceVerified());
-        this.client.on(CryptoEvent.UserTrustStatusChanged, () => this.checkDeviceVerified());
-
         // Check if this device is already verified (initial check)
         this.checkDeviceVerified();
       }
 
       // Fetch profile after login
       this.fetchUserProfile(userId);
+      this.checkSecretStorageSetup();
+      this.setupVerificationListeners();
+      this.setupHierarchyListeners();
+    },
+
+    setupHierarchyListeners() {
+      if (!this.client) return;
+
+      this.client.on(sdk.ClientEvent.Room, () => this.updateHierarchy());
+      this.client.on(sdk.ClientEvent.AccountData, (event) => {
+        if (event.getType() === sdk.EventType.Direct) this.updateHierarchy();
+        if (event.getType() === 'cc.jackg.ruby.pinned_spaces') this.updatePinnedSpaces();
+      });
+      // Listen for parent/child changes
+      this.client.on(sdk.RoomStateEvent.Events, (event) => {
+        const type = event.getType();
+        if (type === 'm.space.child' || type === 'm.space.parent') {
+          this.updateHierarchy();
+        }
+      });
+
+      // Initial trigger
+      this.updatePinnedSpaces();
+      this.updateHierarchy();
+    },
+
+    updatePinnedSpaces() {
+      if (!this.client) return;
+      const event = (this.client as any).getAccountData('cc.jackg.ruby.pinned_spaces');
+      if (event) {
+        const content = event.getContent();
+        if (content && Array.isArray(content.rooms)) {
+          this.pinnedSpaces = content.rooms;
+        }
+      }
+    },
+
+    updateHierarchy() {
+      this.hierarchyTrigger++;
     },
 
     // Action to get avatar and name
@@ -599,25 +849,192 @@ export const useMatrixStore = defineStore('matrix', {
       }
     },
 
+    async updateDeviceName() {
+      if (!this.client) return;
+
+      try {
+        // 1. Check if the SDK knows the device ID
+        let deviceId = this.client.getDeviceId();
+
+        // 2. If missing (standard for OIDC), ask the server who we are!
+        if (!deviceId) {
+          const whoami = await this.client.whoami();
+          deviceId = whoami.device_id ?? null;
+
+          if (!deviceId) {
+            console.warn('Cannot update device name: Still no device ID returned from the server.');
+            return;
+          }
+
+          // CRITICAL: Save this device ID to your local storage!
+          // You must pass this into sdk.createClient({ deviceId }) on future 
+          // app boots so End-to-End Encryption (Emojis) works properly!
+          localStorage.setItem('matrix_device_id', deviceId);
+        }
+
+        // 3. Grab the hardware details
+        let host = 'Web';
+        let osType = 'Unknown OS';
+        let osVersion = '';
+
+        if (!!(window as any).__TAURI_INTERNALS__) {
+          try {
+            host = await hostname() || 'Unknown Host';
+            osType = type();
+            osVersion = version();
+          } catch (tauriErr) {
+            console.warn('Failed to get OS info via Tauri:', tauriErr);
+          }
+        } else {
+          // Fallback for web
+          host = 'Browser';
+          osType = navigator.platform;
+        }
+
+        const deviceName = `Ruby Chat on ${host} (${osType}${osVersion ? ' ' + osVersion : ''})`;
+
+        console.log(`Attempting to rename Matrix Device ${deviceId} to: ${deviceName}`);
+
+        // 4. Update the actual Matrix Device Name in Synapse
+        await this.client.setDeviceDetails(deviceId, {
+          display_name: deviceName
+        });
+
+        console.log('✅ Successfully synced device name to ' + deviceName);
+      } catch (err) {
+        console.error('❌ Failed to update Matrix device name', err);
+      }
+    },
+
+    async checkSecretStorageSetup() {
+      if (!this.client) return;
+      try {
+        const defaultKey = await this.client.getAccountData('m.secret_storage.default_key');
+        if (defaultKey) {
+          const keyId = defaultKey.getContent().key;
+          const keyInfo = await this.client.getAccountData(`m.secret_storage.key.${keyId}`);
+          if (keyInfo) {
+            const content = keyInfo.getContent();
+            this.secretStorageSetup = {
+              defaultKeyId: keyId,
+              needsPassphrase: !!content.passphrase,
+              passphraseInfo: content.passphrase
+            };
+            console.log('[SecretStorage] Setup detected:', this.secretStorageSetup);
+          }
+        }
+      } catch (e) {
+        console.error('[SecretStorage] Failed to check setup:', e);
+      }
+    },
+
+    async joinVoiceChannel(roomOrId: sdk.Room | string) {
+      if (!this.client) return;
+      console.log(`[Voice] joinVoiceChannel entry: ${typeof roomOrId === 'string' ? roomOrId : roomOrId.roomId}`);
+
+      const room = typeof roomOrId === 'string' ? this.client.getRoom(roomOrId) : roomOrId;
+      if (!room) {
+        toast.error('Room not found');
+        return;
+      }
+
+      // 0. Leave existing call if any
+      if (this.activeVoiceCall) {
+        this.leaveVoiceChannel(this.activeVoiceCall.roomId);
+      }
+
+      try {
+        // 1. Tell Matrix we are jumping into the call
+        const rtcSession = this.client.matrixRTC.getRoomSession(room);
+        // memberships are required in some SDK versions, but let's try passing empty list if needed or following the guide
+        // Based on common matrix-js-sdk v40 patterns, it might expect a list of memberships if not using the default.
+        // However, if the guide said no args, I'll try to find if there's a requirement.
+        // For now, let's keep it as is or try to satisfy the linter if it's strict.
+        (rtcSession as any).joinRoomSession();
+        console.log(`[Voice] Joined MatrixRTC room session for ${room.roomId}`);
+
+        // 2. Prove our identity to Matrix.org by requesting a secure OpenID token
+        const openIdToken = await this.client.getOpenIdToken();
+        console.log(`[Voice] Obtained OpenID token`);
+
+        // 3. Ask the Matrix.org Authorization Service for a LiveKit ticket
+        const response = await fetch('https://livekit-jwt.call.matrix.org/sfu/get', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            room: room.roomId,
+            device_id: this.client.getDeviceId(),
+            openid_token: openIdToken
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to get LiveKit JWT: ${response.statusText}`);
+        }
+
+        const livekitData = await response.json();
+        console.log(`[Voice] Obtained LiveKit JWT and URL:`, livekitData.url);
+
+        // 4. Save this data to your store
+        this.activeVoiceCall = {
+          roomId: room.roomId,
+          roomName: room.name,
+          url: livekitData.url,
+          token: livekitData.jwt
+        };
+        console.log(`[Voice] activeVoiceCall updated in store:`, this.activeVoiceCall);
+
+        toast.success('Joined Voice Channel', {
+          description: `You are now in ${room.name}`,
+        });
+      } catch (e: any) {
+        console.error('Failed to join voice channel:', e);
+        this.activeVoiceCall = null;
+        toast.error('Voice Error', {
+          description: e.message || 'Failed to connect to the voice server.',
+        });
+      }
+    },
+
+    leaveVoiceChannel(roomOrId: sdk.Room | string) {
+      if (!this.client) return;
+
+      const room = typeof roomOrId === 'string' ? this.client.getRoom(roomOrId) : roomOrId;
+      console.log(`[Voice] leaveVoiceChannel called for: ${room?.name || roomOrId}`);
+      if (!room) {
+        this.activeVoiceCall = null;
+        return;
+      }
+
+      try {
+        const rtcSession = this.client.matrixRTC.getRoomSession(room);
+        rtcSession.leaveRoomSession();
+        console.log(`[Voice] Called leaveRoomSession for ${room.roomId}`);
+      } catch (e) {
+        console.error('[Voice] Error leaving RTC session:', e);
+      }
+
+      this.activeVoiceCall = null;
+      toast.info('Left Voice Channel');
+    },
+
     // --- Verification Actions ---
 
 
 
     async submitSecretStorageKey(input: string) {
-      if (!this.secretStoragePrompt) return;
+      if (!this.secretStoragePrompt || !this.client) return;
 
       const { promise, keyId, keyInfo } = this.secretStoragePrompt;
 
       try {
-        let keyArray: Uint8Array<ArrayBuffer>;
+        let keyArray: Uint8Array;
 
         // Try to decode as Recovery Key (Base58)
-        const cleanInput = input.replace(/\s/g, '');
+        const cleanInput = input.trim();
         let isRecoveryKey = false;
         try {
-          const decoded = decodeRecoveryKey(cleanInput);
-          // Ensure type is Uint8Array<ArrayBuffer>
-          keyArray = new Uint8Array(decoded.buffer, decoded.byteOffset, decoded.byteLength) as Uint8Array<ArrayBuffer>;
+          keyArray = decodeRecoveryKey(cleanInput);
           isRecoveryKey = true;
         } catch (e) {
           // Not a valid recovery key, assume passphrase
@@ -625,30 +1042,36 @@ export const useMatrixStore = defineStore('matrix', {
 
         if (!isRecoveryKey) {
           if (keyInfo.passphrase) {
-            const derived = await deriveRecoveryKeyFromPassphrase(
+            keyArray = await deriveRecoveryKeyFromPassphrase(
               input,
               keyInfo.passphrase.salt,
               keyInfo.passphrase.iterations
             );
-            // Ensure type is Uint8Array<ArrayBuffer>
-            keyArray = new Uint8Array(derived.buffer, derived.byteOffset, derived.byteLength) as Uint8Array<ArrayBuffer>;
           } else {
             throw new Error("Input is not a valid recovery key and no passphrase info available.");
           }
         }
 
-        // Cache and resolve
-        this.secretStorageKeyCache[keyId] = keyArray!;
-        promise.resolve([keyId, keyArray!]);
+        // Validate the key mathematically
+        const match = await this.client.secretStorage.checkKey(keyArray!, keyInfo);
+        if (!match) {
+          throw new Error("Invalid key: The provided recovery key or passphrase does not match.");
+        }
+
+        // Cache in memory Map for background SDK
+        secretStorageKeys.set(keyId, keyArray! as Uint8Array<ArrayBuffer>);
+        // Also cache in the Pinia record for any other listeners
+        this.secretStorageKeyCache[keyId] = keyArray! as Uint8Array<ArrayBuffer>;
+
+        // Resolve the callback's promise
+        promise.resolve([keyId, keyArray! as Uint8Array<ArrayBuffer>]);
         this.secretStoragePrompt = null;
 
-      } catch (e) {
+      } catch (e: any) {
         console.error("Failed to process secret storage key:", e);
-        // We could reject, but maybe we want to let the user try again?
-        // For now, let's keep the prompt open but log error.
-        // To close it:
-        // promise.reject(e);
-        // this.secretStoragePrompt = null;
+        toast.error('Encryption Key Error', {
+          description: e.message || "Failed to validate encryption key.",
+        });
       }
     },
 
@@ -667,23 +1090,24 @@ export const useMatrixStore = defineStore('matrix', {
 
       try {
         // Cancel any existing request first to avoid conflicts
-        if (this.verificationRequest) {
+        if (this.activeVerificationRequest) {
           try {
-            await this.verificationRequest.cancel();
+            await this.activeVerificationRequest.cancel();
           } catch (e) {
             console.warn("Failed to cancel previous verification request:", e);
           }
-          this.verificationRequest = null;
+          this.activeVerificationRequest = null;
         }
 
         // Set state immediately to show "Waiting..." UI instead of "Incoming Request"
         this.verificationInitiatedByMe = true;
         this.isVerificationCompleted = false;
-        this.sasEvent = null;
+        this.activeSas = null;
 
         const request = await crypto.requestOwnUserVerification();
-        this.verificationRequest = request;
-        this._setupVerificationListeners(request);
+        this.activeVerificationRequest = request;
+        this.verificationPhase = request.phase;
+        this._attachRequestListeners(request);
       } catch (e) {
         console.error('Failed to request verification:', e);
         // Reset if failed so we don't get stuck in "Waiting..."
@@ -698,87 +1122,186 @@ export const useMatrixStore = defineStore('matrix', {
 
     closeVerificationModal() {
       this.verificationModalOpen = false;
-      if (!this.verificationRequest && !this.isVerificationCompleted) {
+      if (!this.activeVerificationRequest && !this.isVerificationCompleted) {
         // Only reset if we aren't in the middle of something or just finished
         this._resetVerificationState();
       }
     },
 
-    _setupVerificationListeners(request: VerificationRequest) {
-      request.on(VerificationRequestEvent.Change, async () => {
-        const phase = request.phase;
-        console.log('Verification phase:', phase);
+    setupVerificationListeners() {
+      if (!this.client) return;
 
-        if (phase === VerificationPhase.Ready) {
-          // Other device accepted — start SAS
-          if (request.methods.includes('m.sas.v1')) {
-            const verifier = await request.startVerification('m.sas.v1');
-            this._setupVerifierListeners(verifier);
+      this.client.on(CryptoEvent.VerificationRequestReceived, (request: VerificationRequest) => {
+        // 1. Ignore if we started this request ourselves
+        if (request.initiatedByMe) return;
+
+        console.log('Incoming verification from:', request.otherUserId);
+
+        // 2. Save it to state so your UI can pop open a modal
+        this.activeVerificationRequest = request;
+        this.verificationPhase = request.phase;
+        this.verificationInitiatedByMe = false;
+        this.verificationModalOpen = true;
+
+        // 3. Attach standard request listeners (handles Done/Cancelled)
+        this._attachRequestListeners(request);
+      });
+
+      // Listen for security status changes to update UI in real-time
+      this.client.on(CryptoEvent.KeysChanged, () => this.checkDeviceVerified());
+      this.client.on(CryptoEvent.UserTrustStatusChanged, () => this.checkDeviceVerified());
+    },
+
+    _attachRequestListeners(request: VerificationRequest) {
+      const checkPhase = async () => {
+        try {
+          const phase = request.phase;
+          this.verificationPhase = phase;
+          const isTerminal = phase === VerificationPhase.Done || phase === VerificationPhase.Cancelled;
+
+          console.log(`[Verification] Phase: ${phase} (${request.otherUserId})`);
+
+          let methods: string[] = [];
+          try {
+            methods = (request as any).methods || [];
+          } catch (e) {
+            if (!isTerminal) console.warn('[Verification] methods not available');
           }
-        } else if (phase === VerificationPhase.Started) {
-          // If the other side started the verification, we get a verifier here
-          const verifier = request.verifier;
-          if (verifier) {
-            this._setupVerifierListeners(verifier);
+
+          if (phase === VerificationPhase.Ready) {
+            // Initiator auto-starts SAS
+            if (this.verificationInitiatedByMe && (methods.includes('m.sas.v1') || methods.length === 0)) {
+              console.log('[Verification] Auto-starting SAS...');
+              try {
+                const verifier = await request.startVerification('m.sas.v1');
+                this._setupVerifierListeners(verifier);
+              } catch (e) {
+                console.error('[Verification] Proactive start failed:', e);
+              }
+            }
+          } else if (phase === VerificationPhase.Started) {
+            const verifier = request.verifier;
+            if (verifier && !this._isVerifierSetup(verifier)) {
+              this._setupVerifierListeners(verifier);
+            }
+          } else if (phase === VerificationPhase.Done) {
+            this.isVerificationCompleted = true;
+            this.activeSas = null;
+            await this.checkDeviceVerified();
+            await this.requestSecretsFromOtherDevices();
+            await this.restoreKeysFromBackup();
+            await this.retryDecryption();
+            toast.success('Device verified!');
+            setTimeout(() => this._resetVerificationState(), 3000);
+          } else if (phase === VerificationPhase.Cancelled) {
+            this._resetVerificationState();
           }
-        } else if (phase === VerificationPhase.Done) {
-          this.isVerificationCompleted = true;
-          this.sasEvent = null;
-          await this.checkDeviceVerified();
 
-          // Pull keys after verification success
-          await this.restoreKeysFromBackup();
-          await this.retryDecryption();
+          if (isTerminal) {
+            request.off(VerificationRequestEvent.Change, checkPhase);
+          }
+        } catch (err) {
+          console.error('[Verification] Error in checkPhase:', err);
+        }
+      };
 
-          // Auto-dismiss after a short delay
-          setTimeout(() => this._resetVerificationState(), 3000);
-        } else if (phase === VerificationPhase.Cancelled) {
-          console.warn('Verification cancelled');
+      request.on(VerificationRequestEvent.Change, checkPhase);
+      checkPhase();
+    },
+
+    _setupVerifierListeners(verifier: Verifier) {
+      if (this._isVerifierSetup(verifier)) return;
+
+      console.log('[Verification] Setting up listeners for verifier:', verifier.userId);
+
+      const onShowSas = (sas: ShowSasCallbacks) => {
+        console.log('[Verification] SAS data received, showing emojis.');
+        this.activeSas = sas;
+      };
+
+      const onCancel = () => {
+        console.warn('[Verification] Verifier cancelled by remote.');
+        cleanup();
+        this._resetVerificationState();
+      };
+
+      const cleanup = () => {
+        console.log('[Verification] Cleaning up verifier listeners.');
+        verifier.off(VerifierEvent.ShowSas, onShowSas);
+        verifier.off(VerifierEvent.Cancel, onCancel);
+      };
+
+      verifier.on(VerifierEvent.ShowSas, onShowSas);
+      verifier.on(VerifierEvent.Cancel, onCancel);
+
+      // Kick off the verification exchange
+      console.log('[Verification] Kicking off verifier.verify()...');
+      verifier.verify().then(() => {
+        cleanup();
+      }).catch((e) => {
+        console.error('[Verification] verifier.verify() failed:', e);
+        cleanup();
+        // Only reset if it's a real error, not just a cancellation we handled
+        if (!verifier.hasBeenCancelled) {
           this._resetVerificationState();
         }
       });
     },
 
-    _setupVerifierListeners(verifier: Verifier) {
-      verifier.on(VerifierEvent.ShowSas, (sas: ShowSasCallbacks) => {
-        console.log('SAS emojis:', sas.sas.emoji);
-        this.sasEvent = sas;
-      });
-
-      verifier.on(VerifierEvent.Cancel, () => {
-        console.warn('Verifier cancelled');
-        this._resetVerificationState();
-      });
-
-      // Kick off the verification exchange
-      verifier.verify().catch((e) => {
-        console.error('Verification failed:', e);
-        this._resetVerificationState();
-      });
+    _isVerifierSetup(verifier: Verifier): boolean {
+      // Use the internal event emitter count as a robust check
+      return verifier.listenerCount(VerifierEvent.ShowSas) > 0;
     },
 
     async acceptVerification() {
-      if (!this.verificationRequest) return;
+      if (!this.activeVerificationRequest) return;
+      const request = this.activeVerificationRequest;
+
       try {
-        await this.verificationRequest.accept();
+        // Always attach request listeners to track state
+        this._attachRequestListeners(request);
+
+        if (request.phase === VerificationPhase.Ready) {
+          // If already Ready, "Accept" means "Start the exchange"
+          console.log('[Verification] Manual Accept: Request is already Ready, starting SAS...');
+          const verifier = await request.startVerification('m.sas.v1');
+          this._setupVerifierListeners(verifier);
+        } else if (request.phase < VerificationPhase.Ready) {
+          // Otherwise, we need to send the 'ready' event
+          console.log('[Verification] Manual Accept: Sending .ready event...');
+          await request.accept();
+        } else {
+          console.warn('[Verification] Manual Accept: Request is already in phase', request.phase);
+        }
       } catch (e) {
         console.error('Failed to accept verification:', e);
+        toast.error('Failed to handle verification request');
+        this._resetVerificationState();
       }
     },
 
-    async confirmSasMatch() {
-      if (!this.sasEvent) return;
+    async confirmSasMatch(match: boolean = true) {
+      if (!this.activeSas) return;
       try {
-        await this.sasEvent.confirm();
+        if (match) {
+          await this.activeSas.confirm();
+        } else {
+          await this.activeSas.mismatch();
+          this.activeVerificationRequest?.cancel();
+        }
+        // Hide emojis while waiting for Done phase
+        this.activeSas = null;
       } catch (e) {
         console.error('Failed to confirm SAS:', e);
+        toast.error('Verification failed');
+        this._resetVerificationState();
       }
     },
 
     async cancelVerification() {
-      if (this.verificationRequest) {
+      if (this.activeVerificationRequest) {
         try {
-          await this.verificationRequest.cancel();
+          await this.activeVerificationRequest.cancel();
         } catch (e) {
           console.error('Failed to cancel verification:', e);
         }
@@ -807,7 +1330,11 @@ export const useMatrixStore = defineStore('matrix', {
 
         // If we just became verified/ready, attempt to decrypt any blocked messages
         if (!wasReady && this.isCrossSigningReady) {
-          console.log('[Verification] Cross-signing is now ready. Triggering re-decryption...');
+          console.log('[Verification] Cross-signing is now ready. Triggering secret gossip and re-decryption...');
+
+          // Request secrets just in case they haven't arrived yet
+          this.requestSecretsFromOtherDevices();
+
           // Don't await this, let it run in background so UI updates immediately
           this.retryDecryption();
         }
@@ -941,10 +1468,11 @@ export const useMatrixStore = defineStore('matrix', {
     },
 
     _resetVerificationState() {
-      this.verificationRequest = null;
+      this.activeVerificationRequest = null;
       this.verificationInitiatedByMe = false;
-      this.sasEvent = null;
+      this.activeSas = null;
       this.isVerificationCompleted = false;
+      this.verificationPhase = null;
       this.verificationModalOpen = false;
     },
 
@@ -983,26 +1511,86 @@ export const useMatrixStore = defineStore('matrix', {
     },
 
     async restoreKeysFromBackup() {
-      if (!this.client) return;
+      if (!this.client || this.isRestoringKeys) return;
       const crypto = this.client.getCrypto();
       if (!crypto) return;
 
-      console.log("Checking for historical key backups...");
+      this.isRestoringKeys = true;
+      console.log("[SecretGossiping] Checking for historical key backups...");
       try {
         const backupInfo = await crypto.getKeyBackupInfo();
-        if (backupInfo) {
+        if (!backupInfo) {
+          console.log("[SecretGossiping] No key backup found on server.");
+          this.isRestoringKeys = false;
+          return;
+        }
+
+        // 1. Wait for secrets to arrive via gossip (Secret Sharing)
+        // We poll for up to 10 seconds (20 * 500ms) to be patient with cross-network gossip
+        console.log("[SecretGossiping] Polling for backup key via gossip...");
+        // @ts-ignore - access internal crypto method if needed
+        let backupKey = await (crypto as any).getSessionBackupPrivateKey();
+        let attempts = 0;
+        const maxAttempts = 20;
+
+        while (!backupKey && attempts < maxAttempts) {
+          // Logic: Wait, then check
+          await new Promise(r => setTimeout(r, 500));
+          backupKey = await (crypto as any).getSessionBackupPrivateKey();
+          attempts++;
+
+          if (backupKey) {
+            console.log(`[SecretGossiping] Backup key received via gossip after ${attempts * 0.5}s!`);
+            break;
+          }
+
+          if (attempts % 4 === 0) {
+            console.log(`[SecretGossiping] Still waiting for gossip... (${attempts * 0.5}s)`);
+          }
+        }
+
+        // 2. Fallback to SSSS if gossip failed
+        if (!backupKey) {
+          console.warn("[SecretGossiping] Gossip timed out after 10s. Falling back to manual Secret Storage prompt.");
           await crypto.loadSessionBackupPrivateKeyFromSecretStorage();
-          await crypto.restoreKeyBackup({
-            progressCallback: (p) => {
-              if (p.stage === 'load_keys') {
-                console.log(`Restoring keys: ${p.successes}/${p.total}`);
+        }
+
+        // 3. Restore the backup
+        console.log("[SecretGossiping] Restoring keys from backup...");
+        await crypto.restoreKeyBackup({
+          progressCallback: (p) => {
+            if (p.stage === 'load_keys' && p.total > 0) {
+              if (p.successes % 100 === 0 || p.successes === p.total) {
+                console.log(`[SecretGossiping] Restoring keys: ${p.successes}/${p.total}`);
               }
             }
-          });
-          await crypto.checkKeyBackupAndEnable();
-        }
+          }
+        });
+        await crypto.checkKeyBackupAndEnable();
+        console.log("[SecretGossiping] History restoration complete.");
       } catch (err) {
-        console.warn("Failed to restore keys from backup:", err);
+        console.warn("[SecretGossiping] Failed to restore keys from backup:", err);
+      } finally {
+        this.isRestoringKeys = false;
+      }
+    },
+
+    async requestSecretsFromOtherDevices() {
+      const crypto = this.client?.getCrypto();
+      if (!crypto) return;
+
+      console.log('[SecretGossiping] Requesting secrets from other trusted devices...');
+      try {
+        // Request cross-signing keys and the megolm backup key for history
+        await Promise.all([
+          (crypto as any).requestSecret('m.cross_signing.master'),
+          (crypto as any).requestSecret('m.cross_signing.self_signing'),
+          (crypto as any).requestSecret('m.cross_signing.user_signing'),
+          (crypto as any).requestSecret('m.megolm_backup.v1')
+        ]);
+        console.log('[SecretGossiping] Successfully requested secrets.');
+      } catch (err) {
+        console.warn('[SecretGossiping] Failed to gossip secrets, user may need manual key entry:', err);
       }
     },
 
@@ -1123,6 +1711,43 @@ export const useMatrixStore = defineStore('matrix', {
         console.error("[MatrixStore] Failed to create direct room:", err);
         throw new Error(err.message || "Failed to create room.");
       }
+    },
+
+    setLastVisitedRoom(context: 'dm' | 'rooms' | string, roomId: string | null) {
+      if (context === 'dm') {
+        this.lastVisitedRooms.dm = roomId;
+      } else if (context === 'rooms') {
+        this.lastVisitedRooms.rooms = roomId;
+      } else {
+        // Assume context is a Space ID
+        if (roomId) {
+          this.lastVisitedRooms.spaces[context] = roomId;
+        } else {
+          delete this.lastVisitedRooms.spaces[context];
+        }
+      }
+
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('matrix_last_visited_rooms', JSON.stringify(this.lastVisitedRooms));
+      }
+    },
+
+    async pinSpace(roomId: string) {
+      if (!this.client) return;
+      console.log(`[MatrixStore] Pinning space: ${roomId}`);
+      if (!this.pinnedSpaces.includes(roomId)) {
+        const newPinned = [...this.pinnedSpaces, roomId];
+        this.pinnedSpaces = newPinned;
+        await (this.client as any).setAccountData('cc.jackg.ruby.pinned_spaces', { rooms: newPinned });
+      }
+    },
+
+    async unpinSpace(roomId: string) {
+      if (!this.client) return;
+      console.log(`[MatrixStore] Unpinning space: ${roomId}`);
+      const newPinned = this.pinnedSpaces.filter(id => id !== roomId);
+      this.pinnedSpaces = newPinned;
+      await (this.client as any).setAccountData('cc.jackg.ruby.pinned_spaces', { rooms: newPinned });
     }
   }
 });

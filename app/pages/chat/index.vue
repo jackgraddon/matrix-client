@@ -11,7 +11,7 @@
         <NuxtLink
           v-for="room in recentDms"
           :key="room.roomId"
-          :to="`/chat/people/${room.roomId}`"
+          :to="`/chat/dms/${room.roomId}`"
           class="block group"
         >
           <UiCard class="h-full transition-colors hover:bg-muted/50">

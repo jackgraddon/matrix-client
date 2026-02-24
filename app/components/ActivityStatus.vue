@@ -89,11 +89,6 @@ const fetchPresence = () => {
         presenceStatus.value = 'offline';
         return;
     }
-    if (props.userId === store.user?.userId) {
-        presenceStatusMsg.value = null;
-        presenceStatus.value = 'online'; // Handled by store for self
-        return; 
-    }
     const user = store.client.getUser(props.userId);
     if (user) {
         presenceStatusMsg.value = user.presenceStatusMsg || null;
@@ -111,17 +106,50 @@ const handlePresenceEvent = (event: any, user: any) => {
     }
 }
 
+const pollPresence = async () => {
+    if (!store.client || !props.userId) return;
+
+    if (isSelf.value) {
+        // For self, ensure local state is pushed to server periodically
+        store.refreshPresence();
+        // Also update local state from the user object to stay in sync
+        const user = store.client.getUser(props.userId);
+        if (user) {
+            presenceStatus.value = user.presence || 'offline';
+            presenceStatusMsg.value = user.presenceStatusMsg || null;
+        }
+    } else {
+        // For others, pull the latest from the server
+        try {
+            const data = await store.client.getPresence(props.userId);
+            if (data) {
+                presenceStatus.value = data.presence || 'offline';
+                presenceStatusMsg.value = data.status_msg || null;
+            }
+        } catch (e) {
+            console.warn(`[ActivityStatus] Failed to poll presence for ${props.userId}:`, e);
+        }
+    }
+};
+
+let pollInterval: number | null = null;
+
 onMounted(() => {
     fetchPresence();
     if (store.client) {
         store.client.on('User.presence' as any, handlePresenceEvent);
     }
+    
+    // Start polling every 5 minutes
+    pollInterval = window.setInterval(pollPresence, 5 * 60 * 1000);
 });
 
 onUnmounted(() => {
     if (store.client) {
         store.client.removeListener('User.presence' as any, handlePresenceEvent);
     }
+    if (timerInterval) clearInterval(timerInterval);
+    if (pollInterval) clearInterval(pollInterval);
 });
 
 watch(() => props.userId, fetchPresence);
@@ -129,7 +157,8 @@ watch(() => props.userId, fetchPresence);
 const isSelf = computed(() => !props.userId || props.userId === store.user?.userId);
 
 const displayActivity = computed(() => {
-  if (isSelf.value) {
+  // Prefer local store details for self if running
+  if (isSelf.value && store.activityDetails?.is_running) {
     return store.activityDetails; 
   }
   
@@ -143,7 +172,8 @@ const displayActivity = computed(() => {
 });
 
 const displayCustomStatus = computed(() => {
-  if (isSelf.value) {
+  // Prefer local store custom status for self
+  if (isSelf.value && store.customStatus) {
     return store.customStatus;
   }
   
@@ -153,17 +183,20 @@ const displayCustomStatus = computed(() => {
   return null;
 });
 
+const effectivePresence = computed(() => {
+    if (isSelf.value) return store.isIdle ? 'unavailable' : 'online';
+    return presenceStatus.value;
+});
+
 const presenceDotColor = computed(() => {
-    if (isSelf.value) return 'bg-emerald-500';
-    if (presenceStatus.value === 'online') return 'bg-emerald-500';
-    if (presenceStatus.value === 'unavailable') return 'bg-yellow-500';
+    if (effectivePresence.value === 'online') return 'bg-emerald-500';
+    if (effectivePresence.value === 'unavailable') return 'bg-yellow-500';
     return 'bg-gray-400 dark:bg-gray-600';
 });
 
 const displayPresenceText = computed(() => {
-    if (isSelf.value) return 'Online';
-    if (presenceStatus.value === 'online') return 'Online';
-    if (presenceStatus.value === 'unavailable') return 'Idle';
+    if (effectivePresence.value === 'online') return 'Online';
+    if (effectivePresence.value === 'unavailable') return 'Idle';
     return 'Offline';
 });
 

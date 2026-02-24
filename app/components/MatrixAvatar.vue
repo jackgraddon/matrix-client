@@ -28,6 +28,12 @@ const { imageUrl } = useAuthenticatedMedia(
   'crop'
 );
 
+/* 
+watchEffect(() => {
+  console.log(`[MatrixAvatar] Name: ${props.name}, MXC: ${props.mxcUrl}, Image: ${imageUrl.value}`);
+});
+*/
+
 const initials = computed(() => {
   const n = props.name || "?";
   return n.slice(0, 2).toUpperCase();

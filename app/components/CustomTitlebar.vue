@@ -1,12 +1,12 @@
 <template>
   <div
-    class="flex h-[30px] w-full shrink-0 items-center justify-between select-none z-50 transition-colors bg-background"
+    class="flex h-[30px] w-full shrink-0 items-center justify-between select-none z-50 transition-colors bg-neutral-200 dark:bg-background"
     data-tauri-drag-region
     @mousedown="startDrag"
   >
     <!-- Left Side: macOS Traffic Lights (Only visible on macOS, or if we default to it) -->
     <div class="flex h-full w-[100px] items-center gap-2 pl-3">
-      <div v-if="isMac" class="flex items-center gap-2 w-full h-full group">
+      <!-- <div v-if="isMac" class="flex items-center gap-2 w-full h-full group">
         <button 
           class="h-3 w-3 rounded-full bg-[#ff5f56] flex items-center justify-center"
           @click="closeWindow"
@@ -36,7 +36,7 @@
             <path d="M9.5,9.5 L4,9.5 L9.5,4 Z" />
           </svg>
         </button>
-      </div>
+      </div> -->
     </div>
 
     <!-- Center: Optional Title -->
