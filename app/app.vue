@@ -50,7 +50,10 @@ onMounted(() => {
     event.preventDefault();
 
     try {
-      await handleClose();
+      await Promise.race([
+        handleClose(),
+        new Promise((resolve) => setTimeout(resolve, 2000)),
+      ]);
     } catch (err) {
       console.error("Failed to set offline status, closing anyway", err);
     } finally {
