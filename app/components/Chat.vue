@@ -48,7 +48,7 @@
               variant="ghost"
               size="icon-sm"
               @click="store.toggleMemberList()"
-              :class="{ 'bg-accent text-accent-foreground': store.isMemberListVisible }"
+              :class="{ 'bg-accent text-accent-foreground': store.ui.memberListVisible }"
               title="Toggle Member List"
               class="rounded-full"
             >
@@ -1423,13 +1423,22 @@ onUnmounted(() => {
 
 // --- Context Menu Actions ---
 
-const replyingTo = ref<ChatMessage | null>(null);
-const editingMessage = ref<ChatMessage | null>(null);
+const replyingTo = computed({
+  get: () => store.ui.composerStates[roomId.value ?? '']?.replyingTo || null,
+  set: (val) => store.setUIComposerState(roomId.value!, { replyingTo: val })
+});
+
+const editingMessage = computed({
+  get: () => store.ui.composerStates[roomId.value ?? '']?.editingMessage || null,
+  set: (val) => store.setUIComposerState(roomId.value!, { editingMessage: val })
+});
 
 function cancelAction() {
   replyingTo.value = null;
   editingMessage.value = null;
   newMessage.value = '';
+  // Update store for text clearing too if we decide to persist it
+  store.setUIComposerState(roomId.value!, { text: '' });
 }
 
 function handleReply(msg: ChatMessage) {

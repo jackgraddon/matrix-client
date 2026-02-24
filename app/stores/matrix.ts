@@ -22,6 +22,19 @@ export interface LastVisitedRooms {
   spaces: Record<string, string>;
 }
 
+export interface UIState {
+  memberListVisible: boolean;
+  selectedUserId: string | null;
+  profileCardPos: { top: string; right: string };
+  collapsedCategories: string[];
+  // Composer states indexed by roomId
+  composerStates: Record<string, {
+    replyingTo?: any;
+    editingMessage?: any;
+    text?: string;
+  }>;
+}
+
 // Enhanced HTML for OAuth Loopback Response
 const authResponseHtml = `
 <!DOCTYPE html>
@@ -148,13 +161,23 @@ export const useMatrixStore = defineStore('matrix', {
       url: string;
       token: string;
     } | null,
-    isMemberListVisible: (typeof localStorage !== 'undefined' ?
-      localStorage.getItem('matrix_member_list_visible') === 'true' :
-      false) as boolean,
     isIdle: false,
     pinnedSpaces: [] as string[],
     lastPresenceUpdate: 0,
     lastPresenceState: null as { presence: string; status_msg: string } | null,
+
+    // Centralized UI State
+    ui: {
+      memberListVisible: (typeof localStorage !== 'undefined' ?
+        localStorage.getItem('matrix_member_list_visible') === 'true' :
+        false),
+      selectedUserId: null,
+      profileCardPos: { top: '0px', right: '0px' },
+      collapsedCategories: (typeof localStorage !== 'undefined' ?
+        JSON.parse(localStorage.getItem('matrix_collapsed_categories') || '[]') :
+        []),
+      composerStates: {},
+    } as UIState,
   }),
 
   getters: {
@@ -463,8 +486,35 @@ export const useMatrixStore = defineStore('matrix', {
     },
 
     toggleMemberList() {
-      this.isMemberListVisible = !this.isMemberListVisible;
-      localStorage.setItem('matrix_member_list_visible', String(this.isMemberListVisible));
+      this.ui.memberListVisible = !this.ui.memberListVisible;
+      localStorage.setItem('matrix_member_list_visible', String(this.ui.memberListVisible));
+    },
+
+    setUISelectedUser(userId: string | null, pos?: { top: string; right: string }) {
+      this.ui.selectedUserId = userId;
+      if (pos) {
+        this.ui.profileCardPos = pos;
+      }
+    },
+
+    setUIComposerState(roomId: string, state: Partial<UIState['composerStates'][string]>) {
+      if (!this.ui.composerStates[roomId]) {
+        this.ui.composerStates[roomId] = {};
+      }
+      this.ui.composerStates[roomId] = {
+        ...this.ui.composerStates[roomId],
+        ...state
+      };
+    },
+
+    toggleUICategory(categoryId: string) {
+      const index = this.ui.collapsedCategories.indexOf(categoryId);
+      if (index === -1) {
+        this.ui.collapsedCategories.push(categoryId);
+      } else {
+        this.ui.collapsedCategories.splice(index, 1);
+      }
+      localStorage.setItem('matrix_collapsed_categories', JSON.stringify(this.ui.collapsedCategories));
     },
 
     cancelLogin(errorReason?: string | null) {

@@ -98,7 +98,7 @@
         </main>
         
         <Transition name="slide-pane">
-            <div v-if="store.isMemberListVisible && currentRoom" class="mb-2 mr-2 overflow-hidden shrink-0">
+            <div v-if="store.ui.memberListVisible && currentRoom" class="mb-2 mr-2 overflow-hidden shrink-0">
                 <RoomMemberList :room="(currentRoom as any)" class="h-full" />
             </div>
         </Transition>

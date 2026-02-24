@@ -85,8 +85,8 @@ const store = useMatrixStore();
 const refreshKey = ref(0);
 
 // --- Popover State ---
-const selectedUserId = ref<string | null>(null);
-const profileCardPos = ref({ top: '0px', right: '0px' });
+const selectedUserId = computed(() => store.ui.selectedUserId);
+const profileCardPos = computed(() => store.ui.profileCardPos);
 
 // ProfileCard expects a Matrix User object, so we resolve it here
 const selectedUser = computed(() => {
@@ -137,17 +137,17 @@ function openUserProfileCard(event: MouseEvent, userId: string) {
   const spacingGap = 16; 
   const estimatedCardHeight = 250; // Approximated height of ProfileCard.vue to prevent bottom clipping
   
-  profileCardPos.value = {
+  const pos = {
     // Math.min ensures the card doesn't push off the bottom edge of the screen if clicked near the bottom
     top: `${Math.min(rect.top, window.innerHeight - estimatedCardHeight - 20)}px`,
     right: `${window.innerWidth - rect.left + spacingGap}px`
   };
 
-  selectedUserId.value = userId;
+  store.setUISelectedUser(userId, pos);
 }
 
 function closeProfileCard() {
-  selectedUserId.value = null;
+  store.setUISelectedUser(null);
 }
 
 // --- Matrix Event Listeners for Live Updates ---

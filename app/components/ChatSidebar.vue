@@ -225,19 +225,10 @@ const activeSpaceId = computed(() => {
   return Array.isArray(route.params.id) ? route.params.id[0] : route.params.id;
 });
 
-const collapsedCategories = ref<Set<string>>(new Set(
-  typeof localStorage !== 'undefined' 
-    ? JSON.parse(localStorage.getItem('matrix_collapsed_categories') || '[]') 
-    : []
-));
+const collapsedCategories = computed(() => new Set(store.ui.collapsedCategories));
 
 const toggleCategory = (categoryId: string) => {
-  if (collapsedCategories.value.has(categoryId)) {
-    collapsedCategories.value.delete(categoryId);
-  } else {
-    collapsedCategories.value.add(categoryId);
-  }
-  localStorage.setItem('matrix_collapsed_categories', JSON.stringify(Array.from(collapsedCategories.value)));
+  store.toggleUICategory(categoryId);
 };
 
 const isCategoryCollapsed = (categoryId: string) => collapsedCategories.value.has(categoryId);
