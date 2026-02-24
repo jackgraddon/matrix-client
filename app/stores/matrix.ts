@@ -153,6 +153,8 @@ export const useMatrixStore = defineStore('matrix', {
       false) as boolean,
     isIdle: false,
     pinnedSpaces: [] as string[],
+    lastPresenceUpdate: 0,
+    lastPresenceState: null as { presence: string; status_msg: string } | null,
   }),
 
   getters: {
@@ -426,14 +428,38 @@ export const useMatrixStore = defineStore('matrix', {
       this.refreshPresence();
     },
 
-    refreshPresence() {
+    async refreshPresence() {
       if (!this.client || !this.isAuthenticated || !this.isClientReady) return;
 
       const presence = this.isIdle ? 'unavailable' : 'online';
       const status_msg = this.customStatus || (this.activityDetails?.is_running ? `Playing ${this.activityDetails.name}` : '');
 
+      // Check if state has actually changed
+      const stateChanged = !this.lastPresenceState ||
+        this.lastPresenceState.presence !== presence ||
+        this.lastPresenceState.status_msg !== status_msg;
+
+      const now = Date.now();
+      const throttleMs = 30 * 1000; // 30 seconds
+
+      // Only skip if no change AND within throttle window
+      if (!stateChanged && (now - this.lastPresenceUpdate < throttleMs)) {
+        return;
+      }
+
       console.log(`[MatrixStore] Refreshing presence: ${presence} ("${status_msg}")`);
-      this.client.setPresence({ presence, status_msg });
+
+      try {
+        await this.client.setPresence({ presence: presence as any, status_msg });
+        this.lastPresenceUpdate = now;
+        this.lastPresenceState = { presence, status_msg };
+      } catch (err: any) {
+        if (err?.errcode === 'M_LIMIT_EXCEEDED') {
+          console.warn('[MatrixStore] Presence update rate limited by server');
+        } else {
+          console.error('[MatrixStore] Failed to update presence:', err);
+        }
+      }
     },
 
     toggleMemberList() {

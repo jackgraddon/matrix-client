@@ -110,9 +110,9 @@ const pollPresence = async () => {
     if (!store.client || !props.userId) return;
 
     if (isSelf.value) {
-        // For self, ensure local state is pushed to server periodically
+        // For self, the store handles throttling and pushing to server
         store.refreshPresence();
-        // Also update local state from the user object to stay in sync
+        // Update local state from the user object to stay in sync
         const user = store.client.getUser(props.userId);
         if (user) {
             presenceStatus.value = user.presence || 'offline';

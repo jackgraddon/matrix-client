@@ -84,6 +84,7 @@ pub fn start(app: AppHandle, state: Arc<ScannerState>) {
             let previous_game = state.current_game.lock().unwrap().clone();
 
             let mut detected_name: Option<String> = None;
+            let mut detected_exe: Option<String> = None;
 
             // Check each game in the watch list
             for game in &watch_list {
@@ -93,6 +94,7 @@ pub fn start(app: AppHandle, state: Arc<ScannerState>) {
 
                     if found {
                         detected_name = Some(game.name.clone());
+                        detected_exe = Some(exe.name.clone());
                         break;
                     }
                 }
@@ -105,7 +107,8 @@ pub fn start(app: AppHandle, state: Arc<ScannerState>) {
             match (&previous_game, &detected_name) {
                 (None, Some(name)) => {
                     // Game just started
-                    log::info!("[game_scanner] Detected: {}", name);
+                    let exe_str = detected_exe.as_deref().unwrap_or("unknown");
+                    log::info!("[game_scanner] Detected: {} (exe: {})", name, exe_str);
                     let _ = app.emit(
                         "game-activity",
                         GameActivity {
@@ -127,7 +130,8 @@ pub fn start(app: AppHandle, state: Arc<ScannerState>) {
                 }
                 (Some(prev), Some(name)) if prev != name => {
                     // Switched games
-                    log::info!("[game_scanner] Switched: {} -> {}", prev, name);
+                    let exe_str = detected_exe.as_deref().unwrap_or("unknown");
+                    log::info!("[game_scanner] Switched: {} -> {} (exe: {})", prev, name, exe_str);
                     let _ = app.emit(
                         "game-activity",
                         GameActivity {
