@@ -4,6 +4,10 @@ import { type, version, hostname } from '@tauri-apps/plugin-os';
 
 // Helper to get config safely (prevents top-level crash)
 export const getHomeserverUrl = () => {
+  if (typeof localStorage !== 'undefined') {
+    const persisted = localStorage.getItem('matrix_homeserver_url');
+    if (persisted) return persisted;
+  }
   const config = useRuntimeConfig();
   const baseUrl = 'https://' + config.public.matrix.baseUrl;
   return baseUrl;
