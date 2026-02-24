@@ -47,19 +47,12 @@
 const matrixStore = useMatrixStore();
 const config = useRuntimeConfig();
 const homeserver = ref<string>((config.public.matrix.baseUrl as string) || 'matrix.org');
-// const isLoading = ref(false); // Use store state instead
 const error = ref<string | null>(null);
 
 const handleLogin = async () => {
-  // matrixStore.isLoggingIn = true; // Handled in action
   error.value = null;
 
   try {
-    // This runs the entire flow:
-    // 1. Discover OIDC Config
-    // 2. Register Client (Dynamic)
-    // 3. Generate URL
-    // 4. Redirect window
     await matrixStore.startLogin(homeserver.value);
   } catch (err: any) {
     console.error("Login initialization failed:", err);

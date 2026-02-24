@@ -475,6 +475,8 @@ export const useMatrixStore = defineStore('matrix', {
         this.client = null;
       }
 
+
+
       // CLEANUP: Remove old session data so the plugin doesn't try to auto-login when we land on the callback page.
       localStorage.removeItem('matrix_access_token');
       localStorage.removeItem('matrix_user_id');
@@ -529,7 +531,7 @@ export const useMatrixStore = defineStore('matrix', {
         const redirectUri = `http://127.0.0.1:${port}`;
         localStorage.setItem('matrix_oidc_redirect_uri', redirectUri);
 
-        const authConfig = await getOidcConfig(homeserverUrl);
+        const authConfig = await getOidcConfig(`https://${homeserverUrl}`);
         const clientId = await registerClient(authConfig, redirectUri);
         const nonce = generateNonce();
 
@@ -537,7 +539,7 @@ export const useMatrixStore = defineStore('matrix', {
         localStorage.setItem('matrix_oidc_client_id', clientId);
         localStorage.setItem('matrix_oidc_nonce', nonce);
 
-        const loginUrl = await getLoginUrl(authConfig, clientId, nonce, redirectUri, homeserverUrl);
+        const loginUrl = await getLoginUrl(authConfig, clientId, nonce, redirectUri, `https://${homeserverUrl}`);
 
         // Open the system browser (not the webview)
         const { open } = await import('@tauri-apps/plugin-shell');
@@ -545,7 +547,7 @@ export const useMatrixStore = defineStore('matrix', {
 
       } else {
         // --- Standard Web/PWA Flow ---
-        const authConfig = await getOidcConfig(homeserverUrl);
+        const authConfig = await getOidcConfig(`https://${homeserverUrl}`);
         const clientId = await registerClient(authConfig);
         const nonce = generateNonce();
 
@@ -554,7 +556,7 @@ export const useMatrixStore = defineStore('matrix', {
         localStorage.setItem('matrix_oidc_nonce', nonce);
         localStorage.setItem('matrix_oidc_redirect_uri', window.location.origin + '/auth/callback');
 
-        const url = await getLoginUrl(authConfig, clientId, nonce, undefined, homeserverUrl);
+        const url = await getLoginUrl(authConfig, clientId, nonce, undefined, `https://${homeserverUrl}`);
         window.location.href = url;
       }
     },
