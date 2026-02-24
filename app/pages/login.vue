@@ -62,6 +62,6 @@ const handleLogin = async () => {
 };
 
 onMounted(() => {
-  console.log(homeserver.value, config.public.matrixBaseUrl);
+  console.log(homeserver.value, config.public.matrix.baseUrl);
 });
 </script>
