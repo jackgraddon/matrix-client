@@ -43,7 +43,6 @@ const authResponseHtml = `
   <div class="card hidden" id="success-card">
     <h1 class="success">Login Successful</h1>
     <p>You can close this tab and return to the app.</p>
-    <p class="small">This tab will close automatically...</p>
   </div>
   
   <div class="card hidden" id="error-card">
@@ -70,7 +69,6 @@ const authResponseHtml = `
     } else {
       // Show success and attempt to auto-close
       successCard.classList.remove('hidden');
-      setTimeout(() => window.close(), 3000);
     }
   </script>
 </body>
