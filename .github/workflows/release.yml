@@ -36,6 +36,12 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Rust Cache
+        uses: swatinem/rust-cache@v2
+        with:
+          # Matrix key ensures Windows doesn't try to use Mac's compiled binaries
+          key: ${{ matrix.platform }}
+
       - name: Install dependencies
         run: corepack yarn
         shell: bash
