@@ -17,11 +17,14 @@ export default defineNuxtPlugin(() => {
         }
     });
 
-    // Disable "Ghost Dragging" of images and links
+    // Disable native browser "Ghost Dragging" of images and links,
+    // but allow vuedraggable/SortableJS drag operations to proceed.
     window.addEventListener('dragstart', (e: DragEvent) => {
         const target = e.target as HTMLElement;
-        // Allow dragging if the element itself OR any parent has draggable="true"
-        if (!target.closest('[draggable="true"]')) {
+        const tag = target.tagName;
+        // Only block the default drag behavior for images and links
+        // that are NOT inside a sortable/draggable container
+        if ((tag === 'IMG' || tag === 'A') && !target.closest('[draggable="true"]')) {
             e.preventDefault();
         }
     });

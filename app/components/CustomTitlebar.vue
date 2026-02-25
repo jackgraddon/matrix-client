@@ -74,41 +74,49 @@
 </template>
 
 <script setup lang="ts">
-import { type } from '@tauri-apps/plugin-os';
-import { getCurrentWindow } from '@tauri-apps/api/window';
-
+const isTauri = ref(false);
 const isMac = ref(true); // Default to true to prevent visual pop on macos
 
 onMounted(async () => {
-  try {
-    const osType = await type();
-    isMac.value = osType === 'macos';
-  } catch (error) {
-    console.warn("Failed to detect OS for titlebar", error);
-    if (typeof window !== 'undefined') {
-      isMac.value = navigator.userAgent.toLowerCase().includes('mac');
+  isTauri.value = !!(window as any).__TAURI_INTERNALS__;
+  if (isTauri.value) {
+    try {
+      const { type } = await import('@tauri-apps/plugin-os');
+      const osType = await type();
+      isMac.value = osType === 'macos';
+    } catch (error) {
+      console.warn("Failed to detect OS for titlebar", error);
+      if (typeof window !== 'undefined') {
+        isMac.value = navigator.userAgent.toLowerCase().includes('mac');
+      }
     }
+  } else {
+    isMac.value = navigator.userAgent.toLowerCase().includes('mac');
   }
 });
 
 const closeWindow = async () => {
-  const appWindow = getCurrentWindow();
-  await appWindow.close();
+  if (!isTauri.value) return;
+  const { getCurrentWindow } = await import('@tauri-apps/api/window');
+  await getCurrentWindow().close();
 };
 
 const minimizeWindow = async () => {
-  const appWindow = getCurrentWindow();
-  await appWindow.minimize();
+  if (!isTauri.value) return;
+  const { getCurrentWindow } = await import('@tauri-apps/api/window');
+  await getCurrentWindow().minimize();
 };
 
 const maximizeWindow = async () => {
-  const appWindow = getCurrentWindow();
-  await appWindow.toggleMaximize();
+  if (!isTauri.value) return;
+  const { getCurrentWindow } = await import('@tauri-apps/api/window');
+  await getCurrentWindow().toggleMaximize();
 };
 
 const startDrag = async (e: MouseEvent) => {
+  if (!isTauri.value) return;
   if (e.target instanceof HTMLElement && e.target.closest('button')) return;
-  const appWindow = getCurrentWindow();
-  await appWindow.startDragging();
+  const { getCurrentWindow } = await import('@tauri-apps/api/window');
+  await getCurrentWindow().startDragging();
 };
 </script>

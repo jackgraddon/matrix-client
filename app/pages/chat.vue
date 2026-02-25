@@ -41,9 +41,8 @@
             <div class="w-8 h-[2px] bg-neutral-300 dark:bg-neutral-800 shrink-0" />
 
             <!-- Server List -->
-            <draggable v-model="draggableRootSpaces" item-key="roomId" class="flex flex-col items-center gap-2 shrink-0">
-                <template #item="{ element: server }">
-                    <UiContextMenu :key="server.roomId">
+            <draggable v-model="draggableRootSpaces" class="flex flex-col items-center gap-2 shrink-0" :animation="200" ghost-class="opacity-30" :force-fallback="true" :delay="150" :delay-on-touch-only="false" chosen-class="space-chosen">
+                    <UiContextMenu v-for="server in draggableRootSpaces" :key="server.roomId">
                         <UiContextMenuTrigger>
                             <UiButton 
                                 variant="ghost" 
@@ -77,7 +76,6 @@
                             </UiContextMenuItem>
                         </UiContextMenuContent>
                     </UiContextMenu>
-                </template>
             </draggable>
 
             <!-- Add Server / Explorer -->
@@ -121,7 +119,7 @@ definePageMeta({
 
 import { Room, ClientEvent, RoomEvent, EventType, NotificationCountType, MatrixClient, MatrixEvent } from 'matrix-js-sdk';
 import { PushProcessor } from 'matrix-js-sdk/lib/pushprocessor';
-import draggable from 'vuedraggable';
+import { VueDraggable as draggable } from 'vue-draggable-plus';
 
 const route = useRoute();
 
@@ -326,5 +324,15 @@ const isLinkActive = (to: string) => {
   max-width: 0;
   opacity: 0;
   transform: translateX(10px);
+}
+</style>
+
+<style>
+/* Global: SortableJS chosen class for space items (applied after delay) */
+.space-chosen {
+  transform: scale(1.15);
+  z-index: 50;
+  transition: transform 0.15s ease;
+  filter: drop-shadow(0 0 8px rgba(128, 128, 255, 0.4));
 }
 </style>

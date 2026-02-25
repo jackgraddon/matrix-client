@@ -41,9 +41,10 @@
         
         <div v-show="!isCollapsed" class="flex flex-col gap-1">
             <!-- Nested Categories -->
-            <draggable v-model="draggableChildren" item-key="id">
-                <template #item="{ element: childCategory }">
+            <draggable v-model="draggableChildren" :animation="200" ghost-class="opacity-30" :force-fallback="true" :delay="150" :delay-on-touch-only="false">
                     <ChatSidebarCategory 
+                        v-for="childCategory in draggableChildren"
+                        :key="childCategory.id"
                         :category="childCategory"
                         :active-space-id="activeSpaceId"
                         :is-link-active="isLinkActive"
@@ -51,13 +52,11 @@
                         :collapsed-categories="collapsedCategories"
                         @toggle-category="$emit('toggle-category', $event)"
                     />
-                </template>
             </draggable>
 
             <!-- Rooms in this category -->
-            <draggable v-model="draggableRooms" item-key="roomId" class="flex flex-col">
-                <template #item="{ element: room }">
-                    <div class="flex flex-col">
+            <draggable v-model="draggableRooms" class="flex flex-col" :animation="200" ghost-class="opacity-30" :force-fallback="true" :delay="150" :delay-on-touch-only="false">
+                    <div v-for="room in draggableRooms" :key="room.roomId" class="flex flex-col">
                         <!-- Voice Channel (Click to Join) -->
                         <div 
                             v-if="isVoiceChannel(store.client?.getRoom(room.roomId))"
@@ -158,14 +157,13 @@
                             </div>
                         </div>
                     </div>
-                </template>
             </draggable>
         </div>
     </div>
 </template>
 
 <script setup lang="ts">
-import draggable from 'vuedraggable';
+import { VueDraggable as draggable } from 'vue-draggable-plus';
 import MatrixAvatar from '~/components/MatrixAvatar.vue';
 import { useMatrixStore } from '~/stores/matrix';
 import { isVoiceChannel } from '~/utils/room';

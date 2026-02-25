@@ -91,18 +91,53 @@
 
                 <!-- Sidebar Space Categories List -->
                 <template v-if="isLinkActive('/chat/spaces') && activeSpaceId">
-                    <draggable v-model="draggableCategories" item-key="id">
-                        <template #item="{ element: category }">
-                            <ChatSidebarCategory 
-                                :category="category"
-                                :active-space-id="activeSpaceId"
-                                :is-link-active="isLinkActive"
-                                :depth="0"
-                                :collapsed-categories="collapsedCategories"
-                                @toggle-category="toggleCategory"
-                            />
-                        </template>
-                    </draggable>
+                    <!-- Edit Mode: Compact draggable category pills -->
+                    <template v-if="isCategoryEditMode">
+                        <div class="flex items-center justify-between px-2 mb-2">
+                            <span class="text-xs font-bold uppercase text-muted-foreground">Reorder Categories</span>
+                            <UiButton variant="ghost" size="icon" class="h-6 w-6" @click="isCategoryEditMode = false">
+                                <Icon name="solar:check-circle-bold" class="h-4 w-4 text-green-500" />
+                            </UiButton>
+                        </div>
+                        <draggable v-model="draggableCategories" :animation="200" ghost-class="opacity-30" :force-fallback="true" class="flex flex-col gap-1">
+                            <div 
+                                v-for="category in draggableCategories" 
+                                :key="category.id"
+                                class="flex items-center gap-2 px-2 py-2 rounded-md bg-secondary/50 hover:bg-secondary cursor-grab active:cursor-grabbing transition-colors"
+                            >
+                                <Icon name="solar:hamburger-menu-linear" class="h-4 w-4 text-muted-foreground shrink-0" />
+                                <MatrixAvatar
+                                    v-if="category.avatarUrl"
+                                    :mxc-url="category.avatarUrl"
+                                    :name="category.name"
+                                    class="h-5 w-5 shrink-0"
+                                    :size="32"
+                                />
+                                <span class="text-sm font-medium truncate">{{ category.name }}</span>
+                                <span class="ml-auto text-xs text-muted-foreground shrink-0">{{ category.rooms.length }}</span>
+                            </div>
+                        </draggable>
+                    </template>
+
+                    <!-- Normal Mode: Full category rendering -->
+                    <template v-else>
+                        <div class="flex items-center justify-between px-2 mb-2">
+                            <span class="text-xs font-bold uppercase text-muted-foreground">Categories</span>
+                            <UiButton variant="ghost" size="icon" class="h-6 w-6 text-muted-foreground/50 hover:text-foreground transition-colors" @click="isCategoryEditMode = true" title="Reorder categories">
+                                <Icon name="solar:sort-vertical-bold" class="h-3.5 w-3.5" />
+                            </UiButton>
+                        </div>
+                        <ChatSidebarCategory 
+                            v-for="category in draggableCategories"
+                            :key="category.id"
+                            :category="category"
+                            :active-space-id="activeSpaceId"
+                            :is-link-active="isLinkActive"
+                            :depth="0"
+                            :collapsed-categories="collapsedCategories"
+                            @toggle-category="toggleCategory"
+                        />
+                    </template>
                 </template>
             </div>
         </nav>
@@ -136,7 +171,7 @@
 
 <script setup lang="ts">
 import { Room, EventType, NotificationCountType } from 'matrix-js-sdk';
-import draggable from 'vuedraggable';
+import { VueDraggable as draggable } from 'vue-draggable-plus';
 import MatrixAvatar from '~/components/MatrixAvatar.vue';
 import ChatSidebarCategory from '~/components/ChatSidebarCategory.vue';
 import { isVoiceChannel } from '~/utils/room';
@@ -229,6 +264,8 @@ const activeSpaceId = computed(() => {
 });
 
 const collapsedCategories = computed(() => new Set(store.ui.collapsedCategories));
+
+const isCategoryEditMode = ref(false);
 
 const toggleCategory = (categoryId: string) => {
   store.toggleUICategory(categoryId);
