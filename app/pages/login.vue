@@ -9,7 +9,7 @@
       </UiCardHeader>
       
       <UiCardContent class="flex flex-col gap-6">
-        <form v-if="!matrixStore.isLoggingIn">
+        <form v-if="!matrixStore.isLoggingIn" @submit.prevent="handleLogin">
           <UiInputGroup>
             <UiInputGroupInput id="homeserverURL" type="url" v-model="homeserver" :placeholder="homeserver" class="!pl-1" />
             <UiInputGroupAddon>
