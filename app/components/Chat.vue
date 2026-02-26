@@ -644,6 +644,14 @@ async function connectToAudio() {
       };
       
       (rtcSession as any).on('encryption_key_changed', onKeyChanged);
+
+      // Handle local participant's key. MatrixRTC might not fire 'encryption_key_changed' for the local
+      // user depending on the version/implementation, so we check if we already have a key or need to generate one.
+      // However, MatrixRTC usually manages the key rotation and emits it. 
+      // Important: We must ensure LiveKit uses the identity format MatrixRTC expects.
+      
+      // If the SDK exposes the local participant's current key, we should bridge it immediately.
+      // (Using private API access if necessary, or relying on reemitEncryptionKeys which we call below)
       
       // Request re-emission of any keys that were already exchanged before we started listening
       if (typeof (rtcSession as any).reemitEncryptionKeys === 'function') {

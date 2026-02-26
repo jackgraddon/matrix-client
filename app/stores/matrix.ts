@@ -1119,42 +1119,94 @@ export const useMatrixStore = defineStore('matrix', {
       }
 
       try {
-        // 1. Tell Matrix we are jumping into the call with E2EE enabled
+        // 1. Get the RTC session for the room
         const rtcSession = this.client.matrixRTC.getRoomSession(room);
+
+        // 2. Determine Focus: Use existing session focus if available, otherwise discover via .well-known
+        let fociPreferred: any[] = [];
+        let serviceUrl = 'https://livekit-jwt.call.matrix.org'; // Default fallback
+
+        // Check if there are already active foci in the session (e.g., someone else started the call)
+        // Cast to any because 'foci' might not be in the public TS definition yet
+        const activeFoci = (rtcSession as any).foci;
+        if (activeFoci && activeFoci.length > 0) {
+          console.log('[Voice] Using existing active foci from session:', activeFoci);
+          fociPreferred = activeFoci;
+
+          // Update service URL if the active focus provides one
+          const livekitFocus = activeFoci.find((f: any) => f.type === 'livekit');
+          if (livekitFocus && livekitFocus.livekit_service_url) {
+            serviceUrl = livekitFocus.livekit_service_url;
+          }
+        } else {
+          // No active focus, discover from .well-known
+          try {
+            const wellKnown = await this.client.getClientWellKnown();
+            console.log('[Voice] Well-known discovery result:', wellKnown);
+            const rtcFoci = wellKnown?.['org.matrix.msc4143.rtc_foci'];
+            if (Array.isArray(rtcFoci)) {
+              // Prefer LiveKit foci
+              const livekitFocus = rtcFoci.find((f: any) => f.type === 'livekit');
+              if (livekitFocus) {
+                fociPreferred = [livekitFocus];
+                if (livekitFocus.livekit_service_url) {
+                  serviceUrl = livekitFocus.livekit_service_url;
+                }
+                console.log('[Voice] Discovered preferred focus from .well-known:', livekitFocus);
+              }
+            }
+          } catch (e) {
+            console.warn('[Voice] Failed to fetch/parse well-known for RTC foci, using default.', e);
+          }
+
+          // FALLBACK: If discovery returned nothing or failed, but we are proceeding to connect
+          // to the default/fallback URL, we MUST advertise that focus to avoid split brain.
+          // Other clients (like Element) will discover the focus themselves and expect us to be there.
+          if (fociPreferred.length === 0) {
+            console.warn('[Voice] Discovery failed or empty. Constructing synthetic focus for default URL:', serviceUrl);
+            fociPreferred = [{
+              type: 'livekit',
+              livekit_service_url: serviceUrl,
+              livekit_alias: 'default', // standard alias
+            }];
+          }
+        }
+
+        // 3. Tell Matrix we are jumping into the call with E2EE enabled
         const userId = this.client.getUserId()!;
         const deviceId = this.client.getDeviceId()!;
+
+        console.log(`[Voice] Joining MatrixRTC session with focus:`, fociPreferred);
+
+        // Join the session, advertising our preferred focus if we are the first/need to assert it
         rtcSession.joinRTCSession(
           { userId, deviceId, memberId: `${userId}:${deviceId}` },
-          [],           // fociPreferred
+          fociPreferred, // Advertises the focus to other clients (Element)
           undefined,    // multiSfuFocus
           { manageMediaKeys: true, useExperimentalToDeviceTransport: true },
         );
-        console.log(`[Voice] Joined MatrixRTC session for ${room.roomId} via joinRTCSession (manageMediaKeys: true, toDeviceTransport: true)`);
+        console.log(`[Voice] Joined MatrixRTC session for ${room.roomId} with focus ${JSON.stringify(fociPreferred)}`);
 
         // Listen for to-device encryption key events as a manual backup.
-        // The SDK's internal ToDeviceKeyTransport should handle this via
-        // useExperimentalToDeviceTransport, but we also listen manually
-        // to ensure the signaling handshake completes with Element.
         this.client.on('toDeviceEvent' as any, (event: any) => {
           const evType = event.getType?.() ?? '';
           if (evType === 'io.element.call.encryption_keys') {
             console.log(`[Voice] Received encryption keys signaling from ${event.getSender?.()} (type=${evType})`);
-          } else {
-            console.log(`[Voice][DIAG] toDeviceEvent: type=${evType} sender=${event.getSender?.()}`);
           }
         });
 
-        // Track encryption key changes — confirms the SDK's E2EE pipeline is end-to-end
+        // Track encryption key changes
         (rtcSession as any).on('encryption_key_changed', (keyBin: any, keyIndex: number, membership: any, rtcBackendIdentity: string) => {
           console.log(`[Voice][DIAG] EncryptionKeyChanged: identity=${rtcBackendIdentity} index=${keyIndex} userId=${membership?.userId} deviceId=${membership?.deviceId}`);
         });
 
-        // 2. Prove our identity to Matrix.org by requesting a secure OpenID token
+        // 3. Prove our identity to Matrix.org by requesting a secure OpenID token
         const openIdToken = await this.client.getOpenIdToken();
         console.log(`[Voice] Obtained OpenID token`);
 
-        // 3. Ask the Matrix.org Authorization Service for a LiveKit ticket
-        const response = await fetch('https://livekit-jwt.call.matrix.org/sfu/get', {
+        // 4. Ask the Authorized Service (AS) for a LiveKit ticket
+        console.log(`[Voice] Fetching JWT from AS: ${serviceUrl}`);
+        const response = await fetch(`${serviceUrl}/sfu/get`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -1165,7 +1217,7 @@ export const useMatrixStore = defineStore('matrix', {
         });
 
         if (!response.ok) {
-          throw new Error(`Failed to get LiveKit JWT: ${response.statusText}`);
+          throw new Error(`Failed to get LiveKit JWT from ${serviceUrl}: ${response.statusText}`);
         }
 
         const livekitData = await response.json();
