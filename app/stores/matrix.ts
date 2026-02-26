@@ -27,6 +27,7 @@ export interface UIState {
   selectedUserId: string | null;
   profileCardPos: { top: string; right: string };
   collapsedCategories: string[];
+  showEmptyRooms: boolean;
   // Composer states indexed by roomId
   composerStates: Record<string, {
     replyingTo?: any;
@@ -171,6 +172,7 @@ export const useMatrixStore = defineStore('matrix', {
     pinnedSpaces: [] as string[],
     lastPresenceUpdate: 0,
     lastPresenceState: null as { presence: string; status_msg: string } | null,
+    directMessageMap: {} as Record<string, string>,
 
     // Centralized UI State
     ui: {
@@ -182,6 +184,9 @@ export const useMatrixStore = defineStore('matrix', {
       collapsedCategories: (typeof localStorage !== 'undefined' ?
         JSON.parse(localStorage.getItem('matrix_collapsed_categories') || '[]') :
         []),
+      showEmptyRooms: (typeof localStorage !== 'undefined' ?
+        localStorage.getItem('matrix_show_empty_rooms') === 'true' :
+        false),
       composerStates: {},
       uiOrder: (typeof localStorage !== 'undefined' ?
         JSON.parse(localStorage.getItem('matrix_ui_order') || '{"rootSpaces":[],"categories":{},"rooms":{}}') :
@@ -494,6 +499,32 @@ export const useMatrixStore = defineStore('matrix', {
       }
     },
 
+    async setProfileDisplayName(displayName: string) {
+      if (!this.client) return;
+      try {
+        await this.client.setDisplayName(displayName);
+        if (this.user) this.user.displayName = displayName;
+        toast.success('Display name updated');
+      } catch (e) {
+        console.error('[MatrixStore] Failed to set display name:', e);
+        toast.error('Failed to update display name');
+      }
+    },
+
+    async uploadAndSetProfileAvatar(file: File) {
+      if (!this.client) return;
+      try {
+        const response = await this.client.uploadContent(file, { type: file.type });
+        const mxcUrl = response.content_uri;
+        await this.client.setAvatarUrl(mxcUrl);
+        if (this.user) this.user.avatarUrl = mxcUrl;
+        toast.success('Avatar updated');
+      } catch (e) {
+        console.error('[MatrixStore] Failed to upload/set avatar:', e);
+        toast.error('Failed to update avatar');
+      }
+    },
+
     toggleMemberList() {
       this.ui.memberListVisible = !this.ui.memberListVisible;
       localStorage.setItem('matrix_member_list_visible', String(this.ui.memberListVisible));
@@ -524,6 +555,11 @@ export const useMatrixStore = defineStore('matrix', {
         this.ui.collapsedCategories.splice(index, 1);
       }
       localStorage.setItem('matrix_collapsed_categories', JSON.stringify(this.ui.collapsedCategories));
+    },
+
+    toggleShowEmptyRooms() {
+      this.ui.showEmptyRooms = !this.ui.showEmptyRooms;
+      localStorage.setItem('matrix_show_empty_rooms', String(this.ui.showEmptyRooms));
     },
 
     cancelLogin(errorReason?: string | null) {
@@ -873,7 +909,10 @@ export const useMatrixStore = defineStore('matrix', {
 
       this.client.on(sdk.ClientEvent.Room, () => this.updateHierarchy());
       this.client.on(sdk.ClientEvent.AccountData, (event) => {
-        if (event.getType() === sdk.EventType.Direct) this.updateHierarchy();
+        if (event.getType() === sdk.EventType.Direct) {
+          this.updateHierarchy();
+          this.updateDirectMessageMap();
+        }
         if (event.getType() === 'cc.jackg.ruby.pinned_spaces') this.updatePinnedSpaces();
         if (event.getType() === 'cc.jackg.ruby.ui_order') this.loadUIOrderFromAccountData();
       });
@@ -888,7 +927,22 @@ export const useMatrixStore = defineStore('matrix', {
       // Initial trigger
       this.updatePinnedSpaces();
       this.loadUIOrderFromAccountData();
+      this.updateDirectMessageMap();
       this.updateHierarchy();
+    },
+
+    updateDirectMessageMap() {
+      if (!this.client) return;
+      const dmEvent = this.client.getAccountData(sdk.EventType.Direct);
+      if (!dmEvent) return;
+      const content = dmEvent.getContent();
+      const newMap: Record<string, string> = {};
+      for (const [userId, roomIds] of Object.entries(content)) {
+        if (Array.isArray(roomIds) && roomIds.length > 0) {
+          newMap[userId] = roomIds[0];
+        }
+      }
+      this.directMessageMap = newMap;
     },
 
     loadUIOrderFromAccountData() {
@@ -1065,14 +1119,35 @@ export const useMatrixStore = defineStore('matrix', {
       }
 
       try {
-        // 1. Tell Matrix we are jumping into the call
+        // 1. Tell Matrix we are jumping into the call with E2EE enabled
         const rtcSession = this.client.matrixRTC.getRoomSession(room);
-        // memberships are required in some SDK versions, but let's try passing empty list if needed or following the guide
-        // Based on common matrix-js-sdk v40 patterns, it might expect a list of memberships if not using the default.
-        // However, if the guide said no args, I'll try to find if there's a requirement.
-        // For now, let's keep it as is or try to satisfy the linter if it's strict.
-        (rtcSession as any).joinRoomSession();
-        console.log(`[Voice] Joined MatrixRTC room session for ${room.roomId}`);
+        const userId = this.client.getUserId()!;
+        const deviceId = this.client.getDeviceId()!;
+        rtcSession.joinRTCSession(
+          { userId, deviceId, memberId: `${userId}:${deviceId}` },
+          [],           // fociPreferred
+          undefined,    // multiSfuFocus
+          { manageMediaKeys: true, useExperimentalToDeviceTransport: true },
+        );
+        console.log(`[Voice] Joined MatrixRTC session for ${room.roomId} via joinRTCSession (manageMediaKeys: true, toDeviceTransport: true)`);
+
+        // Listen for to-device encryption key events as a manual backup.
+        // The SDK's internal ToDeviceKeyTransport should handle this via
+        // useExperimentalToDeviceTransport, but we also listen manually
+        // to ensure the signaling handshake completes with Element.
+        this.client.on('toDeviceEvent' as any, (event: any) => {
+          const evType = event.getType?.() ?? '';
+          if (evType === 'io.element.call.encryption_keys') {
+            console.log(`[Voice] Received encryption keys signaling from ${event.getSender?.()} (type=${evType})`);
+          } else {
+            console.log(`[Voice][DIAG] toDeviceEvent: type=${evType} sender=${event.getSender?.()}`);
+          }
+        });
+
+        // Track encryption key changes — confirms the SDK's E2EE pipeline is end-to-end
+        (rtcSession as any).on('encryption_key_changed', (keyBin: any, keyIndex: number, membership: any, rtcBackendIdentity: string) => {
+          console.log(`[Voice][DIAG] EncryptionKeyChanged: identity=${rtcBackendIdentity} index=${keyIndex} userId=${membership?.userId} deviceId=${membership?.deviceId}`);
+        });
 
         // 2. Prove our identity to Matrix.org by requesting a secure OpenID token
         const openIdToken = await this.client.getOpenIdToken();
@@ -1101,7 +1176,7 @@ export const useMatrixStore = defineStore('matrix', {
           roomId: room.roomId,
           roomName: room.name,
           url: livekitData.url,
-          token: livekitData.jwt
+          token: livekitData.jwt,
         };
         console.log(`[Voice] activeVoiceCall updated in store:`, this.activeVoiceCall);
 

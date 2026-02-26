@@ -41,7 +41,7 @@
             <div class="w-8 h-[2px] bg-neutral-300 dark:bg-neutral-800 shrink-0" />
 
             <!-- Server List -->
-            <draggable v-model="draggableRootSpaces" class="flex flex-col items-center gap-2 shrink-0" :animation="200" ghost-class="opacity-30" :force-fallback="true" :delay="150" :delay-on-touch-only="false" chosen-class="space-chosen">
+            <draggable v-model="draggableRootSpaces" class="flex flex-col items-center gap-2 shrink-0" :animation="200" ghost-class="opacity-30" :force-fallback="true" :delay="150" :delay-on-touch-only="false" chosen-class="drag-chosen">
                     <UiContextMenu v-for="server in draggableRootSpaces" :key="server.roomId">
                         <UiContextMenuTrigger>
                             <UiButton 
@@ -67,11 +67,11 @@
                         </UiContextMenuTrigger>
                         <UiContextMenuContent>
                             <UiContextMenuItem v-if="store.pinnedSpaces.includes(server.roomId)" @click="store.unpinSpace(server.roomId)" class="text-destructive focus:text-destructive">
-                                <Icon name="solar:pin-broken-bold" class="mr-2 h-4 w-4" />
+                                <Icon name="solar:pin-broken" class="mr-2 h-4 w-4" />
                                 Unpin from Sidebar
                             </UiContextMenuItem>
                             <UiContextMenuItem v-else disabled>
-                                <Icon name="solar:info-circle-bold" class="mr-2 h-4 w-4" />
+                                <Icon name="solar:info-circle-broken" class="mr-2 h-4 w-4" />
                                 Root Space
                             </UiContextMenuItem>
                         </UiContextMenuContent>
@@ -94,7 +94,7 @@
         <!-- Main Content -->
             <!-- <UiResizablePanel :min-size="70" :default-size="75" :max-size="85"> -->
         <main class="flex flex-1 h-full max-w-full flex-col min-w-0 min-h-0">
-            <div class="overflow-hidden mb-2 mr-2 p-5 rounded-lg h-full bg-neutral-100 dark:bg-neutral-900 min-w-0 flex flex-col min-h-0">
+            <div class="mb-2 mr-2 p-5 rounded-lg h-full bg-neutral-100 dark:bg-neutral-900 min-w-0 flex flex-col min-h-0">
                 <NuxtPage class="flex-1 min-h-0" />
             </div>
         </main>
@@ -328,9 +328,9 @@ const isLinkActive = (to: string) => {
 </style>
 
 <style>
-/* Global: SortableJS chosen class for space items (applied after delay) */
-.space-chosen {
-  transform: scale(1.15);
+/* Global: SortableJS chosen class (applied after delay on all draggables) */
+.drag-chosen {
+  transform: scale(1.05);
   z-index: 50;
   transition: transform 0.15s ease;
   filter: drop-shadow(0 0 8px rgba(128, 128, 255, 0.4));

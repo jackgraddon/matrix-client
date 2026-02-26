@@ -1,0 +1,441 @@
+[Debug][MatrixRTCSession!RCEGSSJbqycKCSRdAK: jackg.cc][MembershipManager][NewMembershipActionScheduler](3)(chunk - KRJJJO55.js, line 22953)
+"Current MembershipManager processing: RestartDelayedEvent
+Queue: "
+Proxy { 0: { ts: 1772056591585, type: "RestartDelayedEvent" }, 1: { ts: 1772060135669, type: "UpdateExpiry" } }
+"
+Date.now: \"1772056591586"
+[Debug][MatrixRTCSession!RCEGSSJbqycKCSRdAK: jackg.cc][MembershipManager] – "MembershipManager applied action changes. Status: Connected -> Connected"(chunk - KRJJJO55.js, line 23235)
+[Debug][MatrixRTCSession!RCEGSSJbqycKCSRdAK: jackg.cc][MembershipManager] – "MembershipManager before processing action. status=Connected"(chunk - KRJJJO55.js, line 23241)
+[Debug] FetchHttpApi: --> POST https://matrix.jackg.cc/_matrix/client/unstable/org.matrix.msc4140/delayed_events/syd_CjbkFTkXmpjkLYxkobDg/restart (chunk-KRJJJO55.js, line 8313)
+[Debug] FetchHttpApi: < --POST https://matrix.jackg.cc/_matrix/client/unstable/org.matrix.msc4140/delayed_events/syd_CjbkFTkXmpjkLYxkobDg/restart [76ms 200] (chunk-KRJJJO55.js, line 8363)
+[Debug] FetchHttpApi: < --GET https://matrix.jackg.cc/_matrix/client/v3/sync?filter=xxx&timeout=xxx&org.matrix.msc4222.use_state_after=xxx&since=xxx [11603ms 200] (chunk-KRJJJO55.js, line 8363)
+[Log][Voice] State event received: org.matrix.msc3401.call.member, trigger refresh(matrix.ts, line 639)
+[Warning][Vue warn]: Extraneous non - props attributes(class) were passed to component but could not be automatically inherited because component renders fragment or text or teleport root nodes. (69)(runtime - core.esm - bundler.js, line 50)
+"
+"
+" at <Chat"
+"class=\"flex-1 min-h-0\""
+"onVnodeUnmounted=fn<onVnodeUnmounted>"
+"ref=Ref<"
+Proxy { __v_skip: true }
+">"
+">"
+"
+"
+" at <RouteProvider"
+"key=\"/chat\""
+"vnode="
+{ __v_isVNode: true, __v_skip: true, type: Object, props: Object, key: null, … }
+"route="
+{ fullPath: "/chat/spaces/!kPbLFrXBpYhaRLaCBf:jackg.cc/!RCEGSSJbqycKCSRdAK:jackg.cc", path: "/chat/spaces/!kPbLFrXBpYhaRLaCBf:jackg.cc/!RCEGSSJbqycKCSRdAK:jackg.cc", query: { }, hash: "", name: "chat-spaces-id", … }
+" ..."
+">"
+"
+"
+" at <RouterView"
+"name=undefined"
+"route=undefined"
+"class=\"flex-1 min-h-0\""
+">"
+"
+"
+" at <NuxtPage"
+"class=\"flex-1 min-h-0\""
+">"
+"
+"
+" at <Primitive"
+"ref=fn<forwardRef>"
+"as=\"span\""
+"as-child=false"
+" ..."
+">"
+"
+"
+" at <ContextMenuTrigger"
+"data-slot=\"context-menu-trigger\""
+"class=\"block h-full w-full\""
+">"
+"
+"
+" at <ContextMenuTrigger"
+"class=\"block h-full w-full\""
+">"
+"
+"
+" at <PopperRoot>"
+"
+"
+" at <MenuRoot"
+"open=false"
+"onUpdate:open=fn"
+"dir=\"ltr\""
+" ..."
+">"
+"
+"
+" at <ContextMenuRoot"
+"data-slot=\"context-menu\""
+"onUpdate:open=fn"
+">"
+"
+"
+" at <ContextMenu"
+">"
+"
+"
+" at <GlobalContextMenu"
+">"
+"
+"
+" at <App"
+"key=4"
+">"
+"
+"
+" at <NuxtRoot>"
+[Log][ChatSidebar] Built hierarchy for space!kPbLFrXBpYhaRLaCBf: jackg.cc(ChatSidebar.vue, line 148)
+[Debug] FetchHttpApi: --> POST https://matrix.jackg.cc/_matrix/client/v3/rooms/!RCEGSSJbqycKCSRdAK%3Ajackg.cc/receipt/m.read/%248yRTf0QmhirEIK_JBf-f6RpwHR4konnEHbrufGzdQs8 (chunk-KRJJJO55.js, line 8313)
+[Log][Voice] Event received: org.matrix.msc3401.call.member, trigger refresh(matrix.ts, line 646)
+[Debug][MatrixRTCSession!RCEGSSJbqycKCSRdAK: jackg.cc] – "Call memberships in room !RCEGSSJbqycKCSRdAK:jackg.cc, in order: " –[[1772056540534, "@jack:jackg.cc"], [1772056591945, "@dummy:jackg.cc"]](2)(chunk - KRJJJO55.js, line 24709)
+[Warning][Vue warn]: Extraneous non - props attributes(class) were passed to component but could not be automatically inherited because component renders fragment or text or teleport root nodes. (69)(runtime - core.esm - bundler.js, line 50)
+"
+"
+" at <Chat"
+"class=\"flex-1 min-h-0\""
+"onVnodeUnmounted=fn<onVnodeUnmounted>"
+"ref=Ref<"
+Proxy { __v_skip: true }
+">"
+">"
+"
+"
+" at <RouteProvider"
+"key=\"/chat\""
+"vnode="
+{ __v_isVNode: true, __v_skip: true, type: Object, props: Object, key: null, … }
+"route="
+{ fullPath: "/chat/spaces/!kPbLFrXBpYhaRLaCBf:jackg.cc/!RCEGSSJbqycKCSRdAK:jackg.cc", path: "/chat/spaces/!kPbLFrXBpYhaRLaCBf:jackg.cc/!RCEGSSJbqycKCSRdAK:jackg.cc", query: { }, hash: "", name: "chat-spaces-id", … }
+" ..."
+">"
+"
+"
+" at <RouterView"
+"name=undefined"
+"route=undefined"
+"class=\"flex-1 min-h-0\""
+">"
+"
+"
+" at <NuxtPage"
+"class=\"flex-1 min-h-0\""
+">"
+"
+"
+" at <Primitive"
+"ref=fn<forwardRef>"
+"as=\"span\""
+"as-child=false"
+" ..."
+">"
+"
+"
+" at <ContextMenuTrigger"
+"data-slot=\"context-menu-trigger\""
+"class=\"block h-full w-full\""
+">"
+"
+"
+" at <ContextMenuTrigger"
+"class=\"block h-full w-full\""
+">"
+"
+"
+" at <PopperRoot>"
+"
+"
+" at <MenuRoot"
+"open=false"
+"onUpdate:open=fn"
+"dir=\"ltr\""
+" ..."
+">"
+"
+"
+" at <ContextMenuRoot"
+"data-slot=\"context-menu\""
+"onUpdate:open=fn"
+">"
+"
+"
+" at <ContextMenu"
+">"
+"
+"
+" at <GlobalContextMenu"
+">"
+"
+"
+" at <App"
+"key=4"
+">"
+"
+"
+" at <NuxtRoot>"
+[Log][ChatSidebar] Built hierarchy for space!kPbLFrXBpYhaRLaCBf: jackg.cc(ChatSidebar.vue, line 148)
+[Info][MatrixRTCSession!RCEGSSJbqycKCSRdAK: jackg.cc] – "Memberships for call in room !RCEGSSJbqycKCSRdAK:jackg.cc have changed: emitting (2 members)"(chunk - KRJJJO55.js, line 24790)
+[Debug][MatrixRTCSession!RCEGSSJbqycKCSRdAK: jackg.cc] – "[Perf]: emit MatrixRTCSessionEvent.MembershipsChanged took 0ms"(chunk - 3K7ZPAJJ.js, line 6905)
+[Debug] FetchHttpApi: --> GET https://matrix.jackg.cc/_matrix/client/v3/sync?filter=xxx&timeout=xxx&org.matrix.msc4222.use_state_after=xxx&since=xxx (chunk-KRJJJO55.js, line 8313)
+[Debug] FetchHttpApi: < --POST https://matrix.jackg.cc/_matrix/client/v3/rooms/!RCEGSSJbqycKCSRdAK%3Ajackg.cc/receipt/m.read/%248yRTf0QmhirEIK_JBf-f6RpwHR4konnEHbrufGzdQs8 [81ms 200] (chunk-KRJJJO55.js, line 8363)
+[Debug] FetchHttpApi: < --GET https://matrix.jackg.cc/_matrix/client/v3/sync?filter=xxx&timeout=xxx&org.matrix.msc4222.use_state_after=xxx&since=xxx [76ms 200] (chunk-KRJJJO55.js, line 8363)
+[Debug] FetchHttpApi: --> GET https://matrix.jackg.cc/_matrix/client/v3/sync?filter=xxx&timeout=xxx&org.matrix.msc4222.use_state_after=xxx&since=xxx (chunk-KRJJJO55.js, line 8313)
+[Debug] FetchHttpApi: < --GET https://matrix.jackg.cc/_matrix/client/v3/sync?filter=xxx&timeout=xxx&org.matrix.msc4222.use_state_after=xxx&since=xxx [91ms 200] (chunk-KRJJJO55.js, line 8363)
+[Debug] DEBUG matrix_sdk_crypto:: machine: Received a to - device event(matrix_sdk_crypto_wasm_bg.js, line 10950)
+at / home / runner /.cargo / git / checkouts / matrix - rust - sdk - 5cafb5792f78b8d1 / 3924463 / crates / matrix - sdk - crypto / src / machine / mod.rs: 1534
+    in matrix_sdk_crypto:: machine::receive_to_device_event with sender = "@dummy:jackg.cc" event_type = "m.room.encrypted" message_id = "e40ae3ab18c047bbbdeb3df6d3d12b6e"
+        in matrix_sdk_crypto:: machine:: receive_sync_changes
+        [Debug] DEBUG matrix_sdk_crypto:: olm:: session: Decrypted an Olm message(matrix_sdk_crypto_wasm_bg.js, line 10950)
+session = Session { session_id: "fIgNp9R/W1nyFDsqBrGmWzt+8yt48AE+MhYsqStpZDw", sending_ratchet: DoubleRatchet(InactiveDoubleRatchet { ratchet_count: 0, ratchet_key: "curve25519:0Q10Fzkt24KLk04l1NGtesiTqkJwXvuNhgqMfR4rqFI", .. }), receiving_chains: [ReceiverChain { ratchet_count: 0, ratchet_key: "curve25519:0Q10Fzkt24KLk04l1NGtesiTqkJwXvuNhgqMfR4rqFI", chain_index: 9, skipped_message_keys: [], .. }], config: SessionConfig { version: V1 }, ..}
+at / home / runner /.cargo / git / checkouts / matrix - rust - sdk - 5cafb5792f78b8d1 / 3924463 / crates / matrix - sdk - crypto / src / olm / session.rs: 86
+    in matrix_sdk_crypto:: olm:: account::decrypt_and_parse_olm_message with sender = "@dummy:jackg.cc" sender_key = "curve25519:m4jPO2ChVE8Hw2GRmVRTGLVnsSjL/NuJ/QmY+nf1iB4" PreKey(PreKeyMessage { session_keys: SessionKeys { identity_key: "m4jPO2ChVE8Hw2GRmVRTGLVnsSjL/NuJ/QmY+nf1iB4", base_key: "rO+mbhimm6wRA0TlGBBBqSJx1fABnZQoqjBySbDSJg4", one_time_key: "nsYww9TprM+wg6k7gIa5oFtcTS/9tNqSqVxpZVd/CQg" }, message: Message { version: 3, ratchet_key: "curve25519:0Q10Fzkt24KLk04l1NGtesiTqkJwXvuNhgqMfR4rqFI", chain_index: 8, .. } }) decryption_settings = DecryptionSettings { sender_device_trust_requirement: Untrusted } session_id = "fIgNp9R/W1nyFDsqBrGmWzt+8yt48AE+MhYsqStpZDw"
+        in matrix_sdk_crypto:: olm:: account::decrypt_olm_v1 with sender_key = "curve25519:m4jPO2ChVE8Hw2GRmVRTGLVnsSjL/NuJ/QmY+nf1iB4"
+        in matrix_sdk_crypto:: olm:: account::decrypt_to_device_event with algorithm = "m.olm.v1.curve25519-aes-sha2"
+        in matrix_sdk_crypto:: machine::receive_to_device_event with sender = "@dummy:jackg.cc" event_type = "m.room.encrypted" message_id = "e40ae3ab18c047bbbdeb3df6d3d12b6e"
+            in matrix_sdk_crypto:: machine:: receive_sync_changes
+            [Debug] DEBUG matrix_sdk_crypto:: machine: Received a decrypted to - device event(matrix_sdk_crypto_wasm_bg.js, line 10950)
+sender_device_keys = (Some("curve25519:m4jPO2ChVE8Hw2GRmVRTGLVnsSjL/NuJ/QmY+nf1iB4"), Some("ed25519:yzCztMJ2Kplt99GOYlVyASnYoRwhEGLj0qE/giD5ch4"))
+at / home / runner /.cargo / git / checkouts / matrix - rust - sdk - 5cafb5792f78b8d1 / 3924463 / crates / matrix - sdk - crypto / src / machine / mod.rs: 1361
+    in matrix_sdk_crypto:: machine::handle_decrypted_to_device_event with sender_key = "curve25519:m4jPO2ChVE8Hw2GRmVRTGLVnsSjL/NuJ/QmY+nf1iB4" event_type = "io.element.call.encryption_keys"
+        in matrix_sdk_crypto:: machine::receive_to_device_event with sender = "@dummy:jackg.cc" event_type = "m.room.encrypted" message_id = "e40ae3ab18c047bbbdeb3df6d3d12b6e"
+            in matrix_sdk_crypto:: machine:: receive_sync_changes
+            [Warning] WARN matrix_sdk_crypto:: machine: Received an unexpected encrypted to - device event(matrix_sdk_crypto_wasm_bg.js, line 11930)
+at / home / runner /.cargo / git / checkouts / matrix - rust - sdk - 5cafb5792f78b8d1 / 3924463 / crates / matrix - sdk - crypto / src / machine / mod.rs: 1404
+    in matrix_sdk_crypto:: machine::handle_decrypted_to_device_event with sender_key = "curve25519:m4jPO2ChVE8Hw2GRmVRTGLVnsSjL/NuJ/QmY+nf1iB4" event_type = "io.element.call.encryption_keys"
+        in matrix_sdk_crypto:: machine::receive_to_device_event with sender = "@dummy:jackg.cc" event_type = "m.room.encrypted" message_id = "e40ae3ab18c047bbbdeb3df6d3d12b6e"
+            in matrix_sdk_crypto:: machine:: receive_sync_changes
+            [Debug] FetchHttpApi: --> GET https://matrix.jackg.cc/_matrix/client/v3/sync?filter=xxx&timeout=xxx&org.matrix.msc4222.use_state_after=xxx&since=xxx (chunk-KRJJJO55.js, line 8313)
+[Debug][MatrixRTCSession!RCEGSSJbqycKCSRdAK: jackg.cc][MembershipManager][NewMembershipActionScheduler](3)(chunk - KRJJJO55.js, line 22953)
+"Current MembershipManager processing: RestartDelayedEvent
+Queue: "
+Proxy { 0: { ts: 1772056596663, type: "RestartDelayedEvent" }, 1: { ts: 1772060135669, type: "UpdateExpiry" } }
+"
+Date.now: \"1772056596663"
+[Debug][MatrixRTCSession!RCEGSSJbqycKCSRdAK: jackg.cc][MembershipManager] – "MembershipManager applied action changes. Status: Connected -> Connected"(chunk - KRJJJO55.js, line 23235)
+[Debug][MatrixRTCSession!RCEGSSJbqycKCSRdAK: jackg.cc][MembershipManager] – "MembershipManager before processing action. status=Connected"(chunk - KRJJJO55.js, line 23241)
+[Debug] FetchHttpApi: --> POST https://matrix.jackg.cc/_matrix/client/unstable/org.matrix.msc4140/delayed_events/syd_CjbkFTkXmpjkLYxkobDg/restart (chunk-KRJJJO55.js, line 8313)
+[Debug] FetchHttpApi: < --POST https://matrix.jackg.cc/_matrix/client/unstable/org.matrix.msc4140/delayed_events/syd_CjbkFTkXmpjkLYxkobDg/restart [71ms 200] (chunk-KRJJJO55.js, line 8363)
+[Debug] FetchHttpApi: < --GET https://matrix.jackg.cc/_matrix/client/v3/sync?filter=xxx&timeout=xxx&org.matrix.msc4222.use_state_after=xxx&since=xxx [6737ms 200] (chunk-KRJJJO55.js, line 8363)
+[Log][Voice] State event received: org.matrix.msc3401.call.member, trigger refresh(matrix.ts, line 639)
+[Warning][Vue warn]: Extraneous non - props attributes(class) were passed to component but could not be automatically inherited because component renders fragment or text or teleport root nodes. (69)(runtime - core.esm - bundler.js, line 50)
+"
+"
+" at <Chat"
+"class=\"flex-1 min-h-0\""
+"onVnodeUnmounted=fn<onVnodeUnmounted>"
+"ref=Ref<"
+Proxy { __v_skip: true }
+">"
+">"
+"
+"
+" at <RouteProvider"
+"key=\"/chat\""
+"vnode="
+{ __v_isVNode: true, __v_skip: true, type: Object, props: Object, key: null, … }
+"route="
+{ fullPath: "/chat/spaces/!kPbLFrXBpYhaRLaCBf:jackg.cc/!RCEGSSJbqycKCSRdAK:jackg.cc", path: "/chat/spaces/!kPbLFrXBpYhaRLaCBf:jackg.cc/!RCEGSSJbqycKCSRdAK:jackg.cc", query: { }, hash: "", name: "chat-spaces-id", … }
+" ..."
+">"
+"
+"
+" at <RouterView"
+"name=undefined"
+"route=undefined"
+"class=\"flex-1 min-h-0\""
+">"
+"
+"
+" at <NuxtPage"
+"class=\"flex-1 min-h-0\""
+">"
+"
+"
+" at <Primitive"
+"ref=fn<forwardRef>"
+"as=\"span\""
+"as-child=false"
+" ..."
+">"
+"
+"
+" at <ContextMenuTrigger"
+"data-slot=\"context-menu-trigger\""
+"class=\"block h-full w-full\""
+">"
+"
+"
+" at <ContextMenuTrigger"
+"class=\"block h-full w-full\""
+">"
+"
+"
+" at <PopperRoot>"
+"
+"
+" at <MenuRoot"
+"open=false"
+"onUpdate:open=fn"
+"dir=\"ltr\""
+" ..."
+">"
+"
+"
+" at <ContextMenuRoot"
+"data-slot=\"context-menu\""
+"onUpdate:open=fn"
+">"
+"
+"
+" at <ContextMenu"
+">"
+"
+"
+" at <GlobalContextMenu"
+">"
+"
+"
+" at <App"
+"key=4"
+">"
+"
+"
+" at <NuxtRoot>"
+[Log][ChatSidebar] Built hierarchy for space!kPbLFrXBpYhaRLaCBf: jackg.cc(ChatSidebar.vue, line 148)
+[Debug] FetchHttpApi: --> POST https://matrix.jackg.cc/_matrix/client/v3/rooms/!RCEGSSJbqycKCSRdAK%3Ajackg.cc/receipt/m.read/%24kiMWSisSVwA9THq-aIj6bhoHZTUwceiWtpPs7vCtTmU (chunk-KRJJJO55.js, line 8313)
+[Log][Voice] Event received: org.matrix.msc3401.call.member, trigger refresh(matrix.ts, line 646)
+[Info][MatrixRTCSession!RCEGSSJbqycKCSRdAK: jackg.cc] – "Memberships for call in room !RCEGSSJbqycKCSRdAK:jackg.cc have changed: emitting (1 members)"(chunk - KRJJJO55.js, line 24790)
+[Debug][MatrixRTCSession!RCEGSSJbqycKCSRdAK: jackg.cc] – "[Perf]: emit MatrixRTCSessionEvent.MembershipsChanged took 1ms"(chunk - 3K7ZPAJJ.js, line 6905)
+[Warning][Vue warn]: Extraneous non - props attributes(class) were passed to component but could not be automatically inherited because component renders fragment or text or teleport root nodes. (69)(runtime - core.esm - bundler.js, line 50)
+"
+"
+" at <Chat"
+"class=\"flex-1 min-h-0\""
+"onVnodeUnmounted=fn<onVnodeUnmounted>"
+"ref=Ref<"
+Proxy { __v_skip: true }
+">"
+">"
+"
+"
+" at <RouteProvider"
+"key=\"/chat\""
+"vnode="
+{ __v_isVNode: true, __v_skip: true, type: Object, props: Object, key: null, … }
+"route="
+{ fullPath: "/chat/spaces/!kPbLFrXBpYhaRLaCBf:jackg.cc/!RCEGSSJbqycKCSRdAK:jackg.cc", path: "/chat/spaces/!kPbLFrXBpYhaRLaCBf:jackg.cc/!RCEGSSJbqycKCSRdAK:jackg.cc", query: { }, hash: "", name: "chat-spaces-id", … }
+" ..."
+">"
+"
+"
+" at <RouterView"
+"name=undefined"
+"route=undefined"
+"class=\"flex-1 min-h-0\""
+">"
+"
+"
+" at <NuxtPage"
+"class=\"flex-1 min-h-0\""
+">"
+"
+"
+" at <Primitive"
+"ref=fn<forwardRef>"
+"as=\"span\""
+"as-child=false"
+" ..."
+">"
+"
+"
+" at <ContextMenuTrigger"
+"data-slot=\"context-menu-trigger\""
+"class=\"block h-full w-full\""
+">"
+"
+"
+" at <ContextMenuTrigger"
+"class=\"block h-full w-full\""
+">"
+"
+"
+" at <PopperRoot>"
+"
+"
+" at <MenuRoot"
+"open=false"
+"onUpdate:open=fn"
+"dir=\"ltr\""
+" ..."
+">"
+"
+"
+" at <ContextMenuRoot"
+"data-slot=\"context-menu\""
+"onUpdate:open=fn"
+">"
+"
+"
+" at <ContextMenu"
+">"
+"
+"
+" at <GlobalContextMenu"
+">"
+"
+"
+" at <App"
+"key=4"
+">"
+"
+"
+" at <NuxtRoot>"
+[Log][ChatSidebar] Built hierarchy for space!kPbLFrXBpYhaRLaCBf: jackg.cc(ChatSidebar.vue, line 148)
+[Debug] FetchHttpApi: --> GET https://matrix.jackg.cc/_matrix/client/v3/sync?filter=xxx&timeout=xxx&org.matrix.msc4222.use_state_after=xxx&since=xxx (chunk-KRJJJO55.js, line 8313)
+[Debug] FetchHttpApi: < --POST https://matrix.jackg.cc/_matrix/client/v3/rooms/!RCEGSSJbqycKCSRdAK%3Ajackg.cc/receipt/m.read/%24kiMWSisSVwA9THq-aIj6bhoHZTUwceiWtpPs7vCtTmU [83ms 200] (chunk-KRJJJO55.js, line 8363)
+[Debug] FetchHttpApi: < --GET https://matrix.jackg.cc/_matrix/client/v3/sync?filter=xxx&timeout=xxx&org.matrix.msc4222.use_state_after=xxx&since=xxx [80ms 200] (chunk-KRJJJO55.js, line 8363)
+[Debug] FetchHttpApi: --> GET https://matrix.jackg.cc/_matrix/client/v3/sync?filter=xxx&timeout=xxx&org.matrix.msc4222.use_state_after=xxx&since=xxx (chunk-KRJJJO55.js, line 8313)
+[Debug] FetchHttpApi: < --GET https://matrix.jackg.cc/_matrix/client/v3/sync?filter=xxx&timeout=xxx&org.matrix.msc4222.use_state_after=xxx&since=xxx [77ms 200] (chunk-KRJJJO55.js, line 8363)
+[Debug] DEBUG matrix_sdk_crypto:: machine: Received a to - device event(matrix_sdk_crypto_wasm_bg.js, line 10950)
+at / home / runner /.cargo / git / checkouts / matrix - rust - sdk - 5cafb5792f78b8d1 / 3924463 / crates / matrix - sdk - crypto / src / machine / mod.rs: 1534
+    in matrix_sdk_crypto:: machine::receive_to_device_event with sender = "@dummy:jackg.cc" event_type = "m.room.encrypted" message_id = "15cb4616cc6a4ed0903cdcaefb1143a1"
+        in matrix_sdk_crypto:: machine:: receive_sync_changes
+        [Debug] DEBUG matrix_sdk_crypto:: olm:: session: Decrypted an Olm message(matrix_sdk_crypto_wasm_bg.js, line 10950)
+session = Session { session_id: "fIgNp9R/W1nyFDsqBrGmWzt+8yt48AE+MhYsqStpZDw", sending_ratchet: DoubleRatchet(InactiveDoubleRatchet { ratchet_count: 0, ratchet_key: "curve25519:0Q10Fzkt24KLk04l1NGtesiTqkJwXvuNhgqMfR4rqFI", .. }), receiving_chains: [ReceiverChain { ratchet_count: 0, ratchet_key: "curve25519:0Q10Fzkt24KLk04l1NGtesiTqkJwXvuNhgqMfR4rqFI", chain_index: 10, skipped_message_keys: [], .. }], config: SessionConfig { version: V1 }, ..}
+at / home / runner /.cargo / git / checkouts / matrix - rust - sdk - 5cafb5792f78b8d1 / 3924463 / crates / matrix - sdk - crypto / src / olm / session.rs: 86
+    in matrix_sdk_crypto:: olm:: account::decrypt_and_parse_olm_message with sender = "@dummy:jackg.cc" sender_key = "curve25519:m4jPO2ChVE8Hw2GRmVRTGLVnsSjL/NuJ/QmY+nf1iB4" PreKey(PreKeyMessage { session_keys: SessionKeys { identity_key: "m4jPO2ChVE8Hw2GRmVRTGLVnsSjL/NuJ/QmY+nf1iB4", base_key: "rO+mbhimm6wRA0TlGBBBqSJx1fABnZQoqjBySbDSJg4", one_time_key: "nsYww9TprM+wg6k7gIa5oFtcTS/9tNqSqVxpZVd/CQg" }, message: Message { version: 3, ratchet_key: "curve25519:0Q10Fzkt24KLk04l1NGtesiTqkJwXvuNhgqMfR4rqFI", chain_index: 9, .. } }) decryption_settings = DecryptionSettings { sender_device_trust_requirement: Untrusted } session_id = "fIgNp9R/W1nyFDsqBrGmWzt+8yt48AE+MhYsqStpZDw"
+        in matrix_sdk_crypto:: olm:: account::decrypt_olm_v1 with sender_key = "curve25519:m4jPO2ChVE8Hw2GRmVRTGLVnsSjL/NuJ/QmY+nf1iB4"
+        in matrix_sdk_crypto:: olm:: account::decrypt_to_device_event with algorithm = "m.olm.v1.curve25519-aes-sha2"
+        in matrix_sdk_crypto:: machine::receive_to_device_event with sender = "@dummy:jackg.cc" event_type = "m.room.encrypted" message_id = "15cb4616cc6a4ed0903cdcaefb1143a1"
+            in matrix_sdk_crypto:: machine:: receive_sync_changes
+            [Debug] DEBUG matrix_sdk_crypto:: machine: Received a decrypted to - device event(matrix_sdk_crypto_wasm_bg.js, line 10950)
+sender_device_keys = (Some("curve25519:m4jPO2ChVE8Hw2GRmVRTGLVnsSjL/NuJ/QmY+nf1iB4"), Some("ed25519:yzCztMJ2Kplt99GOYlVyASnYoRwhEGLj0qE/giD5ch4"))
+at / home / runner /.cargo / git / checkouts / matrix - rust - sdk - 5cafb5792f78b8d1 / 3924463 / crates / matrix - sdk - crypto / src / machine / mod.rs: 1361
+    in matrix_sdk_crypto:: machine::handle_decrypted_to_device_event with sender_key = "curve25519:m4jPO2ChVE8Hw2GRmVRTGLVnsSjL/NuJ/QmY+nf1iB4" event_type = "io.element.call.encryption_keys"
+        in matrix_sdk_crypto:: machine::receive_to_device_event with sender = "@dummy:jackg.cc" event_type = "m.room.encrypted" message_id = "15cb4616cc6a4ed0903cdcaefb1143a1"
+            in matrix_sdk_crypto:: machine:: receive_sync_changes
+            [Warning] WARN matrix_sdk_crypto:: machine: Received an unexpected encrypted to - device event(matrix_sdk_crypto_wasm_bg.js, line 11930)
+at / home / runner /.cargo / git / checkouts / matrix - rust - sdk - 5cafb5792f78b8d1 / 3924463 / crates / matrix - sdk - crypto / src / machine / mod.rs: 1404
+    in matrix_sdk_crypto:: machine::handle_decrypted_to_device_event with sender_key = "curve25519:m4jPO2ChVE8Hw2GRmVRTGLVnsSjL/NuJ/QmY+nf1iB4" event_type = "io.element.call.encryption_keys"
+        in matrix_sdk_crypto:: machine::receive_to_device_event with sender = "@dummy:jackg.cc" event_type = "m.room.encrypted" message_id = "15cb4616cc6a4ed0903cdcaefb1143a1"
+            in matrix_sdk_crypto:: machine:: receive_sync_changes
+            [Debug] FetchHttpApi: --> GET https://matrix.jackg.cc/_matrix/client/v3/sync?filter=xxx&timeout=xxx&org.matrix.msc4222.use_state_after=xxx&since=xxx (chunk-KRJJJO55.js, line 8313)
+[Debug][MatrixRTCSession!RCEGSSJbqycKCSRdAK: jackg.cc][MembershipManager][NewMembershipActionScheduler](3)(chunk - KRJJJO55.js, line 22953)
+"Current MembershipManager processing: RestartDelayedEvent
+Queue: "
+Proxy { 0: { ts: 1772056601738, type: "RestartDelayedEvent" }, 1: { ts: 1772060135669, type: "UpdateExpiry" } }
+"
+Date.now: \"1772056601739"
+[Debug][MatrixRTCSession!RCEGSSJbqycKCSRdAK: jackg.cc][MembershipManager] – "MembershipManager applied action changes. Status: Connected -> Connected"(chunk - KRJJJO55.js, line 23235)
+[Debug][MatrixRTCSession!RCEGSSJbqycKCSRdAK: jackg.cc][MembershipManager] – "MembershipManager before processing action. status=Connected"(chunk - KRJJJO55.js, line 23241)
+[Debug] FetchHttpApi: --> POST https://matrix.jackg.cc/_matrix/client/unstable/org.matrix.msc4140/delayed_events/syd_CjbkFTkXmpjkLYxkobDg/restart (chunk-KRJJJO55.js, line 8313)
+[Debug] FetchHttpApi: < --POST https://matrix.jackg.cc/_matrix/client/unstable/org.matrix.msc4140/delayed_events/syd_CjbkFTkXmpjkLYxkobDg/restart [75ms 200] (chunk-KRJJJO55.js, line 8363)

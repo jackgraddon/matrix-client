@@ -5,9 +5,6 @@
                 <Icon name="solar:chat-round-dots-bold" class="h-5 w-5" />
                 Ruby Chat
             </h2>
-            <div class="flex items-center gap-2">
-                <ColorModeToggle />
-            </div>
         </header>
         <nav class="grow flex-1 flex flex-col p-2 gap-2 overflow-y-auto">
             <div class="flex flex-col gap-2 flex-1">
@@ -89,6 +86,21 @@
                     </div>
                 </template>
 
+                <!-- Sidebar Settings Nav -->
+                <template v-if="isLinkActive('/chat/settings')">
+                    <div 
+                        v-for="page in settingsPages"
+                        :key="page.path"
+                        role="button"
+                        class="inline-flex items-center justify-start px-2 h-9 w-full rounded-md text-sm font-medium transition-colors cursor-pointer hover:bg-accent/50"
+                        :class="[(page.path === '/chat/settings' ? route.path === '/chat/settings' : isLinkActive(page.path)) ? 'bg-secondary text-secondary-foreground' : '']"
+                        @click="(page.path === '/chat/settings' ? route.path === '/chat/settings' : isLinkActive(page.path)) ? null : navigateTo(page.path)"
+                    >
+                        <Icon name="solar:settings-bold" class="h-4 w-4 mr-2 text-muted-foreground" />
+                        <span class="truncate">{{ page.label }}</span>
+                    </div>
+                </template>
+
                 <!-- Sidebar Space Categories List -->
                 <template v-if="isLinkActive('/chat/spaces') && activeSpaceId">
                     <!-- Edit Mode: Compact draggable category pills -->
@@ -99,7 +111,7 @@
                                 <Icon name="solar:check-circle-bold" class="h-4 w-4 text-green-500" />
                             </UiButton>
                         </div>
-                        <draggable v-model="draggableCategories" :animation="200" ghost-class="opacity-30" :force-fallback="true" class="flex flex-col gap-1">
+                        <draggable v-model="draggableCategories" :animation="200" ghost-class="opacity-30" :force-fallback="true" class="flex flex-col gap-1" chosen-class="drag-chosen">
                             <div 
                                 v-for="category in draggableCategories" 
                                 :key="category.id"
@@ -176,6 +188,33 @@ import MatrixAvatar from '~/components/MatrixAvatar.vue';
 import ChatSidebarCategory from '~/components/ChatSidebarCategory.vue';
 import { isVoiceChannel } from '~/utils/room';
 
+const router = useRouter();
+
+const settingsPages = computed(() => {
+    const seen = new Set<string>();
+    return router.getRoutes()
+        .filter(r => r.path === '/chat/settings' || /^\/chat\/settings\/[^/]+$/.test(r.path))
+        .filter(r => {
+            const normalized = r.path.replace(/\/$/, '');
+            if (seen.has(normalized)) return false;
+            seen.add(normalized);
+            return true;
+        })
+        .map(r => {
+            const segment = r.path.split('/').pop() || '';
+            const isIndex = r.path === '/chat/settings';
+            return {
+                path: r.path,
+                label: isIndex ? 'General' : segment.charAt(0).toUpperCase() + segment.slice(1),
+            };
+        })
+        .sort((a, b) => {
+            if (a.label === 'General') return -1;
+            if (b.label === 'General') return 1;
+            return a.label.localeCompare(b.label);
+        });
+});
+
 const route = useRoute();
 const store = useMatrixStore();
 
@@ -207,10 +246,14 @@ const mapRoom = (room: Room): MappedRoom => {
     roomId: room.roomId,
     name: room.name || 'Unnamed Room',
     lastMessage: lastEvent ? lastEvent.getContent().body : 'No messages',
-    lastActive: room.getLastActiveTimestamp() ?? 0,
+    lastActive: lastEvent?.getTs() ?? room.getLastActiveTimestamp() ?? 0,
     avatarUrl: room.getMxcAvatarUrl(),
     unreadCount: room.getUnreadNotificationCount(NotificationCountType.Total) ?? 0,
   };
+};
+
+const isEmptyRoom = (room: Room): boolean => {
+  return room.getJoinedMembers().length <= 1;
 };
 
 const friends = computed(() => {
@@ -222,7 +265,12 @@ const friends = computed(() => {
   const directEvent = store.client.getAccountData(EventType.Direct);
   const directContent: Record<string, string[]> = directEvent ? directEvent.getContent() as Record<string, string[]> : {};
 
-  return directMessages.map(room => {
+  // Filter out empty rooms unless the setting is enabled
+  const filteredDMs = store.ui.showEmptyRooms
+    ? directMessages
+    : directMessages.filter(room => !isEmptyRoom(room));
+
+  return filteredDMs.map(room => {
     const mapped = mapRoom(room);
     
     // Robustly find the DM partner's user ID
@@ -255,7 +303,11 @@ const rooms = computed(() => {
   store.activeVoiceCall;
   
   const { orphanRooms } = store.hierarchy;
-  return orphanRooms.map(mapRoom).sort((a, b) => b.lastActive - a.lastActive);
+  // Filter out empty rooms unless the setting is enabled
+  const filtered = store.ui.showEmptyRooms
+    ? orphanRooms
+    : orphanRooms.filter(room => !isEmptyRoom(room));
+  return filtered.map(mapRoom).sort((a, b) => b.lastActive - a.lastActive);
 });
 
 const activeSpaceId = computed(() => {
@@ -290,9 +342,10 @@ const buildSpaceHierarchy = (spaceId: string, visited: Set<string> = new Set()):
       const roomId = event.getStateKey() as string;
       const room = store.client!.getRoom(roomId);
       if (room) {
+        // Filter out empty rooms unless the setting is enabled
         if (room.isSpaceRoom()) {
           subSpaces.push(room);
-        } else {
+        } else if (store.ui.showEmptyRooms || !isEmptyRoom(room)) {
           directRooms.push(room);
         }
       }

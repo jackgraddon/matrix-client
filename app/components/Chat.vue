@@ -31,25 +31,25 @@
         />
         <div class="flex items-center gap-2 pr-2">
           <UiButton 
-            v-if="isVoiceChannel(room as any) && store.activeVoiceCall?.roomId !== roomId "
-            variant="outline" 
-            size="sm" 
+            v-if="store.activeVoiceCall?.roomId !== roomId && !otherUserId?.startsWith('@discord_')"
+            variant="ghost" 
+            size="icon-sm" 
             @click="store.joinVoiceChannel(roomId as string)"
-            title="Join Voice Room"
+            title="Start Call"
+            class="rounded-full"
           >
-            <Icon name="solar:phone-calling-linear" class="h-4 w-4 text-green-500" />
-            Join Voice
+            <Icon name="solar:phone-calling-linear" class="h-5 w-5 text-green-500" />
           </UiButton>
-            <UiButton
-              v-if="isVoiceChannel(room as any) && store.activeVoiceCall?.roomId === roomId"
-              variant="outline"
-              size="sm"
-              @click="disconnectVoice"
-              title="Disconnect Voice Room"
-              class="gap-2">
-              <Icon name="solar:end-call-bold" class="h-5 w-5 text-red-500" />
-              Disconnect
-            </UiButton>
+          <UiButton
+            v-if="store.activeVoiceCall?.roomId === roomId"
+            variant="ghost" 
+            size="icon-sm" 
+            @click="disconnectVoice"
+            title="Disconnect Call"
+            class="rounded-full"
+          >
+            <Icon name="solar:end-call-bold" class="h-5 w-5 text-red-500" />
+          </UiButton>
 
             <UiButton
               variant="ghost"
@@ -63,6 +63,14 @@
             </UiButton>
           </div>
       </div>
+
+      <!-- Incoming Call Banner -->
+      <IncomingCallBanner 
+        v-if="room" 
+        :room-id="roomId as string" 
+        :room-name="room?.name || 'Unknown Room'" 
+        class="mt-4 mx-4"
+      />
     </header>
 
     <!-- Loading state -->
@@ -76,8 +84,30 @@
           class="flex-1 overflow-y-auto pr-1 pb-10 min-h-0 flex flex-col-reverse gap-y-1"
         >
       <template v-for="(msg, index) in displayMessages" :key="msg.eventId">
+        <!-- Call Event -->
+        <div v-if="msg.isCallEvent" class="flex flex-col items-center my-6 animate-in fade-in slide-in-from-bottom duration-500">
+          <div class="flex items-center gap-3 bg-muted/30 border border-border/50 rounded-2xl px-5 py-3 shadow-sm hover:bg-muted/40 transition-colors">
+            <div class="h-9 w-9 rounded-full bg-green-500/20 flex items-center justify-center border border-green-500/30">
+              <Icon name="solar:phone-calling-bold" class="text-green-600 dark:text-green-500 h-5 w-5" />
+            </div>
+            <div class="flex flex-col">
+              <div class="flex items-center gap-2">
+                <span class="text-sm font-bold text-foreground">{{ msg.senderName }}</span>
+                <span class="text-sm text-muted-foreground">started a voice call</span>
+              </div>
+              <span class="text-[10px] text-muted-foreground">{{ formatTime(msg.timestamp) }}</span>
+            </div>
+            <div class="ml-4 pl-4 border-l border-border/50">
+              <UiButton size="sm" variant="outline" class="h-8 rounded-full text-xs font-semibold hover:bg-green-500/10 hover:text-green-600 hover:border-green-500/30 transition-all px-4" @click="store.joinVoiceChannel(roomId as string)">
+                Join
+              </UiButton>
+            </div>
+          </div>
+        </div>
+
         <!-- Message bubble -->
         <div
+          v-else
           :data-event-id="msg.eventId"
           class="flex gap-2.5 group items-end relative"
           :class="[
@@ -487,14 +517,16 @@
 <script setup lang="ts">
 import { RoomEvent, EventType, MsgType, MatrixEventEvent, ClientEvent, type MatrixEvent, type Room, type RoomMember, Direction, TimelineWindow, MatrixClient, RelationType } from 'matrix-js-sdk';
 import { toast } from 'vue-sonner';
+import { ref, shallowRef, markRaw, computed, watch, onMounted, onUnmounted } from 'vue';
 import ChatSticker from '~/components/ChatSticker.vue';
 import ChatFile from '~/components/ChatFile.vue';
 import EmojiPicker from 'vue3-emoji-picker';
 import 'vue3-emoji-picker/css';
-import { Room as LiveKitRoom, RoomEvent as LKRoomEvent, Track as LKTrack } from 'livekit-client';
+import { Room as LiveKitRoom, RoomEvent as LKRoomEvent, Track as LKTrack, BaseKeyProvider as BaseE2EEKeyProvider, createKeyMaterialFromBuffer } from 'livekit-client';
 import { isVoiceChannel } from '~/utils/room';
 import MatrixVoiceCall from '~/components/MatrixVoiceCall.vue';
 import RoomHeader from '~/components/RoomHeader.vue';
+import IncomingCallBanner from '~/components/IncomingCallBanner.vue';
 
 
 function extractUrls(text: string): string[] {
@@ -527,8 +559,9 @@ const route = useRoute();
 const store = useMatrixStore();
 
 // LiveKit State
-const lkRoom = ref<LiveKitRoom | null>(null);
+const lkRoom = shallowRef<LiveKitRoom | null>(null);
 const isConnected = ref(false);
+const isConnecting = ref(false);
 
 watch(isConnected, (val) => {
   console.log('[Voice] isConnected changed to:', val);
@@ -545,7 +578,7 @@ watch(() => store.activeVoiceCall, async (newCall, oldCall) => {
   }
   
   // If we have an call in the store but no connection yet, connect!
-  if (newCall && !isConnected.value) {
+  if (newCall && !isConnected.value && !isConnecting.value) {
     console.log('[Voice] Initiating connection to LiveKit');
     await connectToAudio();
   }
@@ -553,39 +586,119 @@ watch(() => store.activeVoiceCall, async (newCall, oldCall) => {
 
 async function connectToAudio() {
   console.log('[Voice] connectToAudio called with:', store.activeVoiceCall);
-  if (!store.activeVoiceCall) return;
-  const { url, token } = store.activeVoiceCall;
+  if (!store.activeVoiceCall || isConnecting.value) return;
+  
+  isConnecting.value = true;
+  const { url, token, roomId } = store.activeVoiceCall;
   
   try {
-    // 1. Initialize the core SDK
-    const newRoom = new LiveKitRoom({ adaptiveStream: true });
+    // 1. Initialize the core SDK with optimized options
+    const roomOptions: any = { 
+      adaptiveStream: true,
+      dynacast: true,
+      publishDefaults: {
+        red: true, // Redundant Audio Data
+        dtx: true, // Discontinuous Transmission
+        simulcast: true,
+      },
+      audioCaptureDefaults: {
+        autoGainControl: true,
+        echoCancellation: true,
+        noiseSuppression: true,
+      },
+      videoCaptureDefaults: {
+        facingMode: 'user',
+      },
+    };
 
-    // 2. Connect to Matrix.org's free LiveKit server
+    // 2. Setup E2EE — bridge MatrixRTC per-participant keys to LiveKit
+    const matrixRoom = store.client?.getRoom(roomId);
+    const rtcSession = matrixRoom ? store.client!.matrixRTC.getRoomSession(matrixRoom) : null;
+    
+    if (rtcSession) {
+      console.log('[Voice] Setting up E2EE key bridge');
+      const keyProvider = new BaseE2EEKeyProvider({
+        sharedKey: false,
+        ratchetWindowSize: 0,   // Disable auto-ratcheting — MatrixRTC manages key rotation
+        failureTolerance: -1,   // Never invalidate keys — MatrixRTC handles key lifecycle
+      });
+      
+      // Listen for MatrixRTC encryption key changes and bridge to LiveKit
+      const onKeyChanged = async (
+        keyBin: Uint8Array,
+        keyIndex: number,
+        membership: any,
+        rtcBackendIdentity: string,
+      ) => {
+        try {
+          // Import the raw key bytes as HKDF material for LiveKit's E2EE system
+          // LiveKit internally derives AES-GCM keys from this material
+          const cryptoKey = await createKeyMaterialFromBuffer(keyBin.buffer as ArrayBuffer);
+          
+          console.log(`[Voice] E2EE Key set for ${rtcBackendIdentity} at index ${keyIndex}`);
+          // Bridge the key to LiveKit's E2EE system
+          (keyProvider as any).onSetEncryptionKey(cryptoKey, rtcBackendIdentity, keyIndex);
+        } catch (e) {
+          console.error('[Voice] Failed to import E2EE key:', e);
+        }
+      };
+      
+      (rtcSession as any).on('encryption_key_changed', onKeyChanged);
+      
+      // Request re-emission of any keys that were already exchanged before we started listening
+      if (typeof (rtcSession as any).reemitEncryptionKeys === 'function') {
+        (rtcSession as any).reemitEncryptionKeys();
+      }
+      
+      // Create the E2EE worker
+      const worker = new Worker(new URL('livekit-client/e2ee-worker', import.meta.url));
+      
+      roomOptions.encryption = {
+        keyProvider,
+        worker,
+      };
+    }
+
+    const newRoom = new LiveKitRoom(roomOptions);
+
+    // 3. Connect to LiveKit
     await newRoom.connect(url, token);
     console.log('[Voice] LiveKit room connected');
-    isConnected.value = true;
-    lkRoom.value = newRoom;
     
-    // 3. Turn on our local microphone
+    // 4. Ensure audio context is started (important for browser autoplay policies)
+    await newRoom.startAudio();
+    console.log('[Voice] Audio context started');
+    
+    // 5. Turn on our local microphone
     await newRoom.localParticipant.setMicrophoneEnabled(true);
     console.log('[Voice] Local microphone enabled');
     
+    lkRoom.value = markRaw(newRoom);
+    isConnected.value = true;
     toast.success('Voice connected');
   } catch (e) {
     console.error('LiveKit connection failed:', e);
     toast.error('Voice connection failed');
+    isConnected.value = false;
+    lkRoom.value = null;
+  } finally {
+    isConnecting.value = false;
   }
 }
 
 async function disconnectVoice() {
-  if (lkRoom.value) {
+  const roomToDisconnect = lkRoom.value;
+  lkRoom.value = null;
+  isConnected.value = false;
+  isConnecting.value = false;
+
+  if (roomToDisconnect) {
     try {
-      await lkRoom.value.disconnect();
+      console.log('[Voice] Disconnecting LiveKit room');
+      await roomToDisconnect.disconnect();
     } catch (e) {
       console.warn('Error during LiveKit disconnect:', e);
     }
-    lkRoom.value = null;
-    isConnected.value = false;
   }
   
   // Also clear the store if it's still pointing to a call
@@ -643,6 +756,7 @@ interface ChatMessage {
   isFile?: boolean;
   msgtype?: string;
   mimetype?: string;
+  isCallEvent?: boolean;
 }
 
 const messages = ref<ChatMessage[]>([]);
@@ -743,13 +857,16 @@ function mapEvent(event: MatrixEvent): ChatMessage | null {
   const isEncrypted = type === 'm.room.encrypted';
   const isMessage = type === EventType.RoomMessage;
   const isSticker = type === 'm.sticker';
+  const isRTC = type === 'org.matrix.msc3401.call.member' || type === 'm.call.member' || type === 'm.rtc.member';
   
-  if (!isMessage && !isEncrypted && !isSticker) return null;
+  if (!isMessage && !isEncrypted && !isSticker && !isRTC) return null;
 
   // getContent() automatically returns the *edited* content if replaced
   const content = isEncrypted ? event.getClearContent() : event.getContent();
   
-  if (!content || !content.body) return null; // Pending decryption or invalid
+  if (!content) return null;
+  // For RTC events, we don't need a body
+  if (!isRTC && !content.body) return null; // Pending decryption or invalid
 
   const senderId = event.getSender() || '';
   const senderMember = room.value?.getMember(senderId);
@@ -759,6 +876,25 @@ function mapEvent(event: MatrixEvent): ChatMessage | null {
   const mxcAvatar = senderMember?.getMxcAvatarUrl();
   if (mxcAvatar && store.client) {
     avatarUrl = mxcAvatar;
+  }
+
+  if (isRTC) {
+    // Only show the event if it's a "join" (membership present)
+    const memberships = content?.memberships || [];
+    if (memberships.length === 0) return null;
+
+    return {
+      eventId: event.getId()!,
+      senderId,
+      senderName,
+      senderInitials: senderName.substring(0, 1),
+      avatarUrl,
+      body: 'started a call',
+      timestamp: event.getTs(),
+      isOwn: senderId === store.client?.getUserId(),
+      type: 'm.rtc.member',
+      isCallEvent: true
+    };
   }
 
   // extract filename if available
@@ -813,8 +949,6 @@ function mapEvent(event: MatrixEvent): ChatMessage | null {
          };
        }
     }
-  } else if (event.isRelation('m.replace')) {
-      // Logic for replace is handled separately (filtered out)
   }
 
   // Extract reactions

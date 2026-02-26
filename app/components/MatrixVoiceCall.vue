@@ -74,7 +74,7 @@
 
 <script setup lang="ts">
 import { Room, RoomEvent, Participant } from 'livekit-client';
-import { ref, onMounted, onUnmounted, computed } from 'vue';
+import { ref, shallowRef, onMounted, onUnmounted, computed, markRaw, triggerRef } from 'vue';
 import ParticipantTile from './ParticipantTile.vue';
 
 const props = defineProps<{
@@ -87,7 +87,7 @@ const emit = defineEmits<{
   (e: 'disconnect'): void;
 }>();
 
-const participants = ref<Participant[]>([]);
+const participants = shallowRef<Participant[]>([]);
 const isMicEnabled = ref(props.room.localParticipant.isMicrophoneEnabled);
 const isCameraEnabled = ref(props.room.localParticipant.isCameraEnabled);
 
@@ -102,7 +102,9 @@ const gridColumns = computed(() => {
 
 function updateParticipants() {
   const all = Array.from(props.room.remoteParticipants.values());
-  participants.value = [props.room.localParticipant, ...all];
+  const newList = [props.room.localParticipant, ...all].map(p => markRaw(p));
+  console.log(`[VoiceCall] Participants updated: ${newList.length} (${newList.map(p => p.identity).join(', ')})`);
+  participants.value = newList;
 }
 
 async function toggleMic() {
@@ -117,25 +119,37 @@ async function toggleCamera() {
   isCameraEnabled.value = enabled;
 }
 
-// Event Listeners
-const onParticipantConnected = () => updateParticipants();
-const onParticipantDisconnected = () => updateParticipants();
-const onMetadataChanged = () => updateParticipants();
-
 onMounted(() => {
   updateParticipants();
-  props.room.on(RoomEvent.ParticipantConnected, onParticipantConnected);
-  props.room.on(RoomEvent.ParticipantDisconnected, onParticipantDisconnected);
-  props.room.on(RoomEvent.ParticipantMetadataChanged, onMetadataChanged);
+  
+  props.room.on(RoomEvent.SignalConnected, () => {
+    console.log('[VoiceCall] Signal connected — refreshing participants');
+    updateParticipants();
+  });
+
+  props.room.on(RoomEvent.ParticipantConnected, updateParticipants);
+  props.room.on(RoomEvent.ParticipantDisconnected, updateParticipants);
+  props.room.on(RoomEvent.TrackSubscribed, updateParticipants);
+  props.room.on(RoomEvent.TrackUnsubscribed, updateParticipants);
+  props.room.on(RoomEvent.TrackMuted, updateParticipants);
+  props.room.on(RoomEvent.TrackUnmuted, updateParticipants);
+  props.room.on(RoomEvent.ParticipantMetadataChanged, updateParticipants);
+  props.room.on(RoomEvent.ParticipantPermissionsChanged, updateParticipants);
   props.room.on(RoomEvent.LocalTrackPublished, () => {
       isMicEnabled.value = props.room.localParticipant.isMicrophoneEnabled;
       isCameraEnabled.value = props.room.localParticipant.isCameraEnabled;
+      updateParticipants();
   });
 });
 
 onUnmounted(() => {
-  props.room.off(RoomEvent.ParticipantConnected, onParticipantConnected);
-  props.room.off(RoomEvent.ParticipantDisconnected, onParticipantDisconnected);
-  props.room.off(RoomEvent.ParticipantMetadataChanged, onMetadataChanged);
+  props.room.off(RoomEvent.ParticipantConnected, updateParticipants);
+  props.room.off(RoomEvent.ParticipantDisconnected, updateParticipants);
+  props.room.off(RoomEvent.TrackSubscribed, updateParticipants);
+  props.room.off(RoomEvent.TrackUnsubscribed, updateParticipants);
+  props.room.off(RoomEvent.TrackMuted, updateParticipants);
+  props.room.off(RoomEvent.TrackUnmuted, updateParticipants);
+  props.room.off(RoomEvent.ParticipantMetadataChanged, updateParticipants);
+  props.room.off(RoomEvent.ParticipantPermissionsChanged, updateParticipants);
 });
 </script>
