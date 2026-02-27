@@ -153,30 +153,28 @@
                 </template>
             </div>
         </nav>
-        
-        <!-- Active Call Bar -->
-        <div v-if="voiceStore.activeRoomId" class="mx-2 mb-2 p-2 bg-green-500/10 border border-green-500/20 rounded-md flex items-center justify-between gap-2 overflow-hidden shadow-sm animate-in fade-in slide-in-from-bottom-2">
-            <div class="flex flex-col min-w-0">
-                <span class="text-[10px] font-bold text-green-500 uppercase tracking-wider">Active Call</span>
-                <!-- Use a safe getter or fallback name -->
-                <span class="text-xs font-semibold truncate">{{ store.client?.getRoom(voiceStore.activeRoomId)?.name || 'Voice Room' }}</span>
-            </div>
-            <UiButton 
-                variant="destructive" 
-                size="icon" 
-                class="h-7 w-7 shrink-0 shadow-sm"
-                @click="voiceStore.leaveVoiceRoom()"
-                title="Disconnect from call"
-            >
-                <Icon name="solar:end-call-bold" class="h-4 w-4" />
-            </UiButton>
-        </div>
 
-        <footer class="p-2">
-            <UiButton variant="ghost" as-child>
-                <div class="p-4 h-fit w-full flex justify-start cursor-pointer" @click="navigateTo('/chat/settings')">
-                    <UserProfile :user="store.user" />
+        <footer class="p-4 h-fit w-full flex items-center justify-between cursor-pointer overflow-hidden">
+            <!-- Active Call Bar -->
+            <div v-if="voiceStore.activeRoomId" class="mx-2 p-2 bg-green-500/10 rounded-md flex items-center justify-between gap-2 overflow-hidden shadow-sm animate-in fade-in slide-in-from-bottom-2">
+                <div class="flex flex-col min-w-0">
+                    <span class="text-[10px] font-bold text-green-500 uppercase tracking-wider">Active Call</span>
+                    <!-- Use a safe getter or fallback name -->
+                    <span class="text-xs font-semibold truncate">{{ store.client?.getRoom(voiceStore.activeRoomId)?.name || 'Voice Room' }}</span>
                 </div>
+                <UiButton 
+                    variant="destructive" 
+                    size="icon" 
+                    class="h-7 w-7 shrink-0 shadow-sm"
+                    @click="voiceStore.leaveVoiceRoom()"
+                    title="Disconnect from call"
+                >
+                    <Icon name="solar:end-call-bold" class="h-4 w-4" />
+                </UiButton>
+            </div>
+            <UserProfile :user="store.user" />
+            <UiButton variant="outline" @click="navigateTo('/chat/settings')">
+                <Icon name="solar:settings-linear" />
             </UiButton>
         </footer>
     </aside>

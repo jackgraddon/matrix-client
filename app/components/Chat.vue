@@ -34,7 +34,7 @@
             v-if="voiceStore.activeRoomId !== roomId && !otherUserId?.startsWith('@discord_')"
             variant="ghost" 
             size="icon-sm" 
-            @click="voiceStore.joinVoiceRoom(room)"
+            @click="voiceStore.joinVoiceRoom(toRaw(room) as any)"
             :disabled="voiceStore.isConnecting"
             title="Start Call"
             class="rounded-full"
@@ -80,10 +80,10 @@
       <p class="text-muted-foreground">Loading room...</p>
     </div>
 
-    <div v-else class="flex-1 flex flex-col min-w-0 relative overflow-hidden">
+    <div v-else class="flex-1 flex flex-col min-w-0 relative">
         <div 
           ref="timelineContainer" 
-          class="flex-1 overflow-y-auto pr-1 pb-10 min-h-0 flex flex-col-reverse gap-y-1"
+          class="flex-1 overflow-y-auto pr-1 pb-10 min-h-0 flex flex-col-reverse gap-y-1 overflow-hidden"
         >
       <template v-for="(msg, index) in displayMessages" :key="msg.eventId">
         <!-- Call Event -->
@@ -100,7 +100,7 @@
               <span class="text-[10px] text-muted-foreground">{{ formatTime(msg.timestamp) }}</span>
             </div>
             <div class="ml-4 pl-4 border-l border-border/50">
-              <UiButton size="sm" variant="outline" class="h-8 rounded-full text-xs font-semibold hover:bg-green-500/10 hover:text-green-600 hover:border-green-500/30 transition-all px-4" @click="voiceStore.joinVoiceRoom(room)">
+              <UiButton size="sm" variant="outline" class="h-8 rounded-full text-xs font-semibold hover:bg-green-500/10 hover:text-green-600 hover:border-green-500/30 transition-all px-4" @click="voiceStore.joinVoiceRoom(toRaw(room) as any)">
                 Join
               </UiButton>
             </div>
@@ -519,7 +519,7 @@
 <script setup lang="ts">
 import { RoomEvent, EventType, MsgType, MatrixEventEvent, ClientEvent, type MatrixEvent, type Room, type RoomMember, Direction, TimelineWindow, MatrixClient, RelationType } from 'matrix-js-sdk';
 import { toast } from 'vue-sonner';
-import { ref, shallowRef, markRaw, computed, watch, onMounted, onUnmounted } from 'vue';
+import { ref, shallowRef, markRaw, toRaw, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import ChatSticker from '~/components/ChatSticker.vue';
 import ChatFile from '~/components/ChatFile.vue';
 import EmojiPicker from 'vue3-emoji-picker';

@@ -140,20 +140,22 @@
                         <!-- Voice Participants List -->
                         <div 
                             v-if="getVoiceParticipants(room.roomId).length > 0"
-                            class="ml-9 flex flex-col gap-1 mt-1 mb-2"
+                            class="ml-9 flex flex-col gap-0.5 mt-0.5 mb-2"
                         >
                             <div 
                                 v-for="user in getVoiceParticipants(room.roomId)" 
                                 :key="user.id" 
-                                class="flex items-center gap-2"
+                                class="flex items-center gap-2 px-1.5 py-0.5 rounded-sm hover:bg-accent/40 transition-colors cursor-default group/participant"
                             >
                                 <MatrixAvatar 
                                     :mxc-url="user.avatarUrl" 
                                     :name="user.name" 
-                                    class="w-4 h-4 rounded-full" 
+                                    class="w-4 h-4 rounded-full shadow-sm" 
                                     :size="32"
                                 />
-                                <span class="text-[11px] text-muted-foreground truncate">{{ user.name }}</span>
+                                <span class="text-[11px] font-medium text-muted-foreground group-hover/participant:text-foreground transition-colors truncate">
+                                    {{ user.name }}
+                                </span>
                             </div>
                         </div>
                     </div>

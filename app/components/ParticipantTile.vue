@@ -22,8 +22,6 @@
       />
       <div class="flex flex-col items-center gap-1">
         <span class="text-xl font-bold text-white drop-shadow-md">{{ displayName }}</span>
-        <span v-if="isSpeaking" class="text-xs font-bold text-green-500 uppercase tracking-widest animate-pulse">Speaking...</span>
-        <span v-if="!audioTrack" class="text-xs text-muted-foreground animate-pulse">Waiting for media...</span>
       </div>
     </div>
 

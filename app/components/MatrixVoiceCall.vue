@@ -19,7 +19,7 @@
     <div class="h-20 flex items-center justify-center gap-4 px-6 shrink-0 z-20">
       <!-- Microphone Toggle -->
       <UiButton 
-        :variant="voiceStore.isMicEnabled ? 'secondary' : 'destructive'" 
+        :variant="voiceStore.isMicEnabled ? 'outline' : 'destructive'" 
         size="icon" 
         class="h-12 w-12 rounded-full"
         @click="voiceStore.toggleMic()"
@@ -29,7 +29,7 @@
 
       <!-- Camera Toggle -->
       <UiButton 
-        :variant="voiceStore.isCameraEnabled ? 'secondary' : 'destructive'" 
+        :variant="voiceStore.isCameraEnabled ? 'outline' : 'destructive'" 
         size="icon" 
         class="h-12 w-12 rounded-full"
         @click="voiceStore.toggleCamera()"
@@ -39,24 +39,22 @@
 
       <!-- Screen Share (Placeholder for future) -->
       <UiButton 
-        variant="ghost" 
+        variant="outline" 
         size="icon" 
-        class="h-12 w-12 rounded-full text-neutral-400 hover:text-white"
+        class="h-12 w-12 rounded-full"
         disabled
       >
-        <Icon name="solar:screen-share-bold" class="h-6 w-6" />
+        <Icon name="solar:screencast-outline" class="h-6 w-6" />
       </UiButton>
-
-      <div class="w-px h-8 bg-neutral-800 mx-2"></div>
 
       <!-- Disconnect button -->
       <UiButton 
         variant="destructive" 
         size="lg" 
-        class="rounded-full px-8 gap-2 font-bold"
+        class="rounded-full font-bold"
         @click="$emit('disconnect')"
       >
-        <Icon name="solar:phone-calling-broken-bold" class="h-5 w-5" />
+        <Icon name="solar:end-call-bold" />
         End Call
       </UiButton>
     </div>

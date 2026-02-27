@@ -16,6 +16,10 @@ import { hostname, type, version } from '@tauri-apps/plugin-os';
 import { MsgType, EventType } from 'matrix-js-sdk';
 import { useRouter } from '#app';
 import { useVoiceStore } from './voice';
+import { MatrixRTCSessionManagerEvents } from 'matrix-js-sdk/lib/matrixrtc/MatrixRTCSessionManager';
+import { MatrixRTCSessionEvent } from 'matrix-js-sdk/lib/matrixrtc/MatrixRTCSession';
+import { isVoiceChannel } from '~/utils/room';
+import { useDebounceFn } from '@vueuse/core';
 
 export interface LastVisitedRooms {
   dm: string | null;
@@ -168,6 +172,7 @@ export const useMatrixStore = defineStore('matrix', {
     lastPresenceUpdate: 0,
     lastPresenceState: null as { presence: string; status_msg: string } | null,
     directMessageMap: {} as Record<string, string>,
+    matrixRTCBoundSessions: new Set<string>(),
 
     // Centralized UI State
     ui: {
@@ -195,7 +200,7 @@ export const useMatrixStore = defineStore('matrix', {
     isVerificationStarted: (state) => state.verificationPhase === VerificationPhase.Started,
     getVoiceParticipants: (state) => (roomId: string) => {
       // Access hierarchyTrigger for reactivity
-      state.hierarchyTrigger; // This line is for reactivity, not direct use
+      state.hierarchyTrigger;
 
       if (!state.client) return [];
 
@@ -205,29 +210,47 @@ export const useMatrixStore = defineStore('matrix', {
       const rtcSession = state.client.matrixRTC.getRoomSession(room);
       const voiceStore = useVoiceStore();
 
+      const rawMemberships = rtcSession.memberships;
+
+      // Debug: Check if there are ANY rtc related state events in the room
+      const rtcEvents = room.currentState.getStateEvents('m.rtc.member');
+      const msc4143Events = room.currentState.getStateEvents('org.matrix.msc4143.rtc.member');
+
+      if (rawMemberships.length === 0 && (rtcEvents.length > 0 || msc4143Events.length > 0)) {
+        console.warn(`[MatrixRTC] Room ${roomId} has ${rtcEvents.length + msc4143Events.length} state events but 0 session memberships!`);
+      }
+
       // Filter for non-expired memberships
-      const participants = rtcSession.memberships
-        .filter((member: any) => {
-          // Safeguard: If this is US and we don't think we're in a call, hide us immediately
-          if (member.userId === state.client?.getUserId() && voiceStore.activeRoomId !== roomId) {
-            return false;
-          }
+      const participantsMap = new Map<string, any>();
+      rawMemberships.forEach((member: any) => {
+        if (member.userId === state.client?.getUserId() && voiceStore.activeRoomId !== roomId) {
+          return;
+        }
 
-          const isExp = member.isExpired?.() ?? false;
-          const isLeave = member.membership === 'leave';
-          return !isExp && !isLeave;
-        })
-        .map((member: any) => {
-          const user = room.getMember(member.sender);
-          return {
-            id: member.sender,
-            name: user?.name || member.sender.split(':')[0].replace('@', ''), // Fallback to displayable username
-            avatarUrl: user?.getMxcAvatarUrl() || null
-          };
-        });
+        const isExp = member.isExpired?.() ?? false;
+        const isLeave = (member as any).membership === 'leave';
+        if (isExp || isLeave) return;
 
-      return participants;
-    },
+        const key = `${member.userId}:${member.deviceId}`;
+        // Store the newest one (highest TS)
+        if (!participantsMap.has(key) || (member.createdTs?.() > participantsMap.get(key).createdTs?.())) {
+          participantsMap.set(key, member);
+        }
+      });
+
+      return Array.from(participantsMap.values()).map((member: any) => {
+        const user = room.getMember(member.userId);
+        const name = user?.name || member.userId.split(':')[0].replace('@', '');
+        const avatarUrl = user?.getMxcAvatarUrl() || null;
+
+        return {
+          id: member.userId,
+          name,
+          avatarUrl
+        };
+      });
+    }
+    ,
 
     hierarchy(state) {
       // Access hierarchyTrigger for reactivity
@@ -742,7 +765,6 @@ export const useMatrixStore = defineStore('matrix', {
         deviceId,
         refreshToken,
         tokenRefreshFunction,
-        cryptoStore: new sdk.IndexedDBCryptoStore(window.indexedDB, "matrix-js-sdk-crypto"),
         cryptoCallbacks: {
           getSecretStorageKey: async ({ keys }: { keys: Record<string, any> }): Promise<[string, Uint8Array<ArrayBuffer>] | null> => {
             const keyIds = Object.keys(keys);
@@ -809,7 +831,6 @@ export const useMatrixStore = defineStore('matrix', {
             deviceId,
             refreshToken,
             tokenRefreshFunction,
-            cryptoStore: new sdk.IndexedDBCryptoStore(window.indexedDB, 'matrix-js-sdk-crypto'),
             cryptoCallbacks: {
               getSecretStorageKey: async ({ keys }: { keys: Record<string, any> }): Promise<[string, Uint8Array<ArrayBuffer>] | null> => {
                 const keyIds = Object.keys(keys);
@@ -864,21 +885,22 @@ export const useMatrixStore = defineStore('matrix', {
       });
 
       // Listen for MatrixRTC memberships to update sidebar icons/lists
-      this.client.on(sdk.RoomStateEvent.Events, (event) => {
+      this.client.on(sdk.ClientEvent.Event, (event) => {
         const type = event.getType();
-        if (type === 'org.matrix.msc3401.call.member' || type === 'm.call.member' || type === 'm.rtc.member') {
-          console.log(`[Voice] State event received: ${type}, trigger refresh`);
+        const isMatrixRTC =
+          type === 'org.matrix.msc4143.rtc.member' ||
+          type === 'org.matrix.msc3401.call.member' ||
+          type === 'm.call.member' ||
+          type === 'm.rtc.member';
+
+        const isSticky = (event as any).unstableStickyExpiresAt;
+
+        if (isMatrixRTC || isSticky) {
+          console.log(`[Voice] MatrixRTC event received (${type}, sticky=${!!isSticky}), refreshing hierarchy`);
           this.hierarchyTrigger++;
         }
       });
 
-      this.client.on(sdk.ClientEvent.Event, (event) => {
-        const type = event.getType();
-        if (type === 'org.matrix.msc3401.call.member' || type === 'm.call.member' || type === 'm.rtc.member') {
-          console.log(`[Voice] Event received: ${type}, trigger refresh`);
-          this.hierarchyTrigger++;
-        }
-      });
 
       // Sync device name to Matrix homeserver (re-overwrites "Unknown Device")
       this.updateDeviceName();
@@ -893,6 +915,7 @@ export const useMatrixStore = defineStore('matrix', {
       this.checkSecretStorageSetup();
       this.setupVerificationListeners();
       this.setupHierarchyListeners();
+      this.setupMatrixRTCListeners();
     },
 
     setupHierarchyListeners() {
@@ -1825,6 +1848,85 @@ export const useMatrixStore = defineStore('matrix', {
       const newPinned = this.pinnedSpaces.filter(id => id !== roomId);
       this.pinnedSpaces = newPinned;
       await (this.client as any).setAccountData('cc.jackg.ruby.pinned_spaces', { rooms: newPinned });
+    },
+
+    setupMatrixRTCListeners() {
+      if (!this.client) {
+        console.warn('[MatrixRTC] setupMatrixRTCListeners: No client');
+        return;
+      }
+
+      console.log('[MatrixRTC] setupMatrixRTCListeners: Initializing listeners');
+      const rtc = this.client.matrixRTC;
+
+      const triggerHierarchyRefresh = useDebounceFn(() => {
+        this.hierarchyTrigger++;
+      }, 500);
+
+      const onMembershipsChanged = (oldM: any, newM: any) => {
+        triggerHierarchyRefresh();
+      };
+
+      const bindToSession = (roomId: string, session: any) => {
+        if (this.matrixRTCBoundSessions.has(roomId)) return;
+        console.log(`[MatrixRTC] Binding listeners to session in ${roomId}`);
+
+        // Enable detailed logging for this session
+        if (session.logger) {
+          session.logger.setLevel('DEBUG');
+        }
+
+        session.on(MatrixRTCSessionEvent.MembershipsChanged, onMembershipsChanged);
+        this.matrixRTCBoundSessions.add(roomId);
+        // Force an initial update for this session
+        (session as any).ensureRecalculateSessionMembers();
+      };
+
+      // Listen for session starts/ends to bind to new sessions
+      rtc.on(MatrixRTCSessionManagerEvents.SessionStarted, (roomId: string, session: any) => {
+        console.log(`[MatrixRTC] Session started in ${roomId}, binding listeners`);
+        bindToSession(roomId, session);
+        triggerHierarchyRefresh();
+      });
+
+      rtc.on(MatrixRTCSessionManagerEvents.SessionEnded, (roomId: string, session: any) => {
+        console.log(`[MatrixRTC] Session ended in ${roomId}, unbinding listeners`);
+        session.off(MatrixRTCSessionEvent.MembershipsChanged, onMembershipsChanged);
+        this.matrixRTCBoundSessions.delete(roomId);
+        triggerHierarchyRefresh();
+      });
+
+      // Bind to any already active sessions after sync is prepared
+      const bindExisting = () => {
+        if (!this.client) return;
+        const rooms = this.client.getRooms();
+        console.log(`[MatrixRTC] Checking ${rooms.length} rooms for existing MatrixRTC presence`);
+
+        for (const room of rooms) {
+          // Bind to anything that is a voice channel OR already has memberships
+          const isVoice = isVoiceChannel(room);
+          const hasRtcState = room.currentState.getStateEvents('m.rtc.member').length > 0 ||
+            room.currentState.getStateEvents('org.matrix.msc4143.rtc.member').length > 0;
+
+          if (isVoice || hasRtcState) {
+            const session = rtc.getRoomSession(room);
+            bindToSession(room.roomId, session);
+          }
+        }
+        triggerHierarchyRefresh();
+      };
+
+      if (this.client.isInitialSyncComplete()) {
+        bindExisting();
+      } else {
+        this.client.once(sdk.ClientEvent.Sync, (state) => {
+          if (state === 'PREPARED') {
+            console.log('[MatrixRTC] Initial sync prepared, checking existing sessions');
+            bindExisting();
+          }
+        });
+      }
     }
+
   }
 });

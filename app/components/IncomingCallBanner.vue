@@ -33,7 +33,7 @@ const voiceStore = useVoiceStore();
 
 const isCallIncoming = computed(() => {
   const participants = store.getVoiceParticipants(props.roomId);
-  const amIInCall = participants.some(p => p.id === store.client?.getUserId());
+  const amIInCall = participants.some((p: any) => p.id === store.client?.getUserId());
   
   // If there are people in the call, but we aren't one of them, it's ringing!
   // And we should only show it if we're not currently in ANOTHER call (or maybe even if we are, but let's keep it simple)

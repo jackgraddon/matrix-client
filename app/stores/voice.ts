@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia';
+import { markRaw } from 'vue';
 import {
     Room as LiveKitRoom,
     RoomEvent as LKRoomEvent,
@@ -17,6 +18,7 @@ export const useVoiceStore = defineStore('voice', {
         isMicEnabled: false,
         isCameraEnabled: false,
         error: null as string | null,
+        connectingRoomId: null as string | null,
     }),
 
     actions: {
@@ -25,6 +27,7 @@ export const useVoiceStore = defineStore('voice', {
             if (this.activeRoomId) await this.leaveVoiceRoom();
 
             this.isConnecting = true;
+            this.connectingRoomId = room.roomId;
             this.error = null;
             const matrixStore = useMatrixStore();
 
@@ -101,14 +104,29 @@ export const useVoiceStore = defineStore('voice', {
                 const userId = matrixStore.client?.getUserId()!;
                 const deviceId = matrixStore.client?.getDeviceId()!;
 
-                // This is the key fix: We MUST pass the focus we intend to use if we are the first joiner.
-                // If we don't, other clients won't know where to connect.
-                rtcSession.joinRTCSession(
-                    { userId, deviceId, memberId: deviceId },
-                    foci,
-                    undefined, // multiSfuFocus
-                    { manageMediaKeys: true, useExperimentalToDeviceTransport: true, unstableSendStickyEvents: true }
-                );
+                console.log(`[Voice] Joining MatrixRTC session for room ${room.roomId} as ${userId}/${deviceId}`);
+
+                try {
+                    // This is the key fix: We MUST pass the focus we intend to use if we are the first joiner.
+                    // If we don't, other clients won't know where to connect.
+                    rtcSession.joinRTCSession(
+                        { userId, deviceId, memberId: deviceId },
+                        foci,
+                        foci[0], // multiSfuFocus (Pass a valid transport to bypass SDK isLivekitTransportConfig crash)
+                        {
+                            manageMediaKeys: true,
+                            useExperimentalToDeviceTransport: true,
+                            unstableSendStickyEvents: true,
+                            membershipEventExpiryMs: 300000, // 5 minutes
+                            delayedLeaveEventRestartMs: 20000,
+                            delayedLeaveEventDelayMs: 60000
+                        }
+                    );
+                    console.log('[Voice] MatrixRTC joinRTCSession call successful');
+                } catch (rtcErr) {
+                    console.error('[Voice] Failed to joinRTCSession:', rtcErr);
+                    // Don't throw here, as LiveKit might still work, but warn that sidebar will be empty
+                }
 
                 // 4. Get LiveKit Credentials (JWT)
                 // We use the service URL from the chosen focus
@@ -149,7 +167,15 @@ export const useVoiceStore = defineStore('voice', {
 
                     const onKeyChanged = async (keyBin: Uint8Array, keyIndex: number, membership: any, rtcBackendIdentity: string) => {
                         try {
-                            const cryptoKey = await createKeyMaterialFromBuffer(keyBin.buffer as ArrayBuffer);
+                            // Custom implementation of LiveKit's createKeyMaterialFromBuffer
+                            // We FORCE extractable: true so WebKit doesn't push it to the macOS Keychain
+                            const cryptoKey = await window.crypto.subtle.importKey(
+                                'raw',
+                                keyBin.buffer as ArrayBuffer,
+                                'HKDF',
+                                true,
+                                ['deriveBits', 'deriveKey']
+                            );
                             // LiveKit expects the identity string to match what's in the token.
                             // For MatrixRTC, this is usually UserId:DeviceId (which rtcBackendIdentity should be).
                             (keyProvider as any).onSetEncryptionKey(cryptoKey, rtcBackendIdentity, keyIndex);
@@ -165,7 +191,26 @@ export const useVoiceStore = defineStore('voice', {
                         (rtcSession as any).reemitEncryptionKeys();
                     }
 
-                    const worker = new Worker(new URL('livekit-client/e2ee-worker', import.meta.url));
+                    // Fetch and monkey-patch the worker to prevent macOS Keychain bombardment
+                    // LiveKit's worker creates non-extractable WebCrypto keys by default
+                    const workerUrl = new URL('livekit-client/e2ee-worker', import.meta.url).href;
+                    const workerRes = await fetch(workerUrl);
+                    let workerCode = await workerRes.text();
+
+                    const patchCode = `
+                        const _originalImportKey = crypto.subtle.importKey;
+                        crypto.subtle.importKey = function(format, keyData, algo, extractable, keyUsages) {
+                            return _originalImportKey.call(crypto.subtle, format, keyData, algo, true, keyUsages);
+                        };
+                        const _originalDeriveKey = crypto.subtle.deriveKey;
+                        crypto.subtle.deriveKey = function(algo, baseKey, derivedKeyType, extractable, keyUsages) {
+                            return _originalDeriveKey.call(crypto.subtle, algo, baseKey, derivedKeyType, true, keyUsages);
+                        };
+                    `;
+
+                    const blob = new Blob([patchCode + '\\n' + workerCode], { type: 'application/javascript' });
+                    const worker = new Worker(URL.createObjectURL(blob));
+
                     roomOptions.encryption = { keyProvider, worker };
                 }
 
@@ -183,6 +228,7 @@ export const useVoiceStore = defineStore('voice', {
 
                 this.lkRoom = markRaw(lkRoom);
                 this.activeRoomId = room.roomId;
+                this.connectingRoomId = null;
                 this.isConnected = true;
 
                 // Listeners for UI updates
@@ -207,12 +253,13 @@ export const useVoiceStore = defineStore('voice', {
         },
 
         async leaveVoiceRoom() {
-            if (!this.activeRoomId) return;
+            if (!this.activeRoomId && !this.connectingRoomId) return;
 
+            const roomId = this.activeRoomId || this.connectingRoomId;
             const matrixStore = useMatrixStore();
-            const room = matrixStore.client?.getRoom(this.activeRoomId);
+            const room = matrixStore.client?.getRoom(roomId!);
 
-            console.log(`[Voice] Leaving room ${this.activeRoomId}`);
+            console.log(`[Voice] Leaving room ${roomId}`);
 
             // 1. Leave LiveKit
             if (this.lkRoom) {
@@ -231,6 +278,8 @@ export const useVoiceStore = defineStore('voice', {
             }
 
             this.activeRoomId = null;
+            this.connectingRoomId = null;
+            this.isConnecting = false;
             this.isConnected = false;
             this.isMicEnabled = false;
             this.isCameraEnabled = false;
