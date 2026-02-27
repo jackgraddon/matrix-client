@@ -19,22 +19,22 @@
     <div class="h-20 bg-neutral-950/80 backdrop-blur-md border-t border-neutral-800 flex items-center justify-center gap-4 px-6 shrink-0 z-20">
       <!-- Microphone Toggle -->
       <UiButton 
-        :variant="isMicEnabled ? 'secondary' : 'destructive'" 
+        :variant="voiceStore.isMicEnabled ? 'secondary' : 'destructive'" 
         size="icon" 
         class="h-12 w-12 rounded-full"
-        @click="toggleMic"
+        @click="voiceStore.toggleMic()"
       >
-        <Icon :name="isMicEnabled ? 'solar:microphone-bold' : 'solar:microphone-slash-bold'" class="h-6 w-6" />
+        <Icon :name="voiceStore.isMicEnabled ? 'solar:microphone-bold' : 'solar:microphone-slash-bold'" class="h-6 w-6" />
       </UiButton>
 
       <!-- Camera Toggle -->
       <UiButton 
-        :variant="isCameraEnabled ? 'secondary' : 'destructive'" 
+        :variant="voiceStore.isCameraEnabled ? 'secondary' : 'destructive'" 
         size="icon" 
         class="h-12 w-12 rounded-full"
-        @click="toggleCamera"
+        @click="voiceStore.toggleCamera()"
       >
-        <Icon :name="isCameraEnabled ? 'solar:videocamera-record-bold' : 'solar:videocamera-record-stop-bold'" class="h-6 w-6" />
+        <Icon :name="voiceStore.isCameraEnabled ? 'solar:videocamera-record-bold' : 'solar:videocamera-record-stop-bold'" class="h-6 w-6" />
       </UiButton>
 
       <!-- Screen Share (Placeholder for future) -->
@@ -74,8 +74,9 @@
 
 <script setup lang="ts">
 import { Room, RoomEvent, Participant } from 'livekit-client';
-import { ref, shallowRef, onMounted, onUnmounted, computed, markRaw, triggerRef } from 'vue';
+import { shallowRef, onMounted, onUnmounted, computed, markRaw } from 'vue';
 import ParticipantTile from './ParticipantTile.vue';
+import { useVoiceStore } from '~/stores/voice';
 
 const props = defineProps<{
   room: Room;
@@ -87,9 +88,8 @@ const emit = defineEmits<{
   (e: 'disconnect'): void;
 }>();
 
+const voiceStore = useVoiceStore();
 const participants = shallowRef<Participant[]>([]);
-const isMicEnabled = ref(props.room.localParticipant.isMicrophoneEnabled);
-const isCameraEnabled = ref(props.room.localParticipant.isCameraEnabled);
 
 // Grid logic
 const gridColumns = computed(() => {
@@ -105,18 +105,6 @@ function updateParticipants() {
   const newList = [props.room.localParticipant, ...all].map(p => markRaw(p));
   console.log(`[VoiceCall] Participants updated: ${newList.length} (${newList.map(p => p.identity).join(', ')})`);
   participants.value = newList;
-}
-
-async function toggleMic() {
-  const enabled = !isMicEnabled.value;
-  await props.room.localParticipant.setMicrophoneEnabled(enabled);
-  isMicEnabled.value = enabled;
-}
-
-async function toggleCamera() {
-  const enabled = !isCameraEnabled.value;
-  await props.room.localParticipant.setCameraEnabled(enabled);
-  isCameraEnabled.value = enabled;
 }
 
 onMounted(() => {
@@ -135,11 +123,6 @@ onMounted(() => {
   props.room.on(RoomEvent.TrackUnmuted, updateParticipants);
   props.room.on(RoomEvent.ParticipantMetadataChanged, updateParticipants);
   props.room.on(RoomEvent.ParticipantPermissionsChanged, updateParticipants);
-  props.room.on(RoomEvent.LocalTrackPublished, () => {
-      isMicEnabled.value = props.room.localParticipant.isMicrophoneEnabled;
-      isCameraEnabled.value = props.room.localParticipant.isCameraEnabled;
-      updateParticipants();
-  });
 });
 
 onUnmounted(() => {

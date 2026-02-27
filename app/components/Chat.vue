@@ -3,11 +3,11 @@
     <!-- Voice Call Overlay -->
     <!-- Voice Call UI -->
     <MatrixVoiceCall 
-      v-if="lkRoom && isConnected && isVoiceOverlayVisible" 
-      :room="toRaw(lkRoom) as any" 
+      v-if="voiceStore.activeRoomId === roomId && voiceStore.lkRoom && voiceStore.isConnected" 
+      :room="toRaw(voiceStore.lkRoom) as any" 
       :room-id="roomId as string"
       :room-name="room?.name || 'Voice Room'"
-      @disconnect="disconnectVoice"
+      @disconnect="voiceStore.leaveVoiceRoom()"
       class="absolute inset-0 z-50"
     />
 
@@ -31,20 +31,22 @@
         />
         <div class="flex items-center gap-2 pr-2">
           <UiButton 
-            v-if="store.activeVoiceCall?.roomId !== roomId && !otherUserId?.startsWith('@discord_')"
+            v-if="voiceStore.activeRoomId !== roomId && !otherUserId?.startsWith('@discord_')"
             variant="ghost" 
             size="icon-sm" 
-            @click="store.joinVoiceChannel(roomId as string)"
+            @click="voiceStore.joinVoiceRoom(room)"
+            :disabled="voiceStore.isConnecting"
             title="Start Call"
             class="rounded-full"
           >
-            <Icon name="solar:phone-calling-linear" class="h-5 w-5 text-green-500" />
+            <Icon v-if="voiceStore.isConnecting && voiceStore.activeRoomId === roomId" name="svg-spinners:ring-resize" class="h-5 w-5 text-muted-foreground" />
+            <Icon v-else name="solar:phone-calling-linear" class="h-5 w-5 text-green-500" />
           </UiButton>
           <UiButton
-            v-if="store.activeVoiceCall?.roomId === roomId"
+            v-if="voiceStore.activeRoomId === roomId"
             variant="ghost" 
             size="icon-sm" 
-            @click="disconnectVoice"
+            @click="voiceStore.leaveVoiceRoom()"
             title="Disconnect Call"
             class="rounded-full"
           >
@@ -98,7 +100,7 @@
               <span class="text-[10px] text-muted-foreground">{{ formatTime(msg.timestamp) }}</span>
             </div>
             <div class="ml-4 pl-4 border-l border-border/50">
-              <UiButton size="sm" variant="outline" class="h-8 rounded-full text-xs font-semibold hover:bg-green-500/10 hover:text-green-600 hover:border-green-500/30 transition-all px-4" @click="store.joinVoiceChannel(roomId as string)">
+              <UiButton size="sm" variant="outline" class="h-8 rounded-full text-xs font-semibold hover:bg-green-500/10 hover:text-green-600 hover:border-green-500/30 transition-all px-4" @click="voiceStore.joinVoiceRoom(room)">
                 Join
               </UiButton>
             </div>
@@ -527,6 +529,7 @@ import { isVoiceChannel } from '~/utils/room';
 import MatrixVoiceCall from '~/components/MatrixVoiceCall.vue';
 import RoomHeader from '~/components/RoomHeader.vue';
 import IncomingCallBanner from '~/components/IncomingCallBanner.vue';
+import { useVoiceStore } from '~/stores/voice';
 
 
 function extractUrls(text: string): string[] {
@@ -557,170 +560,7 @@ const props = defineProps<{
 
 const route = useRoute();
 const store = useMatrixStore();
-
-// LiveKit State
-const lkRoom = shallowRef<LiveKitRoom | null>(null);
-const isConnected = ref(false);
-const isConnecting = ref(false);
-
-watch(isConnected, (val) => {
-  console.log('[Voice] isConnected changed to:', val);
-});
-
-// Watch for the user clicking "Join" in any room
-// We connect to the audio bridge regardless of which room is currently "viewed"
-watch(() => store.activeVoiceCall, async (newCall, oldCall) => {
-  console.log('[Voice] store.activeVoiceCall changed:', { newCall, oldCall, isConnected: isConnected.value });
-  // If the call room ID changed or we left, disconnect the old one
-  if (isConnected.value && (!newCall || newCall.roomId !== oldCall?.roomId)) {
-    console.log('[Voice] Disconnecting old call');
-    await disconnectVoice();
-  }
-  
-  // If we have an call in the store but no connection yet, connect!
-  if (newCall && !isConnected.value && !isConnecting.value) {
-    console.log('[Voice] Initiating connection to LiveKit');
-    await connectToAudio();
-  }
-}, { immediate: true });
-
-async function connectToAudio() {
-  console.log('[Voice] connectToAudio called with:', store.activeVoiceCall);
-  if (!store.activeVoiceCall || isConnecting.value) return;
-  
-  isConnecting.value = true;
-  const { url, token, roomId } = store.activeVoiceCall;
-  
-  try {
-    // 1. Initialize the core SDK with optimized options
-    const roomOptions: any = { 
-      adaptiveStream: true,
-      dynacast: true,
-      publishDefaults: {
-        red: true, // Redundant Audio Data
-        dtx: true, // Discontinuous Transmission
-        simulcast: true,
-      },
-      audioCaptureDefaults: {
-        autoGainControl: true,
-        echoCancellation: true,
-        noiseSuppression: true,
-      },
-      videoCaptureDefaults: {
-        facingMode: 'user',
-      },
-    };
-
-    // 2. Setup E2EE — bridge MatrixRTC per-participant keys to LiveKit
-    const matrixRoom = store.client?.getRoom(roomId);
-    const rtcSession = matrixRoom ? store.client!.matrixRTC.getRoomSession(matrixRoom) : null;
-    
-    if (rtcSession) {
-      console.log('[Voice] Setting up E2EE key bridge');
-      const keyProvider = new BaseE2EEKeyProvider({
-        sharedKey: false,
-        ratchetWindowSize: 0,   // Disable auto-ratcheting — MatrixRTC manages key rotation
-        failureTolerance: -1,   // Never invalidate keys — MatrixRTC handles key lifecycle
-      });
-      
-      // Listen for MatrixRTC encryption key changes and bridge to LiveKit
-      const onKeyChanged = async (
-        keyBin: Uint8Array,
-        keyIndex: number,
-        membership: any,
-        rtcBackendIdentity: string,
-      ) => {
-        try {
-          // Import the raw key bytes as HKDF material for LiveKit's E2EE system
-          // LiveKit internally derives AES-GCM keys from this material
-          const cryptoKey = await createKeyMaterialFromBuffer(keyBin.buffer as ArrayBuffer);
-          
-          console.log(`[Voice] E2EE Key set for ${rtcBackendIdentity} at index ${keyIndex}`);
-          // Bridge the key to LiveKit's E2EE system
-          (keyProvider as any).onSetEncryptionKey(cryptoKey, rtcBackendIdentity, keyIndex);
-        } catch (e) {
-          console.error('[Voice] Failed to import E2EE key:', e);
-        }
-      };
-      
-      (rtcSession as any).on('encryption_key_changed', onKeyChanged);
-
-      // Handle local participant's key. MatrixRTC might not fire 'encryption_key_changed' for the local
-      // user depending on the version/implementation, so we check if we already have a key or need to generate one.
-      // However, MatrixRTC usually manages the key rotation and emits it. 
-      // Important: We must ensure LiveKit uses the identity format MatrixRTC expects.
-      
-      // If the SDK exposes the local participant's current key, we should bridge it immediately.
-      // (Using private API access if necessary, or relying on reemitEncryptionKeys which we call below)
-      
-      // Request re-emission of any keys that were already exchanged before we started listening
-      if (typeof (rtcSession as any).reemitEncryptionKeys === 'function') {
-        (rtcSession as any).reemitEncryptionKeys();
-      }
-      
-      // Create the E2EE worker
-      const worker = new Worker(new URL('livekit-client/e2ee-worker', import.meta.url));
-      
-      roomOptions.encryption = {
-        keyProvider,
-        worker,
-      };
-    }
-
-    const newRoom = new LiveKitRoom(roomOptions);
-
-    // 3. Connect to LiveKit
-    await newRoom.connect(url, token);
-    console.log('[Voice] LiveKit room connected');
-    
-    // 4. Ensure audio context is started (important for browser autoplay policies)
-    await newRoom.startAudio();
-    console.log('[Voice] Audio context started');
-    
-    // 5. Turn on our local microphone
-    await newRoom.localParticipant.setMicrophoneEnabled(true);
-    console.log('[Voice] Local microphone enabled');
-    
-    lkRoom.value = markRaw(newRoom);
-    isConnected.value = true;
-    toast.success('Voice connected');
-  } catch (e) {
-    console.error('LiveKit connection failed:', e);
-    toast.error('Voice connection failed');
-    isConnected.value = false;
-    lkRoom.value = null;
-  } finally {
-    isConnecting.value = false;
-  }
-}
-
-async function disconnectVoice() {
-  const roomToDisconnect = lkRoom.value;
-  lkRoom.value = null;
-  isConnected.value = false;
-  isConnecting.value = false;
-
-  if (roomToDisconnect) {
-    try {
-      console.log('[Voice] Disconnecting LiveKit room');
-      await roomToDisconnect.disconnect();
-    } catch (e) {
-      console.warn('Error during LiveKit disconnect:', e);
-    }
-  }
-  
-  // Also clear the store if it's still pointing to a call
-  // We check the roomId to make sure we don't accidentally clear a *new* call if we are switching
-  if (store.activeVoiceCall) {
-    store.leaveVoiceChannel(store.activeVoiceCall.roomId);
-  }
-}
-
-onUnmounted(() => {
-  if (lkRoom.value) {
-    lkRoom.value.disconnect();
-  }
-});
+const voiceStore = useVoiceStore();
 
 // --- Reactive state ---
 
@@ -791,10 +631,6 @@ let lastRoomId: string | undefined = undefined;
 
 // --- Computed ---
 
-const isVoiceOverlayVisible = computed(() => {
-  return store.activeVoiceCall?.roomId === roomId.value;
-});
-
 const roomId = computed(() => {
   const params = route.params.id;
   if (Array.isArray(params)) {
@@ -806,10 +642,6 @@ const roomId = computed(() => {
 });
 
 // Create a reactive, newest-first array for the template
-const isActiveCallBarVisible = computed(() => {
-  return !!store.activeVoiceCall;
-});
-
 const displayMessages = computed(() => {
   return messages.value.map(msg => ({
     ...msg,

@@ -15,6 +15,7 @@ import { listen } from '@tauri-apps/api/event';
 import { hostname, type, version } from '@tauri-apps/plugin-os';
 import { MsgType, EventType } from 'matrix-js-sdk';
 import { useRouter } from '#app';
+import { useVoiceStore } from './voice';
 
 export interface LastVisitedRooms {
   dm: string | null;
@@ -162,12 +163,6 @@ export const useMatrixStore = defineStore('matrix', {
       JSON.parse(localStorage.getItem('matrix_last_visited_rooms') || '{"dm":null,"rooms":null,"spaces":{}}') :
       { dm: null, rooms: null, spaces: {} }) as LastVisitedRooms,
     hierarchyTrigger: 0,
-    activeVoiceCall: null as {
-      roomId: string;
-      roomName: string;
-      url: string;
-      token: string;
-    } | null,
     isIdle: false,
     pinnedSpaces: [] as string[],
     lastPresenceUpdate: 0,
@@ -208,12 +203,13 @@ export const useMatrixStore = defineStore('matrix', {
       if (!room) return [];
 
       const rtcSession = state.client.matrixRTC.getRoomSession(room);
+      const voiceStore = useVoiceStore();
 
       // Filter for non-expired memberships
       const participants = rtcSession.memberships
         .filter((member: any) => {
           // Safeguard: If this is US and we don't think we're in a call, hide us immediately
-          if (member.userId === state.client?.getUserId() && state.activeVoiceCall?.roomId !== roomId) {
+          if (member.userId === state.client?.getUserId() && voiceStore.activeRoomId !== roomId) {
             return false;
           }
 
@@ -333,9 +329,14 @@ export const useMatrixStore = defineStore('matrix', {
       };
     },
 
-    activeVoiceRoom(state) {
-      if (!state.client || !state.activeVoiceCall) return null;
-      return state.client.getRoom(state.activeVoiceCall.roomId);
+    activeVoiceCall(state) {
+      const voiceStore = useVoiceStore();
+      if (!voiceStore.activeRoomId || !state.client) return null;
+      const room = state.client.getRoom(voiceStore.activeRoomId);
+      return {
+        roomId: voiceStore.activeRoomId,
+        roomName: room?.name || null,
+      };
     },
   },
 
@@ -1103,168 +1104,6 @@ export const useMatrixStore = defineStore('matrix', {
       }
     },
 
-    async joinVoiceChannel(roomOrId: sdk.Room | string) {
-      if (!this.client) return;
-      console.log(`[Voice] joinVoiceChannel entry: ${typeof roomOrId === 'string' ? roomOrId : roomOrId.roomId}`);
-
-      const room = typeof roomOrId === 'string' ? this.client.getRoom(roomOrId) : roomOrId;
-      if (!room) {
-        toast.error('Room not found');
-        return;
-      }
-
-      // 0. Leave existing call if any
-      if (this.activeVoiceCall) {
-        this.leaveVoiceChannel(this.activeVoiceCall.roomId);
-      }
-
-      try {
-        // 1. Get the RTC session for the room
-        const rtcSession = this.client.matrixRTC.getRoomSession(room);
-
-        // 2. Determine Focus: Use existing session focus if available, otherwise discover via .well-known
-        let fociPreferred: any[] = [];
-        let serviceUrl = 'https://livekit-jwt.call.matrix.org'; // Default fallback
-
-        // Check if there are already active foci in the session (e.g., someone else started the call)
-        // Cast to any because 'foci' might not be in the public TS definition yet
-        const activeFoci = (rtcSession as any).foci;
-        if (activeFoci && activeFoci.length > 0) {
-          console.log('[Voice] Using existing active foci from session:', activeFoci);
-          fociPreferred = activeFoci;
-
-          // Update service URL if the active focus provides one
-          const livekitFocus = activeFoci.find((f: any) => f.type === 'livekit');
-          if (livekitFocus && livekitFocus.livekit_service_url) {
-            serviceUrl = livekitFocus.livekit_service_url;
-          }
-        } else {
-          // No active focus, discover from .well-known
-          try {
-            const wellKnown = await this.client.getClientWellKnown();
-            console.log('[Voice] Well-known discovery result:', wellKnown);
-            const rtcFoci = wellKnown?.['org.matrix.msc4143.rtc_foci'];
-            if (Array.isArray(rtcFoci)) {
-              // Prefer LiveKit foci
-              const livekitFocus = rtcFoci.find((f: any) => f.type === 'livekit');
-              if (livekitFocus) {
-                fociPreferred = [livekitFocus];
-                if (livekitFocus.livekit_service_url) {
-                  serviceUrl = livekitFocus.livekit_service_url;
-                }
-                console.log('[Voice] Discovered preferred focus from .well-known:', livekitFocus);
-              }
-            }
-          } catch (e) {
-            console.warn('[Voice] Failed to fetch/parse well-known for RTC foci, using default.', e);
-          }
-
-          // FALLBACK: If discovery returned nothing or failed, but we are proceeding to connect
-          // to the default/fallback URL, we MUST advertise that focus to avoid split brain.
-          // Other clients (like Element) will discover the focus themselves and expect us to be there.
-          if (fociPreferred.length === 0) {
-            console.warn('[Voice] Discovery failed or empty. Constructing synthetic focus for default URL:', serviceUrl);
-            fociPreferred = [{
-              type: 'livekit',
-              livekit_service_url: serviceUrl,
-              livekit_alias: 'default', // standard alias
-            }];
-          }
-        }
-
-        // 3. Tell Matrix we are jumping into the call with E2EE enabled
-        const userId = this.client.getUserId()!;
-        const deviceId = this.client.getDeviceId()!;
-
-        console.log(`[Voice] Joining MatrixRTC session with focus:`, fociPreferred);
-
-        // Join the session, advertising our preferred focus if we are the first/need to assert it
-        rtcSession.joinRTCSession(
-          { userId, deviceId, memberId: `${userId}:${deviceId}` },
-          fociPreferred, // Advertises the focus to other clients (Element)
-          undefined,    // multiSfuFocus
-          { manageMediaKeys: true, useExperimentalToDeviceTransport: true },
-        );
-        console.log(`[Voice] Joined MatrixRTC session for ${room.roomId} with focus ${JSON.stringify(fociPreferred)}`);
-
-        // Listen for to-device encryption key events as a manual backup.
-        this.client.on('toDeviceEvent' as any, (event: any) => {
-          const evType = event.getType?.() ?? '';
-          if (evType === 'io.element.call.encryption_keys') {
-            console.log(`[Voice] Received encryption keys signaling from ${event.getSender?.()} (type=${evType})`);
-          }
-        });
-
-        // Track encryption key changes
-        (rtcSession as any).on('encryption_key_changed', (keyBin: any, keyIndex: number, membership: any, rtcBackendIdentity: string) => {
-          console.log(`[Voice][DIAG] EncryptionKeyChanged: identity=${rtcBackendIdentity} index=${keyIndex} userId=${membership?.userId} deviceId=${membership?.deviceId}`);
-        });
-
-        // 3. Prove our identity to Matrix.org by requesting a secure OpenID token
-        const openIdToken = await this.client.getOpenIdToken();
-        console.log(`[Voice] Obtained OpenID token`);
-
-        // 4. Ask the Authorized Service (AS) for a LiveKit ticket
-        console.log(`[Voice] Fetching JWT from AS: ${serviceUrl}`);
-        const response = await fetch(`${serviceUrl}/sfu/get`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            room: room.roomId,
-            device_id: this.client.getDeviceId(),
-            openid_token: openIdToken
-          })
-        });
-
-        if (!response.ok) {
-          throw new Error(`Failed to get LiveKit JWT from ${serviceUrl}: ${response.statusText}`);
-        }
-
-        const livekitData = await response.json();
-        console.log(`[Voice] Obtained LiveKit JWT and URL:`, livekitData.url);
-
-        // 4. Save this data to your store
-        this.activeVoiceCall = {
-          roomId: room.roomId,
-          roomName: room.name,
-          url: livekitData.url,
-          token: livekitData.jwt,
-        };
-        console.log(`[Voice] activeVoiceCall updated in store:`, this.activeVoiceCall);
-
-        toast.success('Joined Voice Channel', {
-          description: `You are now in ${room.name}`,
-        });
-      } catch (e: any) {
-        console.error('Failed to join voice channel:', e);
-        this.activeVoiceCall = null;
-        toast.error('Voice Error', {
-          description: e.message || 'Failed to connect to the voice server.',
-        });
-      }
-    },
-
-    leaveVoiceChannel(roomOrId: sdk.Room | string) {
-      if (!this.client) return;
-
-      const room = typeof roomOrId === 'string' ? this.client.getRoom(roomOrId) : roomOrId;
-      console.log(`[Voice] leaveVoiceChannel called for: ${room?.name || roomOrId}`);
-      if (!room) {
-        this.activeVoiceCall = null;
-        return;
-      }
-
-      try {
-        const rtcSession = this.client.matrixRTC.getRoomSession(room);
-        rtcSession.leaveRoomSession();
-        console.log(`[Voice] Called leaveRoomSession for ${room.roomId}`);
-      } catch (e) {
-        console.error('[Voice] Error leaving RTC session:', e);
-      }
-
-      this.activeVoiceCall = null;
-      toast.info('Left Voice Channel');
-    },
 
     // --- Verification Actions ---
 
@@ -1996,6 +1835,22 @@ export const useMatrixStore = defineStore('matrix', {
       const newPinned = this.pinnedSpaces.filter(id => id !== roomId);
       this.pinnedSpaces = newPinned;
       await (this.client as any).setAccountData('cc.jackg.ruby.pinned_spaces', { rooms: newPinned });
-    }
+    },
+
+    async joinVoiceChannel(roomId: string) {
+      if (!this.client) return;
+      const room = this.client.getRoom(roomId);
+      if (!room) {
+        console.error(`[MatrixStore] Cannot join voice channel: room ${roomId} not found`);
+        return;
+      }
+      const voiceStore = useVoiceStore();
+      await voiceStore.joinVoiceRoom(room);
+    },
+
+    async leaveVoiceChannel(roomId?: string) {
+      const voiceStore = useVoiceStore();
+      await voiceStore.leaveVoiceRoom();
+    },
   }
 });
