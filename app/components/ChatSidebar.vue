@@ -23,8 +23,8 @@
                         :key="friend.roomId"
                         role="button"
                         class="inline-flex items-center justify-start px-2 h-9 w-full rounded-md text-sm font-medium transition-colors cursor-pointer hover:bg-accent/50 group relative"
-                        :class="[(isLinkActive(`/chat/dms/${friend.roomId}`) || store.activeVoiceCall?.roomId === friend.roomId) ? 'bg-secondary text-secondary-foreground' : '']"
-                        @click="isVoiceChannel(store.client?.getRoom(friend.roomId)) ? store.joinVoiceChannel(friend.roomId) : (isLinkActive(`/chat/dms/${friend.roomId}`) ? null : navigateTo(`/chat/dms/${friend.roomId}`))"
+                        :class="[(isLinkActive(`/chat/dms/${friend.roomId}`) || voiceStore.activeRoomId === friend.roomId) ? 'bg-secondary text-secondary-foreground' : '']"
+                        @click="isVoiceChannel(store.client?.getRoom(friend.roomId)) ? voiceStore.joinVoiceRoom(store.client!.getRoom(friend.roomId)!) : (isLinkActive(`/chat/dms/${friend.roomId}`) ? null : navigateTo(`/chat/dms/${friend.roomId}`))"
                     >
                         <MatrixAvatar
                             :mxc-url="friend.avatarUrl"
@@ -60,8 +60,8 @@
                         :key="room.roomId"
                         role="button"
                         class="inline-flex items-center justify-start px-2 h-9 w-full rounded-md text-sm font-medium transition-colors cursor-pointer hover:bg-accent/50 group relative"
-                        :class="[(isLinkActive(`/chat/rooms/${room.roomId}`) || store.activeVoiceCall?.roomId === room.roomId) ? 'bg-secondary text-secondary-foreground' : '']"
-                        @click="isVoiceChannel(store.client?.getRoom(room.roomId)) ? store.joinVoiceChannel(room.roomId) : (isLinkActive(`/chat/rooms/${room.roomId}`) ? null : navigateTo(`/chat/rooms/${room.roomId}`))"
+                        :class="[(isLinkActive(`/chat/rooms/${room.roomId}`) || voiceStore.activeRoomId === room.roomId) ? 'bg-secondary text-secondary-foreground' : '']"
+                        @click="isVoiceChannel(store.client?.getRoom(room.roomId)) ? voiceStore.joinVoiceRoom(store.client!.getRoom(room.roomId)!) : (isLinkActive(`/chat/rooms/${room.roomId}`) ? null : navigateTo(`/chat/rooms/${room.roomId}`))"
                     >
                         <MatrixAvatar
                             :mxc-url="room.avatarUrl"
@@ -155,16 +155,17 @@
         </nav>
         
         <!-- Active Call Bar -->
-        <div v-if="store.activeVoiceCall" class="mx-2 mb-2 p-2 bg-green-500/10 border border-green-500/20 rounded-md flex items-center justify-between gap-2 overflow-hidden shadow-sm animate-in fade-in slide-in-from-bottom-2">
+        <div v-if="voiceStore.activeRoomId" class="mx-2 mb-2 p-2 bg-green-500/10 border border-green-500/20 rounded-md flex items-center justify-between gap-2 overflow-hidden shadow-sm animate-in fade-in slide-in-from-bottom-2">
             <div class="flex flex-col min-w-0">
                 <span class="text-[10px] font-bold text-green-500 uppercase tracking-wider">Active Call</span>
-                <span class="text-xs font-semibold truncate">{{ store.activeVoiceCall.roomName || 'Voice Room' }}</span>
+                <!-- Use a safe getter or fallback name -->
+                <span class="text-xs font-semibold truncate">{{ store.client?.getRoom(voiceStore.activeRoomId)?.name || 'Voice Room' }}</span>
             </div>
             <UiButton 
                 variant="destructive" 
                 size="icon" 
                 class="h-7 w-7 shrink-0 shadow-sm"
-                @click="store.leaveVoiceChannel(store.activeVoiceCall.roomId)"
+                @click="voiceStore.leaveVoiceRoom()"
                 title="Disconnect from call"
             >
                 <Icon name="solar:end-call-bold" class="h-4 w-4" />
@@ -187,6 +188,8 @@ import { VueDraggable as draggable } from 'vue-draggable-plus';
 import MatrixAvatar from '~/components/MatrixAvatar.vue';
 import ChatSidebarCategory from '~/components/ChatSidebarCategory.vue';
 import { isVoiceChannel } from '~/utils/room';
+import { useMatrixStore } from '~/stores/matrix';
+import { useVoiceStore } from '~/stores/voice';
 
 const router = useRouter();
 
@@ -217,6 +220,7 @@ const settingsPages = computed(() => {
 
 const route = useRoute();
 const store = useMatrixStore();
+const voiceStore = useVoiceStore();
 
 // Reactive state for the UI
 interface MappedRoom {
@@ -259,7 +263,7 @@ const isEmptyRoom = (room: Room): boolean => {
 const friends = computed(() => {
   if (!store.client) return [];
   // Register dependency on activeVoiceCall for icon updates
-  store.activeVoiceCall;
+  voiceStore.activeRoomId;
   
   const { directMessages } = store.hierarchy;
   const directEvent = store.client.getAccountData(EventType.Direct);
@@ -300,7 +304,7 @@ const friends = computed(() => {
 const rooms = computed(() => {
   if (!store.client) return [];
   // Register dependency on activeVoiceCall for icon updates
-  store.activeVoiceCall;
+  voiceStore.activeRoomId;
   
   const { orphanRooms } = store.hierarchy;
   // Filter out empty rooms unless the setting is enabled
@@ -369,7 +373,7 @@ const spaceCategories = computed(() => {
   // Access hierarchy for reactivity trigger
   store.hierarchy;
   // Register dependency on activeVoiceCall for icon updates
-  store.activeVoiceCall;
+  voiceStore.activeRoomId;
   
   if (!store.client || !activeSpaceId.value) return [];
   

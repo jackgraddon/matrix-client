@@ -21,6 +21,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useMatrixStore } from '~/stores/matrix';
+import { useVoiceStore } from '~/stores/voice';
 
 const props = defineProps<{
   roomId: string;
@@ -28,6 +29,7 @@ const props = defineProps<{
 }>();
 
 const store = useMatrixStore();
+const voiceStore = useVoiceStore();
 
 const isCallIncoming = computed(() => {
   const participants = store.getVoiceParticipants(props.roomId);
@@ -35,10 +37,13 @@ const isCallIncoming = computed(() => {
   
   // If there are people in the call, but we aren't one of them, it's ringing!
   // And we should only show it if we're not currently in ANOTHER call (or maybe even if we are, but let's keep it simple)
-  return participants.length > 0 && !amIInCall && !store.activeVoiceCall;
+  return participants.length > 0 && !amIInCall && !voiceStore.activeRoomId;
 });
 
 const answerCall = () => {
-  store.joinVoiceChannel(props.roomId);
+  const room = store.client?.getRoom(props.roomId);
+  if (room) {
+    voiceStore.joinVoiceRoom(room);
+  }
 };
 </script>

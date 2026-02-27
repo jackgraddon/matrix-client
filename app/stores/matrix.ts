@@ -328,16 +328,6 @@ export const useMatrixStore = defineStore('matrix', {
         orphanRooms,
       };
     },
-
-    activeVoiceCall(state) {
-      const voiceStore = useVoiceStore();
-      if (!voiceStore.activeRoomId || !state.client) return null;
-      const room = state.client.getRoom(voiceStore.activeRoomId);
-      return {
-        roomId: voiceStore.activeRoomId,
-        roomName: room?.name || null,
-      };
-    },
   },
 
   actions: {
@@ -1835,22 +1825,6 @@ export const useMatrixStore = defineStore('matrix', {
       const newPinned = this.pinnedSpaces.filter(id => id !== roomId);
       this.pinnedSpaces = newPinned;
       await (this.client as any).setAccountData('cc.jackg.ruby.pinned_spaces', { rooms: newPinned });
-    },
-
-    async joinVoiceChannel(roomId: string) {
-      if (!this.client) return;
-      const room = this.client.getRoom(roomId);
-      if (!room) {
-        console.error(`[MatrixStore] Cannot join voice channel: room ${roomId} not found`);
-        return;
-      }
-      const voiceStore = useVoiceStore();
-      await voiceStore.joinVoiceRoom(room);
-    },
-
-    async leaveVoiceChannel(roomId?: string) {
-      const voiceStore = useVoiceStore();
-      await voiceStore.leaveVoiceRoom();
-    },
+    }
   }
 });

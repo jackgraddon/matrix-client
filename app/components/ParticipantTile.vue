@@ -23,6 +23,7 @@
       <div class="flex flex-col items-center gap-1">
         <span class="text-xl font-bold text-white drop-shadow-md">{{ displayName }}</span>
         <span v-if="isSpeaking" class="text-xs font-bold text-green-500 uppercase tracking-widest animate-pulse">Speaking...</span>
+        <span v-if="!audioTrack" class="text-xs text-muted-foreground animate-pulse">Waiting for media...</span>
       </div>
     </div>
 
@@ -35,6 +36,7 @@
       <div class="flex items-center gap-1">
         <Icon v-if="!isMicEnabled" name="solar:muted-bold" class="h-4 w-4 text-red-500" />
         <Icon v-if="isSpeaking" name="solar:soundwave-bold" class="h-4 w-4 text-green-500" />
+        <Icon v-if="isEncrypted" name="solar:lock-bold" class="h-3 w-3 text-green-500" />
       </div>
     </div>
 
@@ -74,6 +76,7 @@ const audioTrack = shallowRef<RemoteTrack | Track | null>(null);
 const isSpeaking = ref(props.participant.isSpeaking);
 const isMicEnabled = ref(props.participant.isMicrophoneEnabled);
 const isCameraEnabled = ref(props.participant.isCameraEnabled);
+const isEncrypted = ref(props.participant.isEncrypted);
 
 // Matrix Data extraction
 // LiveKit identity is often "@user:server:DEVICEID" — extract just "@user:server"
@@ -124,6 +127,7 @@ const onLocalTrackUnpublished = (pub: TrackPublication) => { if (pub.track) deta
 function updateMediaState() {
   isMicEnabled.value = props.participant.isMicrophoneEnabled;
   isCameraEnabled.value = props.participant.isCameraEnabled;
+  isEncrypted.value = props.participant.isEncrypted;
 }
 
 onMounted(() => {

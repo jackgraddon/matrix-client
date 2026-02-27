@@ -83,6 +83,13 @@
     <div>
       <h2 class="text-lg font-semibold tracking-tight">Account Linking</h2>
       <p class="text-sm text-muted-foreground">Link your account to other services.</p>
+      <UiButton>Jellyfin</UiButton>
+    </div>
+
+    <div>
+      <h2 class="text-lg font-semibold tracking-tight">Bridging</h2>
+      <p class="text-sm text-muted-foreground">Connect your off-platform chats to Matrix. Your homeserver must support the bridges to connect them.</p>
+      <UiButton>Discord</UiButton>
     </div>
 
     <div class="flex gap-3">
@@ -155,6 +162,20 @@ async function updateProfile() {
 
   navigateTo('/chat/settings/account');
 }
+
+async function linkAccount(account: string) {
+  
+}
+
+async function unlinkAccount(account: string) {
+  
+}
+
+async function bridge(account: string) {
+  
+}
+
+
 
 async function manageDevices() {
   const oidcConfigStr = localStorage.getItem('matrix_oidc_config');

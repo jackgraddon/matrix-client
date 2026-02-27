@@ -62,8 +62,8 @@
                             v-if="isVoiceChannel(store.client?.getRoom(room.roomId))"
                             role="button"
                             class="inline-flex items-center justify-start px-2 h-9 w-full rounded-md text-sm font-medium transition-colors cursor-pointer hover:bg-accent/50 group relative"
-                            :class="[(isLinkActive(`/chat/spaces/${activeSpaceId}/${room.roomId}`) || store.activeVoiceCall?.roomId === room.roomId) ? 'bg-secondary text-secondary-foreground' : '']"
-                            @click="store.joinVoiceChannel(room.roomId)"
+                            :class="[(isLinkActive(`/chat/spaces/${activeSpaceId}/${room.roomId}`) || voiceStore.activeRoomId === room.roomId) ? 'bg-secondary text-secondary-foreground' : '']"
+                            @click="voiceStore.joinVoiceRoom(store.client!.getRoom(room.roomId)!)"
                         >
                             <div class="h-6 w-6 mr-1 flex items-center justify-center shrink-0">
                                 <Icon name="solar:soundwave-square-bold-duotone" class="h-5 w-5" />
@@ -90,11 +90,11 @@
 
                                 <!-- Leave Button -->
                                 <UiButton 
-                                    v-if="store.activeVoiceCall?.roomId === room.roomId"
+                                    v-if="voiceStore.activeRoomId === room.roomId"
                                     variant="destructive" 
                                     size="icon" 
                                     class="h-6 w-6 shrink-0 shadow-sm"
-                                    @click.prevent.stop="store.leaveVoiceChannel(room.roomId)"
+                                    @click.prevent.stop="voiceStore.leaveVoiceRoom()"
                                     title="Leave voice channel"
                                 >
                                     <Icon name="solar:end-call-bold" class="h-3 w-3" />
@@ -166,9 +166,11 @@
 import { VueDraggable as draggable } from 'vue-draggable-plus';
 import MatrixAvatar from '~/components/MatrixAvatar.vue';
 import { useMatrixStore } from '~/stores/matrix';
+import { useVoiceStore } from '~/stores/voice';
 import { isVoiceChannel } from '~/utils/room';
 
 const store = useMatrixStore();
+const voiceStore = useVoiceStore();
 
 interface MappedRoom {
   roomId: string;
