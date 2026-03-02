@@ -798,7 +798,7 @@ function mapEvent(event: MatrixEvent): ChatMessage | null {
 
   // getContent() automatically returns the *edited* content if replaced
   const content = isEncrypted ? event.getClearContent() : event.getContent();
-  
+
   if (!content && !isEncrypted) return null;
 
   const isMessage = type === EventType.RoomMessage;
@@ -807,10 +807,20 @@ function mapEvent(event: MatrixEvent): ChatMessage | null {
   const isGameInvite = type === EventType.RoomMessage && content?.msgtype === 'cc.jackg.ruby.game.invite';
   const isGameAction = type === 'cc.jackg.ruby.game.action';
   const isGameOver = type === 'cc.jackg.ruby.game.over';
+  const isGameState = type === 'cc.jackg.ruby.game.state';
 
-  if (!isMessage && !isEncrypted && !isSticker && !isRTC && !isGameInvite && !isGameAction && !isGameOver) return null;
-  // For RTC events, we don't need a body
-  if (!isRTC && !content.body) return null; // Pending decryption or invalid
+  // We allow these events through the first filter so they can be processed,
+  // but we might still return null if we don't want them in the visual timeline.
+  if (!isMessage && !isEncrypted && !isSticker && !isRTC && !isGameInvite && !isGameAction && !isGameOver && !isGameState) return null;
+
+  // Don't show game state events in the visual timeline (they just update the board)
+  if (isGameState) return null;
+
+  // Events that require a body (text, images, files, etc)
+  const isContentMessage = isMessage || isEncrypted || isSticker;
+  const isGameTimelineEvent = isGameInvite || isGameAction || isGameOver;
+
+  if (isContentMessage && !isRTC && !isGameTimelineEvent && !content?.body) return null;
 
   const senderId = event.getSender() || '';
   const senderMember = room.value?.getMember(senderId);
@@ -1172,7 +1182,9 @@ function forceScrollToBottom() {
 
 function sendReadReceipt(event: MatrixEvent) {
   if (!room.value || !store.client) return;
-        store.client?.sendReadReceipt(event);
+  // Don't send read receipts for local echoes (events without a server-assigned ID)
+  if (event.status !== null) return;
+  store.client?.sendReadReceipt(event);
 }
 
 // --- Pagination (TimelineWindow) ---
