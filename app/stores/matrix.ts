@@ -159,6 +159,7 @@ export const useMatrixStore = defineStore('matrix', {
     activityStatus: null as string | null,
     activityDetails: null as { name: string; is_running: boolean } | null,
     isGameDetectionEnabled: false,
+    gameTrigger: 0,
 
     customStatus: null as string | null,
     isLoggingIn: false,
@@ -974,6 +975,9 @@ export const useMatrixStore = defineStore('matrix', {
         const type = event.getType();
         if (type === 'm.space.child' || type === 'm.space.parent') {
           this.updateHierarchy();
+        }
+        if (type === 'cc.jackg.ruby.game.state') {
+          this.gameTrigger++;
         }
       });
 

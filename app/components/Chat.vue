@@ -236,6 +236,35 @@
               </div>
 
               <div
+                v-else-if="msg.isGameInvite"
+                class="mt-1 flex flex-col"
+                :class="msg.isOwn ? 'items-end' : 'items-start'"
+              >
+                <TicTacToe
+                  v-if="msg.gameId && hasGameState(msg.gameId)"
+                  :game-id="msg.gameId"
+                  :room-id="(roomId as string)"
+                />
+                <GameInviteCard v-else :event="msg.rawEvent!" />
+              </div>
+
+              <div
+                v-else-if="msg.isGameAction"
+                class="mt-1 flex flex-col"
+                :class="msg.isOwn ? 'items-end' : 'items-start'"
+              >
+                <GameActionBubble :event="msg.rawEvent!" />
+              </div>
+
+              <div
+                v-else-if="msg.isGameOver"
+                class="mt-1 flex flex-col"
+                :class="msg.isOwn ? 'items-end' : 'items-start'"
+              >
+                <GameResultCard :event="msg.rawEvent!" />
+              </div>
+
+              <div
                 v-else
                 class="flex flex-col"
                 :class="msg.isOwn ? 'items-end' : 'items-start'"
@@ -487,6 +516,10 @@
                   <Icon name="solar:file-send-linear" />
                   <span>Upload File</span>
                 </UiDropdownMenuItem>
+                <UiDropdownMenuItem @click="handleInviteToGame" class="cursor-pointer">
+                  <Icon name="solar:gamepad-linear" />
+                  <span>Play Tic-Tac-Toe</span>
+                </UiDropdownMenuItem>
                 <UiDropdownMenuSeparator />
                 <UiDropdownMenuItem disabled>
                   <Icon name="solar:chart-square-linear" />
@@ -528,6 +561,10 @@ import { toast } from 'vue-sonner';
 import { ref, shallowRef, markRaw, toRaw, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import ChatSticker from '~/components/ChatSticker.vue';
 import ChatFile from '~/components/ChatFile.vue';
+import GameInviteCard from '~/components/game/GameInviteCard.vue';
+import GameActionBubble from '~/components/game/GameActionBubble.vue';
+import GameResultCard from '~/components/game/GameResultCard.vue';
+import TicTacToe from '~/components/game/TicTacToe.vue';
 import EmojiPicker from 'vue3-emoji-picker';
 import 'vue3-emoji-picker/css';
 import { Room as LiveKitRoom, RoomEvent as LKRoomEvent, Track as LKTrack, BaseKeyProvider as BaseE2EEKeyProvider, createKeyMaterialFromBuffer } from 'livekit-client';
@@ -570,6 +607,27 @@ const route = useRoute();
 const store = useMatrixStore();
 const voiceStore = useVoiceStore();
 const { showKeychainWarning, handleJoinCall, handleProceed, handleCancel } = useJoinCall();
+
+async function handleInviteToGame() {
+  if (!roomId.value || !otherUserId.value) {
+    toast.error('Cannot invite to game in this room');
+    return;
+  }
+  const { inviteToGame } = useMatrixGame(roomId.value as string);
+  try {
+    await inviteToGame('tictactoe', otherUserId.value);
+    toast.success('Game invite sent');
+  } catch (err) {
+    console.error('Failed to send game invite', err);
+    toast.error('Failed to send game invite');
+  }
+}
+
+function hasGameState(gameId: string): boolean {
+  store.gameTrigger; // reactivity
+  const stateEvent = room.value?.currentState.getStateEvents('cc.jackg.ruby.game.state', gameId);
+  return !!stateEvent;
+}
 
 // --- Reactive state ---
 
@@ -614,6 +672,12 @@ interface ChatMessage {
   msgtype?: string;
   mimetype?: string;
   isCallEvent?: boolean;
+  gameId?: string;
+  gameType?: string;
+  isGameInvite?: boolean;
+  isGameAction?: boolean;
+  isGameOver?: boolean;
+  rawEvent?: MatrixEvent;
 }
 
 const messages = ref<ChatMessage[]>([]);
@@ -704,16 +768,20 @@ function mapEvent(event: MatrixEvent): ChatMessage | null {
   }
 
   const isEncrypted = type === 'm.room.encrypted';
-  const isMessage = type === EventType.RoomMessage;
-  const isSticker = type === 'm.sticker';
-  const isRTC = type === 'org.matrix.msc3401.call.member' || type === 'm.call.member' || type === 'm.rtc.member';
-  
-  if (!isMessage && !isEncrypted && !isSticker && !isRTC) return null;
 
   // getContent() automatically returns the *edited* content if replaced
   const content = isEncrypted ? event.getClearContent() : event.getContent();
   
-  if (!content) return null;
+  if (!content && !isEncrypted) return null;
+
+  const isMessage = type === EventType.RoomMessage;
+  const isSticker = type === 'm.sticker';
+  const isRTC = type === 'org.matrix.msc3401.call.member' || type === 'm.call.member' || type === 'm.rtc.member';
+  const isGameInvite = type === EventType.RoomMessage && content?.msgtype === 'cc.jackg.ruby.game.invite';
+  const isGameAction = type === 'cc.jackg.ruby.game.action';
+  const isGameOver = type === 'cc.jackg.ruby.game.over';
+
+  if (!isMessage && !isEncrypted && !isSticker && !isRTC && !isGameInvite && !isGameAction && !isGameOver) return null;
   // For RTC events, we don't need a body
   if (!isRTC && !content.body) return null; // Pending decryption or invalid
 
@@ -743,6 +811,58 @@ function mapEvent(event: MatrixEvent): ChatMessage | null {
       isOwn: senderId === store.client?.getUserId(),
       type: 'm.rtc.member',
       isCallEvent: true
+    };
+  }
+
+  if (isGameInvite) {
+    return {
+      eventId: event.getId()!,
+      senderId,
+      senderName,
+      senderInitials: senderName.substring(0, 1),
+      avatarUrl,
+      body: content.body || 'Game Invite',
+      timestamp: event.getTs(),
+      isOwn: senderId === store.client?.getUserId(),
+      type: content.msgtype,
+      isGameInvite: true,
+      gameId: content.game_id,
+      gameType: content.game_type,
+      rawEvent: event
+    };
+  }
+
+  if (isGameAction) {
+    return {
+      eventId: event.getId()!,
+      senderId,
+      senderName,
+      senderInitials: senderName.substring(0, 1),
+      avatarUrl,
+      body: 'Game Action',
+      timestamp: event.getTs(),
+      isOwn: senderId === store.client?.getUserId(),
+      type: 'cc.jackg.ruby.game.action',
+      isGameAction: true,
+      gameId: content.game_id,
+      rawEvent: event
+    };
+  }
+
+  if (isGameOver) {
+    return {
+      eventId: event.getId()!,
+      senderId,
+      senderName,
+      senderInitials: senderName.substring(0, 1),
+      avatarUrl,
+      body: 'Game Over',
+      timestamp: event.getTs(),
+      isOwn: senderId === store.client?.getUserId(),
+      type: 'cc.jackg.ruby.game.over',
+      isGameOver: true,
+      gameId: content.game_id,
+      rawEvent: event
     };
   }
 
