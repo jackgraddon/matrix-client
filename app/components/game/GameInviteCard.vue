@@ -20,11 +20,25 @@ async function acceptInvite() {
 
   console.log('[GameInvite] Accepting invite', { gameId, gameType });
 
-  const initialBoard = Array(9).fill(null);
-  const players = {
-    X: props.event.getSender()!,
-    O: store.client?.getUserId()!
-  };
+  let initialBoard: any = null;
+  let players: any = {};
+  let currentTurn: string | undefined;
+
+  if (gameType === 'tictactoe') {
+    initialBoard = Array(9).fill(null);
+    players = {
+      X: props.event.getSender()!,
+      O: store.client?.getUserId()!
+    };
+    currentTurn = players.X;
+  } else if (gameType === 'chess') {
+    initialBoard = 'start'; // chess.js FEN
+    players = {
+      white: props.event.getSender()!,
+      black: store.client?.getUserId()!
+    };
+    currentTurn = players.white;
+  }
 
   try {
     await updateGameState(gameId, {
@@ -33,7 +47,7 @@ async function acceptInvite() {
       status: 'active',
       players: players,
       board: initialBoard,
-      current_turn: players.X,
+      current_turn: currentTurn,
       started_at: Date.now()
     });
 

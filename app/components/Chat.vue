@@ -240,11 +240,18 @@
                 class="mt-1 flex flex-col"
                 :class="msg.isOwn ? 'items-end' : 'items-start'"
               >
-                <TicTacToe
-                  v-if="msg.gameId && hasGameState(msg.gameId)"
-                  :game-id="msg.gameId"
-                  :room-id="(roomId as string)"
-                />
+                <template v-if="msg.gameId && hasGameState(msg.gameId)">
+                   <TicTacToe
+                     v-if="msg.gameType === 'tictactoe'"
+                     :game-id="msg.gameId"
+                     :room-id="(roomId as string)"
+                   />
+                   <Chess
+                     v-else-if="msg.gameType === 'chess'"
+                     :game-id="msg.gameId"
+                     :room-id="(roomId as string)"
+                   />
+                </template>
                 <GameInviteCard v-else-if="getMatrixEvent(msg)" :event="getMatrixEvent(msg)!" />
               </div>
 
@@ -516,10 +523,22 @@
                   <Icon name="solar:file-send-linear" />
                   <span>Upload File</span>
                 </UiDropdownMenuItem>
-                <UiDropdownMenuItem @click="handleInviteToGame" class="cursor-pointer">
-                  <Icon name="solar:gamepad-linear" />
-                  <span>Play Tic-Tac-Toe</span>
-                </UiDropdownMenuItem>
+                <UiDropdownMenuSub>
+                  <UiDropdownMenuSubTrigger class="cursor-pointer">
+                    <Icon name="solar:gamepad-linear" />
+                    <span>Play Game</span>
+                  </UiDropdownMenuSubTrigger>
+                  <UiDropdownMenuPortal>
+                    <UiDropdownMenuSubContent>
+                      <UiDropdownMenuItem @click="handleInviteToGame('tictactoe')" class="cursor-pointer">
+                        <span>Tic-Tac-Toe</span>
+                      </UiDropdownMenuItem>
+                      <UiDropdownMenuItem @click="handleInviteToGame('chess')" class="cursor-pointer">
+                        <span>Chess</span>
+                      </UiDropdownMenuItem>
+                    </UiDropdownMenuSubContent>
+                  </UiDropdownMenuPortal>
+                </UiDropdownMenuSub>
                 <UiDropdownMenuSeparator />
                 <UiDropdownMenuItem disabled>
                   <Icon name="solar:chart-square-linear" />
@@ -565,6 +584,7 @@ import GameInviteCard from './game/GameInviteCard.vue';
 import GameActionBubble from './game/GameActionBubble.vue';
 import GameResultCard from './game/GameResultCard.vue';
 import TicTacToe from './game/TicTacToe.vue';
+import Chess from './game/Chess.vue';
 import EmojiPicker from 'vue3-emoji-picker';
 import 'vue3-emoji-picker/css';
 import { Room as LiveKitRoom, RoomEvent as LKRoomEvent, Track as LKTrack, BaseKeyProvider as BaseE2EEKeyProvider, createKeyMaterialFromBuffer } from 'livekit-client';
@@ -608,8 +628,8 @@ const store = useMatrixStore();
 const voiceStore = useVoiceStore();
 const { showKeychainWarning, handleJoinCall, handleProceed, handleCancel } = useJoinCall();
 
-async function handleInviteToGame() {
-  console.log('[Chat] Invite to Tic-Tac-Toe requested', { roomId: roomId.value, otherUserId: otherUserId.value });
+async function handleInviteToGame(gameType: string = 'tictactoe') {
+  console.log(`[Chat] Invite to ${gameType} requested`, { roomId: roomId.value, otherUserId: otherUserId.value });
 
   if (!roomId.value) {
     toast.error('No room selected');
@@ -633,7 +653,7 @@ async function handleInviteToGame() {
 
   const { inviteToGame } = useMatrixGame(roomId.value!);
   try {
-    await inviteToGame('tictactoe', targetUserId);
+    await inviteToGame(gameType, targetUserId);
     toast.success('Game invite sent');
   } catch (err) {
     console.error('Failed to send game invite', err);
