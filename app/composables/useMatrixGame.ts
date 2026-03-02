@@ -18,15 +18,13 @@ export function useMatrixGame(roomId: string) {
     return gameId
   }
 
-  // Persist board state as a Matrix state event
+  // Persist board state as a Matrix timeline event (using timeline instead of state to avoid 403s)
   async function updateGameState(gameId: string, stateContent: object) {
     if (!matrixClient) return
-    await matrixClient.sendStateEvent(
-      roomId,
-      'cc.jackg.ruby.game.state',
-      stateContent,
-      gameId // state_key = gameId, allows multiple concurrent games
-    )
+    await matrixClient.sendEvent(roomId, 'cc.jackg.ruby.game.state', {
+      game_id: gameId,
+      ...stateContent,
+    })
   }
 
   // Send an action (move, forfeit, etc.) to the timeline
@@ -38,13 +36,21 @@ export function useMatrixGame(roomId: string) {
     })
   }
 
-  // Read current game state from room state
+  // Read current game state from the timeline (most recent state event for this gameId)
   function getGameState(gameId: string) {
     if (!matrixClient) return null
     const room = matrixClient.getRoom(roomId)
-    return room?.currentState
-      .getStateEvents('cc.jackg.ruby.game.state', gameId)
-      ?.getContent()
+    if (!room) return null
+
+    // Search live timeline backwards for the latest state event
+    const events = room.getLiveTimeline().getEvents()
+    for (let i = events.length - 1; i >= 0; i--) {
+      const ev = events[i]
+      if (ev.getType() === 'cc.jackg.ruby.game.state' && ev.getContent().game_id === gameId) {
+        return ev.getContent()
+      }
+    }
+    return null
   }
 
   return { inviteToGame, updateGameState, sendGameAction, getGameState }

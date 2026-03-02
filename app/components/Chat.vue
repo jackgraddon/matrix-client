@@ -643,8 +643,17 @@ async function handleInviteToGame() {
 
 function hasGameState(gameId: string): boolean {
   store.gameTrigger; // reactivity
-  const stateEvent = room.value?.currentState.getStateEvents('cc.jackg.ruby.game.state', gameId);
-  return !!stateEvent;
+  if (!room.value) return false;
+
+  // Search timeline for a state event for this gameId
+  const events = room.value.getLiveTimeline().getEvents();
+  for (let i = events.length - 1; i >= 0; i--) {
+    const ev = events[i];
+    if (ev.getType() === 'cc.jackg.ruby.game.state' && ev.getContent().game_id === gameId) {
+      return true;
+    }
+  }
+  return false;
 }
 
 // --- Reactive state ---

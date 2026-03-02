@@ -1,19 +1,24 @@
 <script setup lang="ts">
 import type { MatrixEvent } from 'matrix-js-sdk';
+import { toast } from 'vue-sonner';
 
 const props = defineProps<{
   event: MatrixEvent;
 }>();
 
 const store = useMatrixStore();
+const roomId = props.event.getRoomId()!;
+const { updateGameState, sendGameAction } = useMatrixGame(roomId);
+
 const content = computed(() => props.event.getContent());
 const isMyInvite = computed(() => content.value.invited_user === store.client?.getUserId());
 const isOwnInvite = computed(() => props.event.getSender() === store.client?.getUserId());
 
 async function acceptInvite() {
-  const roomId = props.event.getRoomId()!;
   const gameId = content.value.game_id;
   const gameType = content.value.game_type;
+
+  console.log('[GameInvite] Accepting invite', { gameId, gameType });
 
   const initialBoard = Array(9).fill(null);
   const players = {
@@ -21,21 +26,27 @@ async function acceptInvite() {
     O: store.client?.getUserId()!
   };
 
-  await store.client?.sendStateEvent(roomId, 'cc.jackg.ruby.game.state', {
-    game_id: gameId,
-    game_type: gameType,
-    status: 'active',
-    players: players,
-    board: initialBoard,
-    current_turn: players.X,
-    started_at: Date.now()
-  }, gameId);
+  try {
+    await updateGameState(gameId, {
+      game_id: gameId,
+      game_type: gameType,
+      status: 'active',
+      players: players,
+      board: initialBoard,
+      current_turn: players.X,
+      started_at: Date.now()
+    });
 
-  await store.client?.sendEvent(roomId, 'cc.jackg.ruby.game.action', {
-    game_id: gameId,
-    action: 'accept',
-    player: store.client?.getUserId()
-  });
+    await sendGameAction(gameId, {
+      action: 'accept',
+      player: store.client?.getUserId()
+    });
+
+    console.log('[GameInvite] Invite accepted successfully');
+  } catch (err) {
+    console.error('[GameInvite] Failed to accept invite', err);
+    toast.error('Failed to accept game invite');
+  }
 }
 </script>
 

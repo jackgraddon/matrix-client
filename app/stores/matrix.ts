@@ -981,6 +981,13 @@ export const useMatrixStore = defineStore('matrix', {
         }
       });
 
+      this.client.on(sdk.ClientEvent.Event, (event) => {
+        const type = event.getType();
+        if (type === 'cc.jackg.ruby.game.state' || type === 'cc.jackg.ruby.game.action' || type === 'cc.jackg.ruby.game.over') {
+          this.gameTrigger++;
+        }
+      });
+
       // Initial trigger
       this.updatePinnedSpaces();
       this.loadUIOrderFromAccountData();
