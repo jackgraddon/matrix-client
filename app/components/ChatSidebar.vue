@@ -220,28 +220,19 @@ const settingsPages = computed(() => {
         });
 });
 
-const routeName = ref();
 const store = useMatrixStore();
 const voiceStore = useVoiceStore();
 
-// Are we in a space?
-if (route.fullPath.includes('spaces')) {
-    // Extract the space ID from the URL
-    const spaceIdMatch = route.fullPath.match(/spaces\/([^\/]+)/);
-    if (spaceIdMatch && spaceIdMatch[1]) {
-        const spaceId = spaceIdMatch[1];
-
-        try {
-            // Fetch the space details using the space ID
-            const space = await store.client!.getRoom(spaceId);
-
-            // Extract the space name from the space details
-            routeName.value = space?.getDefaultRoomName || spaceId;
-        } catch (error) {
-            console.error('Error fetching space details:', error);
-        }
+const routeName = computed(() => {
+    if (isLinkActive('/chat/dms')) return 'Direct Messages';
+    if (isLinkActive('/chat/rooms')) return 'Rooms';
+    if (isLinkActive('/chat/settings')) return 'Settings';
+    if (isLinkActive('/chat/spaces') && activeSpaceId.value) {
+        const space = store.client?.getRoom(activeSpaceId.value);
+        return space?.name || activeSpaceId.value;
     }
-}
+    return '';
+});
 
 // Reactive state for the UI
 interface MappedRoom {
