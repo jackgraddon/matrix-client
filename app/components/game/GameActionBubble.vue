@@ -11,7 +11,17 @@ const senderId = computed(() => props.event.getSender());
 const senderName = computed(() => store.client?.getRoom(props.event.getRoomId()!)?.getMember(senderId.value!)?.name || senderId.value);
 
 const actionText = computed(() => {
-  if (content.value.action === 'move') return `${senderName.value} moved at position ${content.value.position + 1}`;
+  if (content.value.action === 'move') {
+    if (content.value.move) {
+      // Chess move
+      return `${senderName.value} moved ${content.value.move}`;
+    }
+    if (typeof content.value.position === 'number') {
+      // Tic-Tac-Toe move
+      return `${senderName.value} moved at position ${content.value.position + 1}`;
+    }
+    return `${senderName.value} moved`;
+  }
   if (content.value.action === 'accept') return `${senderName.value} accepted the game!`;
   return `${senderName.value} action: ${content.value.action}`;
 });

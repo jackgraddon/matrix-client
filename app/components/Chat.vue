@@ -235,40 +235,39 @@
                   />
               </div>
 
+              <!-- Game Related (Board or Card) -->
               <div
-                v-else-if="msg.isGameInvite"
+                v-else-if="msg.isGameInvite || msg.isGameAction || msg.isGameOver"
                 class="mt-1 flex flex-col"
                 :class="msg.isOwn ? 'items-end' : 'items-start'"
               >
-                <template v-if="msg.gameId && hasGameState(msg.gameId)">
+                <!-- Render Interactive Board ONLY for the latest event of this game -->
+                <template v-if="msg.gameId && latestGameEventMap[msg.gameId] === msg.eventId && hasGameState(msg.gameId)">
                    <TicTacToe
-                     v-if="msg.gameType === 'tictactoe'"
+                     v-if="getGameTypeFromState(msg.gameId) === 'tictactoe'"
                      :game-id="msg.gameId"
                      :room-id="(roomId as string)"
                    />
                    <Chess
-                     v-else-if="msg.gameType === 'chess'"
+                     v-else-if="getGameTypeFromState(msg.gameId) === 'chess'"
                      :game-id="msg.gameId"
                      :room-id="(roomId as string)"
                    />
+                   <!-- Also show the bubble/card below the board for context? Or just the board?
+                        User wants board ONLY on latest. Let's show both board and the status bubble if it's an action/gameover for clarity.
+                   -->
+                   <div class="mt-2 w-full flex flex-col" :class="msg.isOwn ? 'items-end' : 'items-start'">
+                     <GameActionBubble v-if="msg.isGameAction && getMatrixEvent(msg)" :event="getMatrixEvent(msg)!" />
+                     <GameResultCard v-if="msg.isGameOver && getMatrixEvent(msg)" :event="getMatrixEvent(msg)!" />
+                   </div>
                 </template>
-                <GameInviteCard v-else-if="getMatrixEvent(msg)" :event="getMatrixEvent(msg)!" />
-              </div>
 
-              <div
-                v-else-if="msg.isGameAction"
-                class="mt-1 flex flex-col"
-                :class="msg.isOwn ? 'items-end' : 'items-start'"
-              >
-                <GameActionBubble v-if="getMatrixEvent(msg)" :event="getMatrixEvent(msg)!" />
-              </div>
-
-              <div
-                v-else-if="msg.isGameOver"
-                class="mt-1 flex flex-col"
-                :class="msg.isOwn ? 'items-end' : 'items-start'"
-              >
-                <GameResultCard v-if="getMatrixEvent(msg)" :event="getMatrixEvent(msg)!" />
+                <!-- Render Static Card for older events -->
+                <template v-else>
+                  <GameInviteCard v-if="msg.isGameInvite && getMatrixEvent(msg)" :event="getMatrixEvent(msg)!" />
+                  <GameActionBubble v-else-if="msg.isGameAction && getMatrixEvent(msg)" :event="getMatrixEvent(msg)!" />
+                  <GameResultCard v-else-if="msg.isGameOver && getMatrixEvent(msg)" :event="getMatrixEvent(msg)!" />
+                </template>
               </div>
 
               <div
@@ -676,6 +675,13 @@ function hasGameState(gameId: string): boolean {
   return false;
 }
 
+function getGameTypeFromState(gameId: string): string | undefined {
+  store.gameTrigger;
+  if (!roomId.value) return undefined;
+  const { getGameState } = useMatrixGame(roomId.value);
+  return getGameState(gameId)?.game_type;
+}
+
 // --- Reactive state ---
 
 interface ChatMessage {
@@ -772,6 +778,16 @@ const displayMessages = computed(() => {
     urls: extractUrls(msg.body),
     isUrlOnly: isUrlOnly(msg.body)
   })).reverse();
+});
+
+const latestGameEventMap = computed(() => {
+  const map: Record<string, string> = {};
+  for (const msg of messages.value) {
+    if (msg.gameId) {
+      map[msg.gameId] = msg.eventId;
+    }
+  }
+  return map;
 });
 
 const roomAvatarUrl = computed(() => {
