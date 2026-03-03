@@ -20,17 +20,19 @@ const players = computed(() => state.value?.players || {});
 const fen = computed(() => state.value?.board || 'start');
 const status = computed(() => state.value?.status || 'active');
 
-const chess = new ChessLogic();
-const board = computed(() => {
+const chess = computed(() => {
+  const instance = new ChessLogic();
   try {
-    chess.load(fen.value === 'start' ? 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1' : fen.value);
+    instance.load(fen.value === 'start' ? 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1' : fen.value);
   } catch (e) {
-    chess.reset();
+    instance.reset();
   }
-  return chess.board();
+  return instance;
 });
 
-const currentTurnColor = computed(() => chess.turn()); // 'w' or 'b'
+const board = computed(() => chess.value.board());
+
+const currentTurnColor = computed(() => chess.value.turn()); // 'w' or 'b'
 const myColor = computed(() => {
   if (players.value.white === myUserId) return 'w';
   if (players.value.black === myUserId) return 'b';
@@ -54,6 +56,7 @@ async function handleSquareClick(i: number, j: number) {
   if (!isMyTurn.value) return;
 
   const square = getSquareName(i, j);
+  const chessInstance = chess.value;
 
   if (selectedSquare.value) {
     if (selectedSquare.value === square) {
@@ -63,7 +66,7 @@ async function handleSquareClick(i: number, j: number) {
 
     // Attempt move
     try {
-      const move = chess.move({
+      const move = chessInstance.move({
         from: selectedSquare.value,
         to: square,
         promotion: 'q' // Always promote to queen for simplicity
@@ -80,12 +83,12 @@ async function handleSquareClick(i: number, j: number) {
         });
 
         let newStatus = 'active';
-        if (chess.isCheckmate()) newStatus = 'won';
-        else if (chess.isDraw()) newStatus = 'draw';
+        if (chessInstance.isCheckmate()) newStatus = 'won';
+        else if (chessInstance.isDraw()) newStatus = 'draw';
 
         await updateGameState(props.gameId, {
           ...state.value,
-          board: chess.fen(),
+          board: chessInstance.fen(),
           status: newStatus,
           winner: newStatus === 'won' ? myUserId : null
         });
@@ -102,7 +105,7 @@ async function handleSquareClick(i: number, j: number) {
       selectedSquare.value = null;
     } catch (e) {
       // Invalid move, just select the new square if it's our piece
-      const piece = chess.get(square as any);
+      const piece = chessInstance.get(square as any);
       if (piece && piece.color === myColor.value) {
         selectedSquare.value = square;
       } else {
@@ -110,7 +113,7 @@ async function handleSquareClick(i: number, j: number) {
       }
     }
   } else {
-    const piece = chess.get(square as any);
+    const piece = chessInstance.get(square as any);
     if (piece && piece.color === myColor.value) {
       selectedSquare.value = square;
     }
