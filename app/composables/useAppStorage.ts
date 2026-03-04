@@ -17,10 +17,10 @@ export async function getPref<T>(key: string, fallback: T): Promise<T> {
     if (isTauri()) {
         const store = await getTauriStore();
         const val = await store.get<T>(key);
-        return val ?? fallback;
+        return (val !== null && val !== undefined) ? val : fallback;
     } else {
         const raw = localStorage.getItem(key);
-        if (!raw) return fallback;
+        if (raw === null || raw === undefined) return fallback;
         try { return JSON.parse(raw) as T; } catch { return raw as unknown as T; }
     }
 }
@@ -57,8 +57,8 @@ export async function getSecret(key: string): Promise<string | null> {
                 const store = client.getStore();
                 const bytes = await store.get(key);
                 if (bytes) return new TextDecoder().decode(new Uint8Array(bytes));
-            } catch {
-                return null;
+            } catch (err) {
+                console.warn(`[getSecret] Stronghold error for ${key}, falling back to localStorage`, err);
             }
         }
     }

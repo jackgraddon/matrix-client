@@ -664,7 +664,7 @@ export const useMatrixStore = defineStore('matrix', {
         const clientId = await registerClient(authConfig, redirectUri);
         const nonce = generateNonce();
 
-        await setPref('matrix_oidc_config', JSON.stringify(authConfig));
+        await setPref('matrix_oidc_config', authConfig);
         await setPref('matrix_oidc_client_id', clientId);
         await setPref('matrix_oidc_nonce', nonce);
 
@@ -702,7 +702,7 @@ export const useMatrixStore = defineStore('matrix', {
         const clientId = await registerClient(authConfig);
         const nonce = generateNonce();
 
-        await setPref('matrix_oidc_config', JSON.stringify(authConfig));
+        await setPref('matrix_oidc_config', authConfig);
         await setPref('matrix_oidc_client_id', clientId);
         await setPref('matrix_oidc_nonce', nonce);
         await setPref('matrix_oidc_redirect_uri', window.location.origin + '/auth/callback');
@@ -753,7 +753,7 @@ export const useMatrixStore = defineStore('matrix', {
       const idTokenClaims = data.idTokenClaims;
 
       await setPref('matrix_oidc_issuer', issuer);
-      await setPref('matrix_oidc_id_token_claims', JSON.stringify(idTokenClaims));
+      await setPref('matrix_oidc_id_token_claims', idTokenClaims);
       // clientId is already stored as matrix_oidc_client_id from startLogin
 
       // Initialize

@@ -31,7 +31,9 @@ export async function getStrongholdClient(): Promise<Client | null> {
         const stronghold = await Stronghold.load(vaultPath, password);
         try {
             _strongholdClient = await stronghold.loadClient('matrix-credentials');
+            console.log('[TauriStorage] Stronghold client loaded successfully');
         } catch (err) {
+            console.log('[TauriStorage] Client not found, creating new matrix-credentials client');
             _strongholdClient = await stronghold.createClient('matrix-credentials');
         }
         return _strongholdClient;

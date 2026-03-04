@@ -15,23 +15,27 @@ export default defineNuxtPlugin(async (nuxtApp) => {
         // OIDC metadata needed to rebuild token refresh function
         const issuer = await getPref('matrix_oidc_issuer', null);
         const clientId = await getPref('matrix_oidc_client_id', null);
-        const idTokenClaimsRaw = await getPref('matrix_oidc_id_token_claims', null);
-        const idTokenClaims = idTokenClaimsRaw ? JSON.parse(idTokenClaimsRaw) : undefined;
+        const idTokenClaims = await getPref('matrix_oidc_id_token_claims', undefined);
 
         // Validate data (Check for "undefined" string which caused your earlier crash)
         if (accessToken && userId && userId !== 'undefined') {
             console.log('Restoring Matrix session...');
 
             // Pass it to the store
-            await store.initClient(
-                accessToken,
-                userId,
-                deviceId || undefined,
-                refreshToken || undefined,
-                issuer || undefined,
-                clientId || undefined,
-                idTokenClaims,
-            );
+            try {
+                await store.initClient(
+                    accessToken,
+                    userId,
+                    deviceId || undefined,
+                    refreshToken || undefined,
+                    issuer || undefined,
+                    clientId || undefined,
+                    idTokenClaims,
+                );
+                console.log('Matrix session restored successfully.');
+            } catch (err) {
+                console.error('Failed to restore Matrix session:', err);
+            }
         }
     }
 
