@@ -1,3 +1,4 @@
+
 import { getSecret } from "~/composables/useAppStorage";
 
 export default defineNuxtRouteMiddleware(async (to, from) => {

@@ -1,11 +1,11 @@
 <template>
     <aside class="flex h-full flex-col w-[250px] shrink-0">
-        <header class="h-16 flex flex-col px-4 items-start">
+        <header class="h-16 flex items-center px-4 gap-2 justify-between">
             <h2 class="text-lg font-semibold flex items-center gap-2">
                 <Icon name="solar:chat-round-dots-bold" class="h-5 w-5" />
                 Ruby Chat
             </h2>
-            <h3 class="text-md italic opacity-50">
+            <h3 class="text-md">
                 {{ routeName }}
             </h3>
         </header>
