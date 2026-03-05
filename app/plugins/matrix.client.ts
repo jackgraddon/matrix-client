@@ -15,7 +15,13 @@ export default defineNuxtPlugin(async (nuxtApp) => {
         // OIDC metadata needed to rebuild token refresh function
         const issuer = await getPref('matrix_oidc_issuer', null);
         const clientId = await getPref('matrix_oidc_client_id', null);
-        const idTokenClaims = await getPref('matrix_oidc_id_token_claims', undefined);
+        let idTokenClaims = await getPref<any>('matrix_oidc_id_token_claims', undefined);
+
+        // EXTRA ROBUSTNESS: Ensure claims is actually an object and not trash from corrupt storage
+        if (idTokenClaims && (typeof idTokenClaims !== 'object' || Array.isArray(idTokenClaims))) {
+            console.warn('Corrupt OIDC idTokenClaims detected, ignoring.');
+            idTokenClaims = undefined;
+        }
 
         // Validate data (Check for "undefined" string which caused your earlier crash)
         if (accessToken && userId && userId !== 'undefined') {

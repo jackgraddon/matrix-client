@@ -95,15 +95,33 @@ export async function setPref<T>(key: string, value: T): Promise<void> {
 
 export async function getPref<T>(key: string, defaultValue: T): Promise<T> {
     if (isTauri()) {
-        const store = await getPrefStore();
-        const stored = await store.get<T>(key);
-        return stored ?? defaultValue;
+        try {
+            const store = await getPrefStore();
+            const stored = await store.get<T>(key);
+            return (stored as T) ?? defaultValue;
+        } catch (e) {
+            console.warn(`[AppStorage] getPref("${key}") failed in Tauri:`, e);
+            return defaultValue;
+        }
     }
     try {
         const raw = localStorage.getItem(key);
-        if (raw === null) return defaultValue;
-        return JSON.parse(raw) as T;
-    } catch {
+        if (raw === null || raw === 'undefined' || raw === '') return defaultValue;
+
+        // Robust check for corrupt data like "[object Object]" or any non-JSON trash
+        const trimmed = raw.trim();
+        if (trimmed.startsWith('[object') || trimmed.startsWith('object')) {
+            console.warn(`[AppStorage] Corrupt string detected for key "${key}", ignoring.`);
+            return defaultValue;
+        }
+
+        try {
+            return JSON.parse(trimmed) as T;
+        } catch (e) {
+            console.warn(`[AppStorage] JSON parse failed for key "${key}":`, e);
+            return defaultValue;
+        }
+    } catch (e) {
         return defaultValue;
     }
 }
