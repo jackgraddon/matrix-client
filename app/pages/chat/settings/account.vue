@@ -212,7 +212,7 @@ async function bridge(account: string) {
 
 async function manageDevices() {
   const oidcConfigStr = localStorage.getItem('matrix_oidc_config');
-  if (oidcConfigStr) {
+  if (oidcConfigStr && oidcConfigStr !== 'undefined' && !oidcConfigStr.startsWith('[object')) {
     try {
       const oidcConfig = JSON.parse(oidcConfigStr);
       if (oidcConfig.issuer) {
