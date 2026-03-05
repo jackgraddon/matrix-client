@@ -8,14 +8,24 @@ export default defineNuxtPlugin(async (nuxtApp) => {
     // Prevent auto-login on the callback page to avoid race conditions
     if (!route.path.includes('/auth/callback')) {
         const accessToken = await getSecret('matrix_access_token');
-        const userId = await getPref('matrix_user_id', null);
-        const deviceId = await getPref('matrix_device_id', null);
+        const userId = await getPref<string | null>('matrix_user_id', null);
+        const deviceId = await getPref<string | null>('matrix_device_id', null);
         const refreshToken = await getSecret('matrix_refresh_token');
 
         // OIDC metadata needed to rebuild token refresh function
-        const issuer = await getPref('matrix_oidc_issuer', null);
-        const clientId = await getPref('matrix_oidc_client_id', null);
-        const idTokenClaims = await getPref('matrix_oidc_id_token_claims', undefined);
+        const issuer = await getPref<string | null>('matrix_oidc_issuer', null);
+        const clientId = await getPref<string | null>('matrix_oidc_client_id', null);
+        const idTokenClaims = await getPref<any>('matrix_oidc_id_token_claims', undefined);
+
+        console.log('[MatrixPlugin] Attempting session restoration', {
+            hasAccessToken: !!accessToken,
+            userId,
+            deviceId,
+            hasRefreshToken: !!refreshToken,
+            hasIssuer: !!issuer,
+            hasClientId: !!clientId,
+            hasIdTokenClaims: !!idTokenClaims
+        });
 
         // Validate data (Check for "undefined" string which caused your earlier crash)
         if (accessToken && userId && userId !== 'undefined') {
@@ -36,6 +46,8 @@ export default defineNuxtPlugin(async (nuxtApp) => {
             } catch (err) {
                 console.error('Failed to restore Matrix session:', err);
             }
+        } else {
+            console.log('[MatrixPlugin] No session data found to restore.');
         }
     }
 

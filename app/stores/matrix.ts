@@ -713,6 +713,7 @@ export const useMatrixStore = defineStore('matrix', {
     },
 
     async handleCallback(code: string, state: string) {
+      console.log('[MatrixStore] Completing OIDC flow...');
       // Exchange Code for Token
       const data = await completeLoginFlow(code, state);
 
@@ -741,20 +742,25 @@ export const useMatrixStore = defineStore('matrix', {
 
       const deviceId = data.tokenResponse.device_id || (await tempClient.whoami().catch(() => ({}))).device_id;
 
-      // Persist Valid Credentials
-      await setSecret('matrix_access_token', accessToken);
-      await setSecret('matrix_refresh_token', refreshToken);
-      await setPref('matrix_user_id', userId);
-      if (deviceId) await setPref('matrix_device_id', deviceId);
-
       // Persist OIDC session data needed for token refresh on reload
       const issuer = data.oidcClientSettings.issuer;
       const clientId = data.oidcClientSettings.clientId;
       const idTokenClaims = data.idTokenClaims;
 
-      await setPref('matrix_oidc_issuer', issuer);
-      await setPref('matrix_oidc_id_token_claims', idTokenClaims);
-      // clientId is already stored as matrix_oidc_client_id from startLogin
+      console.log('[MatrixStore] Persisting session credentials...');
+
+      // Persist Valid Credentials - Await ALL of them
+      await Promise.all([
+        setSecret('matrix_access_token', accessToken),
+        setSecret('matrix_refresh_token', refreshToken || ''),
+        setPref('matrix_user_id', userId),
+        deviceId ? setPref('matrix_device_id', deviceId) : Promise.resolve(),
+        setPref('matrix_oidc_issuer', issuer),
+        setPref('matrix_oidc_id_token_claims', idTokenClaims),
+        setPref('matrix_homeserver_url', data.homeserverUrl)
+      ]);
+
+      console.log('[MatrixStore] Session persisted, initializing client...');
 
       // Initialize
       await this.initClient(accessToken, userId, deviceId, refreshToken, issuer, clientId, idTokenClaims);

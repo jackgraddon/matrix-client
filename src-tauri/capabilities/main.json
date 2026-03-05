@@ -21,6 +21,7 @@
     "core:window:allow-start-dragging",
     "os:default",
     "os:allow-hostname",
+    "path:default",
     "store:allow-load",
     "store:default",
     "stronghold:default"
