@@ -108,10 +108,25 @@ export async function getPref<T>(key: string, defaultValue: T): Promise<T> {
 
     try {
         const raw = localStorage.getItem(key);
-        if (raw === null || raw === 'undefined' || raw === '') return defaultValue;
-        return JSON.parse(raw) as T;
+        if (raw === null || raw === 'undefined' || raw === 'null' || raw === '') return defaultValue;
+
+        // Robust check for corruption before parsing
+        if (raw === '[object Object]' || raw.startsWith('object ') || raw.startsWith('[object')) {
+            console.warn(`[AppStorage] Corrupt string detected for key "${key}", clearing.`);
+            localStorage.removeItem(key);
+            return defaultValue;
+        }
+
+        try {
+            return JSON.parse(raw) as T;
+        } catch (parseErr) {
+            // If we expected a string, return the raw value as a fallback
+            if (typeof defaultValue === 'string') {
+                return raw as unknown as T;
+            }
+            return defaultValue;
+        }
     } catch (e) {
-        console.warn(`[AppStorage] getPref("${key}") failed to parse, returning default.`);
         return defaultValue;
     }
 }
@@ -211,7 +226,8 @@ export async function setSecret(key: string, value: string): Promise<void> {
         await store.insert(key, encoded);
         await stronghold.save();
     } else {
-        try { sessionStorage.setItem(`secret:${key}`, value); } catch { /* SSR */ }
+        if (typeof localStorage === 'undefined') return;
+        try { localStorage.setItem(`secret:${key}`, value); } catch { /* SSR */ }
     }
 }
 
@@ -228,7 +244,8 @@ export async function getSecret(key: string): Promise<string | null> {
             return null;
         }
     }
-    try { return sessionStorage.getItem(`secret:${key}`); } catch { return null; }
+    if (typeof localStorage === 'undefined') return null;
+    try { return localStorage.getItem(`secret:${key}`); } catch { return null; }
 }
 
 export async function deleteSecret(key: string): Promise<void> {
@@ -242,7 +259,8 @@ export async function deleteSecret(key: string): Promise<void> {
             console.warn(`[AppStorage] deleteSecret("${key}") failed:`, e);
         }
     } else {
-        try { sessionStorage.removeItem(`secret:${key}`); } catch { /* SSR */ }
+        if (typeof localStorage === 'undefined') return;
+        try { localStorage.removeItem(`secret:${key}`); } catch { /* SSR */ }
     }
 }
 
