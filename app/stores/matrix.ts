@@ -166,6 +166,9 @@ export const useMatrixStore = defineStore('matrix', {
     isLoggingIn: false,
     loginStatus: '' as string,
     isRestoringKeys: false,
+    isWaitingForRecoveryKey: false,
+    needsRecoveryKeySetup: false,
+    _lastMaintenanceCheck: 0,
 
     lastVisitedRooms: { dm: null, rooms: null, spaces: {} } as LastVisitedRooms,
     hierarchyTrigger: 0,
@@ -809,6 +812,7 @@ export const useMatrixStore = defineStore('matrix', {
             const keyId = keyIds.find(id => secretStorageKeys.get(id) instanceof Uint8Array);
             if (!keyId) {
               // This tells the SDK to pause and wait!
+              this.isWaitingForRecoveryKey = true;
               return new Promise<[string, Uint8Array<ArrayBuffer>] | null>((resolve, reject) => {
                 const firstKeyId = Object.keys(keys)[0];
                 if (!firstKeyId) {
@@ -828,6 +832,7 @@ export const useMatrixStore = defineStore('matrix', {
           },
           cacheSecretStorageKey: (keyId: string, _keyInfo: any, privateKey: Uint8Array) => {
             secretStorageKeys.set(keyId, privateKey as Uint8Array<ArrayBuffer>);
+            this.isWaitingForRecoveryKey = false;
           },
         }
       });
@@ -875,6 +880,7 @@ export const useMatrixStore = defineStore('matrix', {
                 const keyIds = Object.keys(keys);
                 const keyId = keyIds.find(id => secretStorageKeys.get(id) instanceof Uint8Array);
                 if (!keyId) {
+                  this.isWaitingForRecoveryKey = true;
                   return new Promise<[string, Uint8Array<ArrayBuffer>] | null>((resolve, reject) => {
                     const firstKeyId = Object.keys(keys)[0];
                     if (!firstKeyId) {
@@ -893,6 +899,7 @@ export const useMatrixStore = defineStore('matrix', {
               },
               cacheSecretStorageKey: (keyId: string, _keyInfo: any, privateKey: Uint8Array) => {
                 secretStorageKeys.set(keyId, privateKey as Uint8Array<ArrayBuffer>);
+                this.isWaitingForRecoveryKey = false;
               },
             }
           });
@@ -907,6 +914,10 @@ export const useMatrixStore = defineStore('matrix', {
         } else {
           console.warn("Crypto failed to initialize:", e);
         }
+      }
+
+      if (cryptoReady) {
+        await this.handleStartupDehydration();
       }
 
       // Suppress SDK debug noise during initial sync.
@@ -952,6 +963,20 @@ export const useMatrixStore = defineStore('matrix', {
           _debugRestored = true;
           console.debug = _origDebug;
         }
+
+        if (state === sdk.SyncState.Syncing) {
+          // Throttle maintenance to once every hour to avoid excessive getPref calls
+          const now = Date.now();
+          if (now - this._lastMaintenanceCheck > 60 * 60 * 1000) {
+            this._lastMaintenanceCheck = now;
+            getPref('matrix_crypto_dehydration_last_run', 0).then(lastRun => {
+              if (now - lastRun > 24 * 60 * 60 * 1000) {
+                this.maintenanceDehydration();
+              }
+            });
+          }
+        }
+
         if (state === sdk.SyncState.Prepared) {
           this.isClientReady = true;
           this.isLoggingIn = false;
@@ -1258,6 +1283,101 @@ export const useMatrixStore = defineStore('matrix', {
         }
       } catch (e) {
         console.error('[SecretStorage] Failed to check setup:', e);
+      }
+    },
+
+    async handleStartupDehydration() {
+      if (!this.client) return;
+      const crypto = this.client.getCrypto();
+      if (!crypto) return;
+
+      console.log("[Dehydration] Checking for dehydrated device...");
+      try {
+        const dehydratedDevice = await this.client.getDehydratedDevice();
+        if (dehydratedDevice) {
+          console.log("[Dehydration] Found dehydrated device:", dehydratedDevice.deviceId);
+
+          // CRITICAL: We DO NOT await rehydrate() here because it will hang
+          // on the getSecretStorageKey callback if the key is not cached.
+          // This allows initClient to proceed and the UI to show the banner.
+          dehydratedDevice.rehydrate().then(() => {
+            console.log("[Dehydration] Successfully rehydrated session keys.");
+            this.isWaitingForRecoveryKey = false;
+          }).catch((e) => {
+            console.error("[Dehydration] Rehydration failed (possibly wrong recovery key)", e);
+            this.isWaitingForRecoveryKey = false; // Reset flag on failure
+          });
+        } else {
+          console.log("[Dehydration] No dehydrated device found on server.");
+        }
+      } catch (e) {
+        console.error("[Dehydration] Failed to check for dehydrated device:", e);
+      }
+    },
+
+    async provisionDehydratedDevice() {
+      if (!this.client) return;
+      const crypto = this.client.getCrypto();
+      if (!crypto) return;
+
+      if (!this.isCrossSigningReady) {
+        console.log("[Dehydration] Skipping provisioning: Session not verified.");
+        return;
+      }
+
+      console.log("[Dehydration] Provisioning new dehydrated device...");
+      try {
+        const keyId = await crypto.getDefaultSecretStorageKeyId();
+        if (!keyId) {
+          console.warn("[Dehydration] No default secret storage key found. User may need to set up recovery.");
+          this.needsRecoveryKeySetup = true;
+          return;
+        }
+        await crypto.dehydrateDevice(keyId);
+        console.log("[Dehydration] Successfully provisioned dehydrated device.");
+        this.needsRecoveryKeySetup = false;
+        await setPref('matrix_crypto_dehydration_last_run', Date.now());
+      } catch (e) {
+        console.error("[Dehydration] Provisioning failed:", e);
+        this.needsRecoveryKeySetup = true;
+      }
+    },
+
+    async maintenanceDehydration() {
+      if (!this.client) return;
+      const crypto = this.client.getCrypto();
+      if (!crypto) return;
+
+      const status = await crypto.getCrossSigningStatus();
+      if (!status.isVerified) return;
+
+      console.log("[Dehydration] Running maintenance check...");
+
+      try {
+        const serverDevice = await this.client.getDehydratedDevice();
+        const lastRun = await getPref('matrix_crypto_dehydration_last_run', 0);
+        const now = Date.now();
+
+        if (!serverDevice) {
+          console.log("[Dehydration] No device on server, creating one.");
+          await this.provisionDehydratedDevice();
+          return;
+        }
+
+        // Logic:
+        // 1. Race condition protection: NEVER replace if server device is < 24h old.
+        //    Since server metadata doesn't expose timestamp, we use OUR last_run as a proxy.
+        //    If WE didn't create it, we should be cautious.
+
+        // 2. Freshness: Rotate every 7 days.
+        if (now - lastRun > 7 * 24 * 60 * 60 * 1000) {
+          console.log("[Dehydration] Client hasn't rotated in 7 days, forcing fresh overwrite.");
+          await this.provisionDehydratedDevice();
+        } else {
+          console.log("[Dehydration] Dehydrated device is still fresh (< 7 days). Skipping rotation.");
+        }
+      } catch (e) {
+        console.error("[Dehydration] Maintenance failed:", e);
       }
     },
 
@@ -1878,6 +1998,7 @@ export const useMatrixStore = defineStore('matrix', {
       await deleteSecret('matrix_refresh_token');
       await deletePref('matrix_user_id');
       await deletePref('matrix_device_id');
+      await deletePref('matrix_crypto_dehydration_last_run');
 
       // Remove OIDC data (forces fresh discovery/registration next time)
       await deletePref('matrix_oidc_config');
