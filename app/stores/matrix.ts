@@ -2194,6 +2194,24 @@ export const useMatrixStore = defineStore('matrix', {
       }
     },
 
+    async fetchSpaceHierarchy(spaceId: string) {
+      if (!this.client) return;
+      console.log(`[MatrixStore] Fetching hierarchy for space: ${spaceId}`);
+      try {
+        // Fetch hierarchy with a reasonable limit to discover nested rooms/spaces
+        const response = await (this.client as any).getSpaceHierarchy(spaceId, 50);
+
+        if (response && response.rooms) {
+          console.log(`[MatrixStore] Discovered ${response.rooms.length} rooms in space ${spaceId}`);
+          // The SDK usually updates its internal state with discovered rooms,
+          // but we trigger a hierarchy refresh to be sure the UI updates.
+          this.updateHierarchy();
+        }
+      } catch (e) {
+        console.error(`[MatrixStore] Failed to fetch space hierarchy for ${spaceId}:`, e);
+      }
+    },
+
     forceRecalculateVoiceMemberships() {
       if (!this.client) return;
 
