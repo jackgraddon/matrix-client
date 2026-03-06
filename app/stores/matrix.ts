@@ -970,7 +970,10 @@ export const useMatrixStore = defineStore('matrix', {
           if (now - this._lastMaintenanceCheck > 60 * 60 * 1000) {
             this._lastMaintenanceCheck = now;
             getPref('matrix_crypto_dehydration_last_run', 0).then(lastRun => {
-              if (now - lastRun > 24 * 60 * 60 * 1000) {
+              // Add a random jitter (0-4 hours) to avoid thundering herds
+              // when multiple devices are online simultaneously.
+              const jitter = Math.floor(Math.random() * 4 * 60 * 60 * 1000);
+              if (now - lastRun > (24 * 60 * 60 * 1000) + jitter) {
                 this.maintenanceDehydration();
               }
             });
