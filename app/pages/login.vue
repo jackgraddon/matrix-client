@@ -1,5 +1,5 @@
 <template>
-  <div class="flex min-h-screen items-center justify-center bg-background">
+  <main class="flex min-h-screen items-center justify-center bg-background" role="main">
     <UiCard class="w-full max-w-md">
       <UiCardHeader class="text-center">
         <UiCardTitle>Let's get you logged in.</UiCardTitle>
@@ -21,6 +21,7 @@
                 class="rounded-full"
                 @click="handleLogin" 
                 size="icon-xs"
+                aria-label="Connect to homeserver"
               >
                 <Icon name="solar:alt-arrow-right-linear" class="size-4" />
               </UiInputGroupButton>
@@ -40,7 +41,7 @@
         </div>
       </UiCardContent>
     </UiCard>
-  </div>
+  </main>
 </template>
 
 <script setup lang="ts">

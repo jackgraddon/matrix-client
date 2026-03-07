@@ -3,21 +3,35 @@
     <ColorModeToggle />
   </div> -->
   <GlobalContextMenu>
-    <CustomTitlebar />
+    <header class="landmark-titlebar">
+      <CustomTitlebar />
+    </header>
     <div class="pt-[30px] h-screen w-screen transition-colors">
       <NuxtRouteAnnouncer />
       <NuxtPage />
-      <UiSonner />
+      <UiToaster />
       <VerificationModal />
     </div>
   </GlobalContextMenu>
 </template>
 
 <script setup lang="ts">
+import { useMatrixStore } from '~/stores/matrix';
+
 const colorMode = useColorMode();
+const store = useMatrixStore();
+
+// Idle Detection: Handle "Unavailable" status after 5 minutes of inactivity
+let idleTimer: ReturnType<typeof setTimeout>;
+const resetIdleTimer = () => {
+  store.setIdle(false);
+  clearTimeout(idleTimer);
+  idleTimer = setTimeout(() => {
+    store.setIdle(true);
+  }, 5 * 60 * 1000); // 5 minutes
+};
 
 onMounted(async () => {
-  const store = useMatrixStore();
   const isTauri = !!(window as any).__TAURI_INTERNALS__;
 
   if (isTauri) {
@@ -65,41 +79,16 @@ onMounted(async () => {
     });
   }
 
-  // Idle Detection: Handle "Unavailable" status after 5 minutes of inactivity
-  let idleTimer: ReturnType<typeof setTimeout>;
-  const resetIdleTimer = () => {
-    store.setIdle(false);
-    clearTimeout(idleTimer);
-    idleTimer = setTimeout(() => {
-      store.setIdle(true);
-    }, 5 * 60 * 1000); // 5 minutes
-  };
-
   window.addEventListener('mousemove', resetIdleTimer);
   window.addEventListener('keydown', resetIdleTimer);
   resetIdleTimer(); // Initial start
+});
 
-  // Debug: Looping console log for active user presence
-  // let debugInterval: ReturnType<typeof setInterval>;
-  // if (process.dev) {
-  //   debugInterval = setInterval(() => {
-  //     if (store.client && store.isAuthenticated && store.user) {
-  //       const user = store.client.getUser(store.user.userId);
-  //       console.log('[Presence Debug] Status:', {
-  //         presence: user?.presence || 'unknown',
-  //         status_msg: user?.presenceStatusMsg || '',
-  //         isIdle: store.isIdle,
-  //         activity: store.activityDetails?.name || 'none'
-  //       });
-  //     }
-  //   }, 10000); // Every 10 seconds
-  // }
-
-  onBeforeUnmount(() => {
+onBeforeUnmount(() => {
+  if (import.meta.client) {
     window.removeEventListener('mousemove', resetIdleTimer);
     window.removeEventListener('keydown', resetIdleTimer);
-    clearTimeout(idleTimer);
-    // if (debugInterval) clearInterval(debugInterval);
-  });
+  }
+  clearTimeout(idleTimer);
 });
 </script>

@@ -49,9 +49,9 @@ onMounted(async () => {
   isTauri.value = !!(window as any).__TAURI_INTERNALS__;
   if (isTauri.value) {
     try {
-      const { type } = await import('@tauri-apps/plugin-os');
-      const osType = await type();
-      isMac.value = osType === 'macos';
+      const { platform } = await import('@tauri-apps/plugin-os');
+      const osPlatform = await platform();
+      isMac.value = osPlatform === 'macos';
     } catch (error) {
       console.warn("Failed to detect OS for titlebar", error);
       if (typeof window !== 'undefined') {

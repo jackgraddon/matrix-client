@@ -1363,20 +1363,18 @@ export const useMatrixStore = defineStore('matrix', {
         const lastRun = await getPref('matrix_crypto_dehydration_last_run', 0);
         const now = Date.now();
 
-        if (!serverDevice) {
-          console.log("[Dehydration] No device on server, creating one.");
-          await this.provisionDehydratedDevice();
-          return;
-        }
-
         // Logic:
-        // 1. Race condition protection: NEVER replace if server device is < 24h old.
-        //    Since server metadata doesn't expose timestamp, we use OUR last_run as a proxy.
-        //    If WE didn't create it, we should be cautious.
+        // 1. Frequency: Rotate every 7 days.
+        // 2. Initial Setup: If never run, provision immediately.
 
-        // 2. Freshness: Rotate every 7 days.
+        // Note: Race condition protection (24h + jitter) is already handled
+        // by the sync listener that calls this method.
+
         if (now - lastRun > 7 * 24 * 60 * 60 * 1000) {
-          console.log("[Dehydration] Client hasn't rotated in 7 days, forcing fresh overwrite.");
+          console.log("[Dehydration] Client rotation due (> 7 days), forcing fresh overwrite.");
+          await this.provisionDehydratedDevice();
+        } else if (lastRun === 0) {
+          console.log("[Dehydration] First run, provisioning initial device.");
           await this.provisionDehydratedDevice();
         } else {
           console.log("[Dehydration] Dehydrated device is still fresh (< 7 days). Skipping rotation.");
