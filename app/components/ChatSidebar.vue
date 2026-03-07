@@ -269,7 +269,9 @@ const mapRoom = (room: Room): MappedRoom => {
 };
 
 const isEmptyRoom = (room: Room): boolean => {
-  return room.getJoinedMembers().length <= 1;
+  // If lazy loading is on, getJoinedMembers() might return 0 if members aren't fetched yet.
+  // Instead, use getJoinedMemberCount() which is often more accurate/immediate from the sync state.
+  return (room.getJoinedMemberCount?.() ?? room.getJoinedMembers().length) <= 1;
 };
 
 const friends = computed(() => {
@@ -331,6 +333,13 @@ const activeSpaceId = computed(() => {
   return Array.isArray(route.params.id) ? route.params.id[0] : route.params.id;
 });
 
+// Trigger space hierarchy fetching when a space becomes active
+watch(activeSpaceId, (newSpaceId) => {
+  if (newSpaceId && isLinkActive('/chat/spaces')) {
+    store.fetchSpaceHierarchy(newSpaceId);
+  }
+}, { immediate: true });
+
 const collapsedCategories = computed(() => new Set(store.ui.collapsedCategories));
 
 const isCategoryEditMode = ref(false);
@@ -361,9 +370,13 @@ const buildSpaceHierarchy = (spaceId: string, visited: Set<string> = new Set()):
         // Filter out empty rooms unless the setting is enabled
         if (room.isSpaceRoom()) {
           subSpaces.push(room);
-        } else if (store.ui.showEmptyRooms || !isEmptyRoom(room)) {
+        } else if (store.ui.showEmptyRooms || !isEmptyRoom(room) || isVoiceChannel(room)) {
+          // Always show voice channels in spaces to avoid hiding active calls
           directRooms.push(room);
         }
+      } else {
+        // If room is not joined or not in memory, we might still want a placeholder
+        // but for now we rely on fetchSpaceHierarchy to eventually discover them
       }
     }
   });
