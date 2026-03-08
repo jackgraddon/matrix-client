@@ -37,7 +37,7 @@
         "decorations": false,
         "center": true,
         "transparent": true,
-        "alwaysOnTop": true
+        "alwaysOnTop": false
       }
     ],
     "security": {
