@@ -825,6 +825,24 @@ export const useMatrixStore = defineStore('matrix', {
       if (this.client) {
         this.client.stopClient();
         this.client.removeAllListeners();
+        this.client = null;
+      }
+
+      // 1. Fetch Device ID before client creation if missing.
+      // This ensures we don't end up with an unidentifiable Olm device.
+      if (!deviceId) {
+        console.log('[MatrixStore] Device ID missing, fetching via whoami before creation...');
+        const temp = sdk.createClient({ baseUrl: getHomeserverUrl(), accessToken });
+        try {
+          const whoami = await temp.whoami();
+          deviceId = whoami.device_id || undefined;
+          if (deviceId) {
+            await setPref('matrix_device_id', deviceId);
+            console.log('[MatrixStore] Fetched device ID:', deviceId);
+          }
+        } catch (e) {
+          console.warn('[MatrixStore] whoami failed:', e);
+        }
       }
 
       // Build tokenRefreshFunction when we have full OIDC context
@@ -860,7 +878,9 @@ export const useMatrixStore = defineStore('matrix', {
         refreshToken,
         tokenRefreshFunction,
         store: roomStore,
-        cryptoStore: IndexedDBCryptoStore,
+        // CRITICAL: We DO NOT pass cryptoStore here.
+        // Rust crypto handles its own storage (matrix-sdk-crypto DB).
+        // Passing IndexedDBCryptoStore here can cause legacy sync errors in recent SDKs.
         cryptoCallbacks: {
           getSecretStorageKey: async ({ keys }: { keys: Record<string, any> }): Promise<[string, Uint8Array<ArrayBuffer>] | null> => {
             const keyIds = Object.keys(keys);
@@ -893,24 +913,6 @@ export const useMatrixStore = defineStore('matrix', {
       // Create new client FIRST, then startup the store
       this.client = sdk.createClient(clientOpts);
 
-      // Ensure we have a device ID before initializing crypto.
-      // Rust crypto requires a stable device ID to manage keys and verification state.
-      if (!deviceId) {
-        console.log('[MatrixStore] Device ID missing in initClient, fetching via whoami...');
-        try {
-          const whoami = await this.client.whoami();
-          if (whoami.device_id) {
-            deviceId = whoami.device_id;
-            // Update client's internal device ID
-            (this.client as any).deviceId = deviceId;
-            await setPref('matrix_device_id', deviceId);
-            console.log('[MatrixStore] Fetched and saved device ID:', deviceId);
-          }
-        } catch (e) {
-          console.warn('[MatrixStore] Failed to fetch device ID via whoami:', e);
-        }
-      }
-
       try {
         console.log('[MatrixStore] Starting IndexedDBStore (after assignment to client)...');
         await roomStore.startup();
@@ -927,9 +929,10 @@ export const useMatrixStore = defineStore('matrix', {
       let cryptoReady = false;
       this.loginStatus = 'Initialising encryption…';
       try {
+        console.log('[MatrixStore] Calling initRustCrypto...');
         await this.client.initRustCrypto();
         cryptoReady = !!this.client.getCrypto();
-        console.log('Crypto initialized:', cryptoReady);
+        console.log('[MatrixStore] Rust crypto initialized:', cryptoReady);
       } catch (e: any) {
         const msg = e?.message || '';
         if (msg.includes("account in the store doesn't match") || e.name === 'InvalidCryptoStoreError' || msg.includes('version')) {
@@ -972,7 +975,7 @@ export const useMatrixStore = defineStore('matrix', {
           });
           await deleteDb('matrix-js-sdk::matrix-sdk-crypto');
           await deleteDb('matrix-js-sdk::matrix-sdk-crypto-meta');
-          // Recreate the client with a fresh crypto store
+          // Recreate the client
           this.client = sdk.createClient({
             baseUrl: getHomeserverUrl(),
             accessToken,
@@ -981,7 +984,6 @@ export const useMatrixStore = defineStore('matrix', {
             refreshToken,
             tokenRefreshFunction,
             store: roomStore,
-            cryptoStore: new sdk.IndexedDBCryptoStore(window.indexedDB, "matrix-js-sdk::crypto-store"),
             cryptoCallbacks: {
               getSecretStorageKey: async ({ keys }: { keys: Record<string, any> }): Promise<[string, Uint8Array<ArrayBuffer>] | null> => {
                 const keyIds = Object.keys(keys);
@@ -1489,6 +1491,9 @@ export const useMatrixStore = defineStore('matrix', {
       const crypto = this.client?.getCrypto();
       if (!crypto) {
         console.error('Crypto not available');
+        toast.error('Encryption not ready', {
+          description: 'The secure messaging stack is still initializing. Please wait a moment and try again.'
+        });
         this.isRequestingVerification = false;
         return;
       }
