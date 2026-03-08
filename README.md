@@ -1,75 +1,37 @@
-# Nuxt Minimal Starter
+# Tumult
 
-Look at the [Nuxt documentation](https://nuxt.com/docs/getting-started/introduction) to learn more.
+A Matrix client inspired by Discord built with Nuxt 4 and Tauri 2.
 
-## Setup
+## Why?
+
+The goal of this project is to create a functional replacement for Discord that operates on the [Matrix](https://matrix.org/) protocol.
+
+### Tumolt?
+
+Discord got its name because it ["sounds cool and has to do with talking"](https://web.archive.org/web/20150706094918/https://blog.discordapp.com/2015-05-21-ama-transcript/#:~:text=sounds%20cool%20and%20has%20to%20do%20with%20talking). Tumolt's name means 'uproar', or 'a loud noise, especially that produced by an excited crowd, or a state of confusion, change, or uncertainty'. During this time of uncertainty with the future of Discord, the community has been quite vocal in their feelings about the changes Discord is making to their platform.
+
+## Development
+
+This project uses Yarn Berry with Corepack, so make sure to have that prepped before continuing.
 
 Make sure to install dependencies:
 
 ```bash
-# npm
-npm install
-
-# pnpm
-pnpm install
-
-# yarn
-yarn install
-
-# bun
-bun install
+corepack yarn
 ```
 
-## Development Server
-
-Start the development server on `https://localhost:3000`:
+Start the development server on `http://localhost:3000`:
 
 ```bash
-# npm
-npm run dev
+# Just the web server
+corepack yarn dev
 
-# pnpm
-pnpm dev
-
-# yarn
-yarn dev
-
-# bun
-bun run dev
+# With the Tauri client
+corepack yarn tauri dev
 ```
-
-## Production
 
 Build the application for production:
 
 ```bash
-# npm
-npm run build
-
-# pnpm
-pnpm build
-
-# yarn
-yarn build
-
-# bun
-bun run build
+corepack yarn tauri build
 ```
-
-Locally preview production build:
-
-```bash
-# npm
-npm run preview
-
-# pnpm
-pnpm preview
-
-# yarn
-yarn preview
-
-# bun
-bun run preview
-```
-
-Check out the [deployment documentation](https://nuxt.com/docs/getting-started/deployment) for more information.
