@@ -161,6 +161,9 @@ export const useMatrixStore = defineStore('matrix', {
     activityStatus: null as string | null,
     activityDetails: null as { name: string; is_running: boolean } | null,
     isGameDetectionEnabled: false,
+
+    // Dehydration state
+    isDehydrating: false,
     gameTrigger: 0,
     gameStates: {} as Record<string, any>,
 
@@ -889,6 +892,24 @@ export const useMatrixStore = defineStore('matrix', {
       // Create new client FIRST, then startup the store
       this.client = sdk.createClient(clientOpts);
 
+      // Ensure we have a device ID before initializing crypto.
+      // Rust crypto requires a stable device ID to manage keys and verification state.
+      if (!deviceId) {
+        console.log('[MatrixStore] Device ID missing in initClient, fetching via whoami...');
+        try {
+          const whoami = await this.client.whoami();
+          if (whoami.device_id) {
+            deviceId = whoami.device_id;
+            // Update client's internal device ID
+            (this.client as any).deviceId = deviceId;
+            await setPref('matrix_device_id', deviceId);
+            console.log('[MatrixStore] Fetched and saved device ID:', deviceId);
+          }
+        } catch (e) {
+          console.warn('[MatrixStore] Failed to fetch device ID via whoami:', e);
+        }
+      }
+
       try {
         console.log('[MatrixStore] Starting IndexedDBStore (after assignment to client)...');
         await roomStore.startup();
@@ -1042,6 +1063,7 @@ export const useMatrixStore = defineStore('matrix', {
           // Note: cryptoReady is a local variable in initClient scope
           if (cryptoReady) {
             this.checkDeviceVerified();
+            this.handleStartupDehydration();
           }
         }
       });
@@ -1695,6 +1717,9 @@ export const useMatrixStore = defineStore('matrix', {
       try {
         const wasReady = this.isCrossSigningReady;
 
+        // Force download our own keys to ensure we see our cross-signing status correctly
+        await this.client?.downloadKeys([userId], true);
+
         // Refresh security status
         this.isCrossSigningReady = await crypto.isCrossSigningReady();
         this.isSecretStorageReady = await crypto.isSecretStorageReady();
@@ -1714,11 +1739,93 @@ export const useMatrixStore = defineStore('matrix', {
           // Ensure we try to restore history if we now have the keys
           await this.restoreKeysFromBackup();
 
+          // Provision a dehydrated device now that we are verified
+          this.provisionDehydratedDevice();
+
           // Don't await this, let it run in background so UI updates immediately
           this.retryDecryption();
         }
       } catch (e) {
         console.error('Failed to check device verification:', e);
+      }
+    },
+
+    /**
+     * Phase 1: Startup Rehydration
+     * Attempt to rehydrate a device if one exists on the server.
+     */
+    async handleStartupDehydration() {
+      if (!this.client) return;
+      const crypto = this.client.getCrypto();
+      if (!crypto) return;
+
+      console.log("[Dehydration] Checking for dehydrated devices...");
+      try {
+        // Start dehydration logic with rehydrate: true
+        // This will attempt to rehydrate if a device exists.
+        await crypto.setupDehydration({
+          rehydrate: true,
+          onlyIfKeyCached: false,
+        });
+
+        // After rehydration attempt, check if we need maintenance
+        this.maintenanceDehydration();
+      } catch (e) {
+        console.warn("[Dehydration] Startup rehydration failed (expected if none exist):", e);
+      }
+    },
+
+    /**
+     * Phase 2: Post-Verification Provisioning
+     * Once verified, ensure a dehydrated device is created so future sessions can rehydrate.
+     */
+    async provisionDehydratedDevice() {
+      if (!this.client || !this.isCrossSigningReady) return;
+      const crypto = this.client.getCrypto();
+      if (!crypto) return;
+
+      console.log("[Dehydration] Provisioning dehydrated device...");
+      try {
+        await crypto.setupDehydration({
+          rehydrate: false,
+          onlyIfKeyCached: false,
+        });
+        console.log("[Dehydration] Dehydrated device provisioned successfully.");
+      } catch (e) {
+        console.error("[Dehydration] Failed to provision dehydrated device:", e);
+      }
+    },
+
+    /**
+     * Phase 3: Throttled Maintenance
+     * Ensure the dehydrated device is rotated/updated periodically.
+     */
+    async maintenanceDehydration() {
+      if (!this.client || !this.isCrossSigningReady) return;
+
+      // Throttle to once every 24 hours + random jitter (0-4 hours)
+      const lastRun = await getPref('matrix_crypto_dehydration_last_run', 0);
+      const now = Date.now();
+      const jitter = Math.floor(Math.random() * 4 * 60 * 60 * 1000);
+      const threshold = 24 * 60 * 60 * 1000 + jitter;
+
+      if (now - lastRun < threshold) {
+        return;
+      }
+
+      console.log("[Dehydration] Running maintenance...");
+      try {
+        const crypto = this.client.getCrypto();
+        if (crypto) {
+          await crypto.setupDehydration({
+            rehydrate: false,
+            onlyIfKeyCached: true, // Only rotate if we already have the keys cached
+          });
+          await setPref('matrix_crypto_dehydration_last_run', now);
+          console.log("[Dehydration] Maintenance complete.");
+        }
+      } catch (e) {
+        console.error("[Dehydration] Maintenance failed:", e);
       }
     },
 
