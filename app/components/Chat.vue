@@ -834,6 +834,7 @@ function mapEvent(event: MatrixEvent): ChatMessage | null {
   // If it IS encrypted but we have no content, it's a decryption failure (or pending).
   if (!content && !isEncrypted) return null;
 
+  const isDecryptionError = isEncrypted && !content;
   const contentSafe: any = content || {};
 
   const isMessage = type === EventType.RoomMessage;
@@ -856,8 +857,8 @@ function mapEvent(event: MatrixEvent): ChatMessage | null {
   const isGameTimelineEvent = isGameInvite || isGameAction || isGameOver;
   
   // If it's a message event but has no body, and it's NOT encrypted, skip it.
-  // If it IS encrypted and has no body, we'll fall through and show a decryption error.
-  if (isContentMessage && !isRTC && !isGameTimelineEvent && !contentSafe.body && !isEncrypted) return null;
+  // If it IS encrypted and has no body (decryption error), we WANT to show it as a placeholder.
+  if (isContentMessage && !isRTC && !isGameTimelineEvent && !contentSafe.body && !isDecryptionError) return null;
 
   const senderId = event.getSender() || '';
   const senderMember = room.value?.getMember(senderId);
@@ -1124,7 +1125,7 @@ function mapEvent(event: MatrixEvent): ChatMessage | null {
     senderName,
     senderInitials: senderName.replace(/^[@!]/, '').slice(0, 2).toUpperCase(),
     avatarUrl,
-    body: contentSafe.body || (isEncrypted ? 'Encryption error: This message cannot be decrypted.' : ''),
+    body: contentSafe.body || (isDecryptionError ? 'Encryption error: This message cannot be decrypted.' : ''),
     // Strip the reply fallback from body when formatted HTML is available
     formattedBody: contentSafe.format === 'org.matrix.custom.html' ? contentSafe.formatted_body : undefined,
     timestamp: event.getTs(),

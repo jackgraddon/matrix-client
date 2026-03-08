@@ -1502,9 +1502,9 @@ export const useMatrixStore = defineStore('matrix', {
       if (userId) {
         try {
           console.log('[Verification] Downloading own keys...');
-          await this.client?.downloadKeys([userId], true);
+          await this.client?.downloadKeysForUsers([userId]);
         } catch (e) {
-          console.warn('[Verification] downloadKeys failed, continuing anyway:', e);
+          console.warn('[Verification] downloadKeysForUsers failed, continuing anyway:', e);
         }
       }
 
@@ -1607,7 +1607,7 @@ export const useMatrixStore = defineStore('matrix', {
 
           if (phase === VerificationPhase.Ready) {
             // Initiator auto-starts SAS
-            if (this.verificationInitiatedByMe && (methods.includes('m.sas.v1') || methods.length === 0)) {
+            if (this.isVerificationInitiatedByMe && (methods.includes('m.sas.v1') || methods.length === 0) && !request.verifier && !this.activeSas) {
               console.log('[Verification] Auto-starting SAS...');
               try {
                 const verifier = await request.startVerification('m.sas.v1');
@@ -1695,9 +1695,6 @@ export const useMatrixStore = defineStore('matrix', {
       const request = this.activeVerificationRequest;
 
       try {
-        // Always attach request listeners to track state
-        this._attachRequestListeners(request);
-
         if (request.phase === VerificationPhase.Ready) {
           // If already Ready, "Accept" means "Start the exchange"
           console.log('[Verification] Manual Accept: Request is already Ready, starting SAS...');
@@ -1757,7 +1754,7 @@ export const useMatrixStore = defineStore('matrix', {
         const wasReady = this.isCrossSigningReady;
 
         // Force download our own keys to ensure we see our cross-signing status correctly
-        await this.client?.downloadKeys([userId], true);
+        await this.client?.downloadKeysForUsers([userId]);
 
         // Refresh security status
         this.isCrossSigningReady = await crypto.isCrossSigningReady();
