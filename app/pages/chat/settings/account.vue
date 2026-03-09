@@ -62,17 +62,16 @@
 
     <div v-if="gameActivity.isSupported.value" class="space-y-4">
       <p class="text-sm text-muted-foreground">
-        Automatically detect running games and show them as your Matrix status.
-        Uses Discord's detectable games database for recognition.
+        Automatically detect running games and apps via Discord RPC and show them as your Matrix status.
       </p>
 
       <div class="flex items-center justify-between rounded-lg border p-4">
         <div class="flex items-center gap-3">
           <Icon name="solar:gamepad-bold" class="h-5 w-5 text-muted-foreground" />
           <div class="space-y-0.5">
-            <p class="text-sm font-medium">Enable Game Detection</p>
+            <p class="text-sm font-medium">Enable Rich Presence</p>
             <p class="text-xs text-muted-foreground">
-              Scan running processes to detect games
+              Listen for game activity updates (arRPC)
             </p>
           </div>
         </div>

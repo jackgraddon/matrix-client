@@ -405,6 +405,15 @@ export const useMatrixStore = defineStore('matrix', {
         this.activityStatus = null;
         this.activityDetails = null;
         this.activityName = null;
+        if (!!(window as any).__TAURI_INTERNALS__) {
+          try {
+            await invoke('stop_rpc_server');
+          } catch (e) {}
+        }
+      } else if (!!(window as any).__TAURI_INTERNALS__) {
+        try {
+          await invoke('start_rpc_server');
+        } catch (e) {}
       }
       this.refreshPresence();
     },
@@ -456,7 +465,54 @@ export const useMatrixStore = defineStore('matrix', {
       }
 
       const presence = this.isIdle ? 'unavailable' : 'online';
-      const status_msg = this.customStatus || this.activityStatus || '';
+
+      // Source of truth for status message
+      const local_status = this.customStatus || this.activityStatus || null;
+
+      // Logic to prevent stomping on bridge statuses:
+      // If we have no local status, we might be using a bridge status on the server.
+      if (!local_status) {
+          const selfUser = this.client.getUser(this.client.getUserId());
+          const remoteStatus = selfUser?.presenceStatusMsg;
+
+          // If we have a remote status (e.g. from a bridge) and we haven't set a local one,
+          // include it in our update to avoid clearing it.
+          if (remoteStatus && !this.lastPresenceState?.status_msg) {
+              if (!this.lastPresenceState || this.lastPresenceState.presence !== presence) {
+                  console.log(`[MatrixStore] Sending presence update, preserving remote status: ${remoteStatus}`);
+                  try {
+                      // CRITICAL: We explicitly provide the remoteStatus to prevent clearing it
+                      await this.client.setPresence({ presence: presence as any, status_msg: remoteStatus });
+                      this.lastPresenceUpdate = Date.now();
+                      this.lastPresenceState = { presence, status_msg: remoteStatus, activityName: null };
+                  } catch (e) { /* ignore */ }
+              }
+              return;
+          }
+
+          // If we are clearing a status we previously set
+          if (this.lastPresenceState?.status_msg && !local_status) {
+              console.log(`[MatrixStore] Clearing previously set status message`);
+              try {
+                  await this.client.setPresence({ presence: presence as any, status_msg: "" });
+                  this.lastPresenceUpdate = Date.now();
+                  this.lastPresenceState = { presence, status_msg: '', activityName: null };
+              } catch (e) { /* ignore */ }
+              return;
+          }
+
+          // If no remote status and no local status, just send basic presence state if changed.
+          if (!this.lastPresenceState || this.lastPresenceState.presence !== presence) {
+              try {
+                  await this.client.setPresence({ presence: presence as any });
+                  this.lastPresenceUpdate = Date.now();
+                  this.lastPresenceState = { presence, status_msg: '', activityName: null };
+              } catch (e) { /* ignore */ }
+          }
+          return;
+      }
+
+      const status_msg = local_status || '';
 
       // Check if state has actually changed
       const stateChanged = !this.lastPresenceState ||
@@ -779,12 +835,33 @@ export const useMatrixStore = defineStore('matrix', {
       // Robustly handle stringified "null"/"undefined" from certain storage drivers
       if (storedDeviceId === 'null' || storedDeviceId === 'undefined') storedDeviceId = null;
 
-      const effectiveDeviceId = deviceId || storedDeviceId;
+      // 1. Resolve Device ID. Always prefer the server's truth to prevent 400 M_BAD_JSON errors.
+      // Even if we have a stored ID, we verify it with the server because OIDC tokens are
+      // often strictly bound to a specific device ID.
+      console.log('[MatrixStore] Resolving device ID with server truth...');
+      let finalDeviceId = deviceId || storedDeviceId || undefined;
+      const temp = sdk.createClient({ baseUrl: getHomeserverUrl(), accessToken });
+      try {
+        const whoami = await temp.whoami();
+        if (whoami.device_id) {
+            if (finalDeviceId && finalDeviceId !== whoami.device_id) {
+                console.warn(`[MatrixStore] Device ID mismatch! Local: ${finalDeviceId}, Server: ${whoami.device_id}. Using server truth.`);
+            }
+            finalDeviceId = whoami.device_id;
+            await setPref('matrix_device_id', finalDeviceId);
+            if (typeof localStorage !== 'undefined') localStorage.setItem('matrix_device_id', finalDeviceId);
+            console.log('[MatrixStore] Verified device ID with server:', finalDeviceId);
+        }
+      } catch (e) {
+        console.warn('[MatrixStore] whoami failed during device ID resolution, falling back to local data:', e);
+      }
+
+      deviceId = finalDeviceId;
 
       console.log("[MatrixStore] Initializing Matrix Client (Verification Diagnostics):", {
         providedDeviceId: deviceId,
         storedDeviceId: storedDeviceId,
-        effectiveDeviceId,
+        finalDeviceId,
         isVerifiedInPrefs: !!(await getPref('matrix_crypto_verified', false))
       });
 
@@ -796,26 +873,6 @@ export const useMatrixStore = defineStore('matrix', {
         this.client.removeAllListeners();
         this.client = null;
       }
-
-      // 1. Resolve Device ID. Always prefer the server's truth to prevent 400 M_BAD_JSON errors.
-      // If we don't have a deviceId, we MUST fetch it from the homeserver.
-      let finalDeviceId = effectiveDeviceId || undefined;
-      if (!finalDeviceId) {
-        console.log('[MatrixStore] Device ID missing, fetching via whoami before creation...');
-        const temp = sdk.createClient({ baseUrl: getHomeserverUrl(), accessToken });
-        try {
-          const whoami = await temp.whoami();
-          finalDeviceId = whoami.device_id || undefined;
-          if (finalDeviceId) {
-            await setPref('matrix_device_id', finalDeviceId);
-            if (typeof localStorage !== 'undefined') localStorage.setItem('matrix_device_id', finalDeviceId);
-            console.log('[MatrixStore] Fetched device ID:', finalDeviceId);
-          }
-        } catch (e) {
-          console.warn('[MatrixStore] whoami failed during device ID resolution:', e);
-        }
-      }
-      deviceId = finalDeviceId;
 
       // Build tokenRefreshFunction when we have full OIDC context
       let tokenRefreshFunction: sdk.TokenRefreshFunction | undefined;

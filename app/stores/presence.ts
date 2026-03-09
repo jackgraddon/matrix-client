@@ -34,7 +34,12 @@ export const usePresenceStore = defineStore('presence', {
             state: data.state,
             applicationId: data.application_id,
             iconHash: data.assets?.large_image,
-            startTimestamp: data.timestamps?.start
+            smallIconHash: data.assets?.small_image,
+            startTimestamp: data.timestamps?.start,
+            endTimestamp: data.timestamps?.end,
+            partyId: data.party?.id,
+            partySize: data.party?.size?.[0],
+            partyMax: data.party?.size?.[1]
         };
       }
 

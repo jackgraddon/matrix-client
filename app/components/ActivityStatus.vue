@@ -35,11 +35,22 @@
               {{ displayActivity.name }}
             </h4>
             
+            <div v-if="displayActivity.details" class="text-xs text-muted-foreground mt-1 truncate">
+              {{ displayActivity.details }}
+            </div>
+
+            <div v-if="displayActivity.state" class="text-xs text-muted-foreground mt-0.5 truncate">
+              {{ displayActivity.state }}
+              <span v-if="displayActivity.partySize && displayActivity.partyMax">
+                ({{ displayActivity.partySize }} of {{ displayActivity.partyMax }})
+              </span>
+            </div>
+
             <div v-if="gameStartTimestamp" class="flex items-center gap-1.5 mt-1.5 text-emerald-500 font-medium text-xs">
               <Icon name="solar:gamepad-bold" class="w-3.5 h-3.5 shrink-0" />
               <span class="tabular-nums tracking-tight">{{ elapsedDuration }}</span>
             </div>
-            <div v-else class="text-xs text-muted-foreground mt-1 truncate">
+            <div v-else-if="!displayActivity.details && !displayActivity.state" class="text-xs text-muted-foreground mt-1 truncate">
               Currently in-game
             </div>
           </div>
@@ -84,39 +95,61 @@ const presenceStatusMsg = ref<string | null>(null);
 const presenceStatus = ref<string>('offline');
 
 const fetchPresence = () => {
-    if (!props.userId || !store.client) {
+    const targetUserId = props.userId || store.user?.userId;
+    if (!targetUserId || !store.client) {
+        // If we are looking at self and store.user isn't ready yet, don't clear
+        if (!props.userId && !store.user?.userId) return;
+
         presenceStatusMsg.value = null;
         presenceStatus.value = 'offline';
         return;
     }
-    const user = store.client.getUser(props.userId);
+    const user = store.client.getUser(targetUserId);
     if (user) {
+        if (isSelf.value) {
+            console.log(`[ActivityStatus] Self presence: status="${user.presenceStatusMsg}", state="${user.presence}"`);
+        }
         presenceStatusMsg.value = user.presenceStatusMsg || null;
         presenceStatus.value = user.presence || 'offline';
     } else {
+        if (isSelf.value) {
+            console.warn(`[ActivityStatus] Could not find User object for self (${targetUserId})`);
+        }
         presenceStatusMsg.value = null;
         presenceStatus.value = 'offline';
     }
 }
 
 const handlePresenceEvent = (event: any, user: any) => {
-    if (user && user.userId === props.userId) {
+    const targetUserId = props.userId || store.user?.userId;
+    if (user && user.userId === targetUserId) {
         presenceStatusMsg.value = user.presenceStatusMsg || null;
         presenceStatus.value = user.presence || 'offline';
     }
 }
 
 const pollPresence = async () => {
-    if (!store.client || !props.userId) return;
+    const targetUserId = props.userId || store.user?.userId;
+    if (!store.client || !targetUserId) return;
 
     if (isSelf.value) {
         // For self, the store handles throttling and pushing to server
         store.refreshPresence();
-        // Update local state from the user object to stay in sync
-        const user = store.client.getUser(props.userId);
-        if (user) {
-            presenceStatus.value = user.presence || 'offline';
-            presenceStatusMsg.value = user.presenceStatusMsg || null;
+
+        // Also fetch from server to catch bridge updates
+        try {
+            const data = await store.client.getPresence(store.user?.userId);
+            if (data) {
+                presenceStatus.value = data.presence || 'offline';
+                presenceStatusMsg.value = data.status_msg || null;
+            }
+        } catch (e) {
+            // Fallback to local user object
+            const user = store.client.getUser(props.userId);
+            if (user) {
+                presenceStatus.value = user.presence || 'offline';
+                presenceStatusMsg.value = user.presenceStatusMsg || null;
+            }
         }
     } else {
         // For others, pull the latest from the server
@@ -140,8 +173,15 @@ onMounted(() => {
         store.client.on('User.presence' as any, handlePresenceEvent);
     }
     
-    // Start polling every 5 minutes
-    pollInterval = window.setInterval(pollPresence, 5 * 60 * 1000);
+    // Poll self presence more frequently to catch bridge updates quickly
+    // For others, 5 minutes is fine. For self, let's do 30 seconds.
+    pollPresence();
+    pollInterval = window.setInterval(pollPresence, isSelf.value ? 30000 : 300000);
+});
+
+watch(isSelf, (val) => {
+    if (pollInterval) clearInterval(pollInterval);
+    pollInterval = window.setInterval(pollPresence, val ? 30000 : 300000);
 });
 
 onUnmounted(() => {
@@ -152,7 +192,7 @@ onUnmounted(() => {
     if (pollInterval) clearInterval(pollInterval);
 });
 
-watch(() => props.userId, fetchPresence);
+watch([() => props.userId, () => store.user?.userId], fetchPresence);
 
 const isSelf = computed(() => !props.userId || props.userId === store.user?.userId);
 
@@ -162,11 +202,54 @@ const displayActivity = computed(() => {
     return store.activityDetails; 
   }
   
-  if (presenceStatusMsg.value && presenceStatusMsg.value.startsWith('Playing ')) {
+  if (presenceStatusMsg.value) {
+    const msg = presenceStatusMsg.value;
+
+    // 1. Check for known activity prefixes
+    const prefixes = ['Playing ', '🎮 ', '🕹️ ', 'Game: ', 'Now Playing: '];
+    let foundPrefix = null;
+    for (const prefix of prefixes) {
+      if (msg.startsWith(prefix)) {
+        foundPrefix = prefix;
+        break;
+      }
+    }
+
+    if (foundPrefix) {
+      const fullStatus = msg.substring(foundPrefix.length);
+      const namePart = fullStatus.split(':')[0].split('(')[0].split(' - ')[0].trim();
+
+      console.log(`[ActivityStatus] Detected game via prefix (${foundPrefix}): ${namePart}`);
+
       return {
-          name: presenceStatusMsg.value.substring(8),
+          name: namePart,
           is_running: true
       };
+    }
+
+    // 2. Check for common apps/games (Heuristic for bridges without prefixes)
+    const commonApps = [
+        'Visual Studio Code', 'VS Code', 'IntelliJ', 'WebStorm', 'Cursor',
+        'Minecraft', 'Roblox', 'League of Legends', 'Valorant', 'Counter-Strike',
+        'Steam', 'Epic Games', 'Battle.net', 'Spotify', 'Apple Music', 'YouTube Music'
+    ];
+    for (const app of commonApps) {
+        if (msg.includes(app)) {
+            return {
+                name: app,
+                is_running: true
+            };
+        }
+    }
+
+    // 3. Fallback: If the message looks like a game (short, title case), treat as activity
+    // but only if it's from a bridge (heuristic: user id starts with @discord_)
+    if (props.userId?.startsWith('@discord_') && msg.length < 50 && /^[A-Z]/.test(msg)) {
+       return {
+           name: msg,
+           is_running: true
+       };
+    }
   }
   return null;
 });
@@ -177,8 +260,15 @@ const displayCustomStatus = computed(() => {
     return store.customStatus;
   }
   
-  if (presenceStatusMsg.value && !presenceStatusMsg.value.startsWith('Playing ')) {
-      return presenceStatusMsg.value;
+  if (presenceStatusMsg.value) {
+    const msg = presenceStatusMsg.value;
+
+    // If it's currently detected as an activity, don't show as custom status
+    if (displayActivity.value?.is_running) {
+        return null;
+    }
+
+    return msg;
   }
   return null;
 });
