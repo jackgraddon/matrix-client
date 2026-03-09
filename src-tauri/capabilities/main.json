@@ -25,6 +25,16 @@
     "os:default",
     "os:allow-hostname",
     "store:allow-load",
-    "store:default"
+    "store:default",
+    "shell:allow-execute",
+    {
+      "identifier": "shell:allow-sidecar",
+      "allow": [
+        {
+          "args": true,
+          "sidecar": "binaries/arrpc"
+        }
+      ]
+    }
   ]
 }

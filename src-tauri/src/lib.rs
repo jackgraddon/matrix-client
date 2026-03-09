@@ -1,32 +1,27 @@
-mod game_scanner;
-
 use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::time::Duration;
 use std::sync::{Arc, Mutex};
-use tokio::sync::Notify;
+use tauri_plugin_shell::process::CommandChild;
+use tauri_plugin_shell::ShellExt;
+
+pub struct RpcState {
+    pub child: Mutex<Option<CommandChild>>,
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Create the shared scanner state
-    let scanner_state = Arc::new(game_scanner::ScannerState {
-        watch_list: Mutex::new(Vec::new()),
-        current_game: Mutex::new(None),
-        is_enabled: Mutex::new(false),
-        notify: Arc::new(Notify::new()),
-    });
-
-    let scanner_state_for_setup = scanner_state.clone();
-
     tauri::Builder::default()
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_store::Builder::default().build())
-        .manage(scanner_state)
+        .manage(RpcState {
+            child: Mutex::new(None),
+        })
         .invoke_handler(tauri::generate_handler![
-            game_scanner::update_watch_list,
-            game_scanner::set_scanner_enabled,
-            start_oauth_server
+            start_oauth_server,
+            start_rpc_server,
+            stop_rpc_server
         ])
         .setup(move |app| {
             #[cfg(any(target_os = "windows", target_os = "linux"))]
@@ -47,14 +42,54 @@ pub fn run() {
                 )?;
             }
 
-            // Start the background game scanner
-            game_scanner::start(app.handle().clone(), scanner_state_for_setup);
-
             Ok(())
         })
 
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[tauri::command]
+fn start_rpc_server(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, RpcState>,
+    user_id: String,
+    user_name: String,
+    global_name: String,
+    avatar: Option<String>,
+    port: Option<u16>,
+) -> Result<(), String> {
+    let mut child_lock = state.child.lock().unwrap();
+    if child_lock.is_some() {
+        return Ok(());
+    }
+
+    let sidecar = app
+        .shell()
+        .sidecar("binaries/arrpc")
+        .map_err(|e| e.to_string())?
+        .env("ARRPC_USER_ID", user_id)
+        .env("ARRPC_USER_NAME", user_name)
+        .env("ARRPC_USER_GLOBAL_NAME", global_name)
+        .env("ARRPC_USER_AVATAR", avatar.unwrap_or_default())
+        .env("ARRPC_BRIDGE_PORT", port.unwrap_or(1337).to_string());
+
+    let (mut _rx, child) = sidecar.spawn().map_err(|e| e.to_string())?;
+
+    *child_lock = Some(child);
+    log::info!("[rpc] arRPC sidecar started");
+
+    Ok(())
+}
+
+#[tauri::command]
+fn stop_rpc_server(state: tauri::State<'_, RpcState>) -> Result<(), String> {
+    let mut child_lock = state.child.lock().unwrap();
+    if let Some(child) = child_lock.take() {
+        child.kill().map_err(|e| e.to_string())?;
+        log::info!("[rpc] arRPC sidecar stopped");
+    }
+    Ok(())
 }
 
 #[tauri::command]

@@ -45,6 +45,9 @@
     }
   },
   "bundle": {
+    "externalBin": [
+      "binaries/arrpc"
+    ],
     "active": true,
     "targets": "all",
     "icon": [

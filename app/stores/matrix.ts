@@ -158,10 +158,12 @@ export const useMatrixStore = defineStore('matrix', {
       needsPassphrase: boolean;
       passphraseInfo?: any;
     } | null,
-    // Activity Status (Game Detection)
+    // Activity Status (arRPC)
     activityStatus: null as string | null,
-    activityDetails: null as { name: string; is_running: boolean } | null,
+    activityDetails: null as any | null,
     isGameDetectionEnabled: false,
+    rpcPort: 1337,
+    _rpcWs: null as WebSocket | null,
 
     // Dehydration state
     isDehydrating: false,
@@ -389,102 +391,119 @@ export const useMatrixStore = defineStore('matrix', {
     },
 
     async initGameDetection() {
-      // Check if Tauri storage has "game_activity_enabled"
-      const stored = await getPref('game_activity_enabled', false);
-      console.log('[MatrixStore] Loading game detection config:', stored);
-      this.isGameDetectionEnabled = stored;
-      // Sync with backend immediately if supported
-      const tauriCheck = !!(window as any).__TAURI_INTERNALS__;
-      console.log('[MatrixStore] Syncing with backend. Tauri detected:', tauriCheck);
-      if (tauriCheck) {
-        invoke('set_scanner_enabled', { enabled: this.isGameDetectionEnabled })
-          .then(() => console.log('[MatrixStore] Backend sync success'))
-          .catch((e: any) => console.error('[MatrixStore] Failed to sync scanner state:', e));
-      } else {
-        console.warn('[MatrixStore] Tauri not detected, skipping backend sync');
+      this.isGameDetectionEnabled = await getPref('game_activity_enabled', false);
+      this.rpcPort = await getPref('matrix_rpc_port', 1337);
+
+      if (this.isGameDetectionEnabled && this.isAuthenticated) {
+        await this.refreshRpcServer();
       }
     },
 
     async setGameDetection(enabled: boolean) {
-      console.log('[MatrixStore] Setting game detection:', enabled);
       this.isGameDetectionEnabled = enabled;
       await setPref('game_activity_enabled', enabled);
 
-      const tauriCheck = !!(window as any).__TAURI_INTERNALS__;
-      console.log('[MatrixStore] Invoking set_scanner_enabled. Tauri detected:', tauriCheck);
-
-      if (tauriCheck) {
-        try {
-          await invoke('set_scanner_enabled', { enabled });
-          console.log('[MatrixStore] Toggle command sent successfully');
-          if (!enabled) {
-            // Clear status immediately when disabled
-            this.activityStatus = null;
-            this.activityDetails = null;
-            this.setCustomStatus(this.customStatus); // Refresh presence without game
-          }
-        } catch (e) {
-          console.error('[MatrixStore] Failed to toggle scanner:', e);
+      if (enabled) {
+        await this.refreshRpcServer();
+      } else {
+        await invoke('stop_rpc_server').catch(() => {});
+        if (this._rpcWs) {
+          this._rpcWs.close();
+          this._rpcWs = null;
         }
+        this.activityDetails = null;
+        this.refreshPresence();
       }
     },
 
-    async bindGameActivityListener() {
-      if (!(window as any).__TAURI_INTERNALS__) return;
+    async setRpcPort(port: number) {
+      this.rpcPort = port;
+      await setPref('matrix_rpc_port', port);
+      if (this.isGameDetectionEnabled) {
+        await this.refreshRpcServer();
+      }
+    },
 
-      console.log('[MatrixStore] Binding game activity listener...');
+    async refreshRpcServer() {
+      if (!(window as any).__TAURI_INTERNALS__ || !this.isGameDetectionEnabled || !this.client) return;
+
+      const userId = this.client.getUserId();
+      if (!userId) return;
+
+      const profile = this.user || { displayName: userId, avatarUrl: null };
+
+      // Hash user ID to a numeric string for arRPC/Discord compatibility
+      const encoder = new TextEncoder();
+      const data = encoder.encode(userId);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      let numericId = 0n;
+      for (let i = 0; i < 8; i++) {
+        numericId = (numericId << 8n) + BigInt(hashArray[i]);
+      }
+
       try {
-        // Load game list first
-        try {
-          const res = await fetch('https://discord.com/api/v9/applications/detectable');
-          if (res.ok) {
-            const allGames = await res.json();
-            const platform = navigator.platform.toLowerCase();
-            const os = platform.includes('mac') ? 'darwin' : (platform.includes('win') ? 'win32' : 'linux');
-
-            // Include native OS executables + win32 (for Proton/CrossOver/Wine games)
-            const matchOs = [os, ...(os !== 'win32' ? ['win32'] : [])];
-
-            const filtered = allGames
-              .filter((g: any) => g.executables?.some((e: any) => matchOs.includes(e.os)))
-              .map((g: any) => ({
-                id: g.id,
-                name: g.name,
-                executables: g.executables.filter((e: any) => matchOs.includes(e.os)),
-              }));
-
-            // Add fake game for testing
-            filtered.push({
-              id: '99999',
-              name: 'Calculator',
-              executables: [{ os: 'darwin', name: 'Calculator' }]
-            });
-
-            await invoke('update_watch_list', { games: filtered });
-          }
-        } catch (e) {
-          console.error('[MatrixStore] Failed to load/send game list:', e);
+        // Stop current if exists to restart with new port/params
+        await invoke('stop_rpc_server').catch(() => {});
+        if (this._rpcWs) {
+          this._rpcWs.close();
+          this._rpcWs = null;
         }
 
-        // Listen for events
-        await listen<{ name: string; is_running: boolean }>('game-activity', (event) => {
-          const { name, is_running } = event.payload;
-          console.log('[MatrixStore] Game Activity Event:', name, is_running);
-
-          if (is_running) {
-            this.activityDetails = { name, is_running };
-            this.refreshPresence();
-          } else {
-            // Game stopped
-            if (this.activityDetails?.name === name) {
-              this.activityDetails = null;
-              this.refreshPresence();
-            }
-          }
+        await invoke('start_rpc_server', {
+          userId: numericId.toString(),
+          userName: profile.displayName || userId.split(':')[0].replace('@', ''),
+          globalName: profile.displayName || userId.split(':')[0].replace('@', ''),
+          avatar: profile.avatarUrl,
+          port: this.rpcPort
         });
+
+        // Connect to bridge
+        this.bindRpcListener();
       } catch (e) {
-        console.error('[MatrixStore] Failed to bind listener:', e);
+        console.error('[MatrixStore] Failed to start arRPC server:', e);
       }
+    },
+
+    bindRpcListener() {
+      if (this._rpcWs || !this.isGameDetectionEnabled) return;
+
+      const port = this.rpcPort;
+      console.log(`[MatrixStore] Connecting to arRPC bridge on port ${port}...`);
+
+      const ws = new WebSocket(`ws://localhost:${port}`);
+      this._rpcWs = ws;
+
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        console.log('[MatrixStore] Received RPC activity:', data);
+
+        if (data.activity) {
+          this.activityDetails = {
+            ...data.activity,
+            is_running: true,
+            // Normalize field names if needed
+            applicationId: data.activity.application_id,
+            startTimestamp: data.activity.timestamps?.start
+          };
+        } else {
+          this.activityDetails = null;
+        }
+        this.refreshPresence();
+      };
+
+      ws.onclose = () => {
+        this._rpcWs = null;
+        if (this.isGameDetectionEnabled) {
+          console.log('[MatrixStore] RPC bridge disconnected, retrying in 5s...');
+          setTimeout(() => this.bindRpcListener(), 5000);
+        }
+      };
+
+      ws.onerror = (err) => {
+        console.error('[MatrixStore] RPC bridge error:', err);
+        ws.close();
+      };
     },
 
     setCustomStatus(status: string | null) {
@@ -517,7 +536,21 @@ export const useMatrixStore = defineStore('matrix', {
       if (!this.client || !this.isAuthenticated || !this.isClientReady) return;
 
       const presence = this.isIdle ? 'unavailable' : 'online';
-      const status_msg = this.customStatus || (this.activityDetails?.is_running ? `Playing ${this.activityDetails.name}` : '');
+
+      let status_msg = this.customStatus || '';
+      if (this.activityDetails?.is_running) {
+          const activity = this.activityDetails;
+          let rpcStatus = `Playing ${activity.name || 'a game'}`;
+
+          const parts = [];
+          if (activity.details) parts.push(activity.details);
+          if (activity.state) parts.push(activity.state);
+
+          if (parts.length > 0) {
+              rpcStatus += `: ${parts.join(' - ')}`;
+          }
+          status_msg = rpcStatus;
+      }
 
       // Check if state has actually changed
       const stateChanged = !this.lastPresenceState ||
