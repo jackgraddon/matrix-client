@@ -92,7 +92,7 @@
         <ChatSidebar ref="sidebarRef"/>
 
         <!-- Main Content -->
-        <main class="flex-1 flex-col min-w-0 min-h-0 p-2">
+        <main class="flex-1 flex-col min-w-0 min-h-0 p-2 pt-0">
             <div class="rounded-lg h-full bg-neutral-100 dark:bg-neutral-900 min-w-0 flex flex-col min-h-0 overflow-hidden">
                 <header class="landmark-banner shrink-0">
                     <SecurityBanner />
