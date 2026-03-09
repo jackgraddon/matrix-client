@@ -66,7 +66,7 @@ fn start_rpc_server(
 
     let sidecar = app
         .shell()
-        .sidecar("binaries/arrpc")
+        .sidecar("arrpc")
         .map_err(|e| e.to_string())?
         .env("ARRPC_USER_ID", user_id)
         .env("ARRPC_USER_NAME", user_name)

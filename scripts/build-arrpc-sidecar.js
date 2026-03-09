@@ -19,16 +19,12 @@ async function build() {
         console.log(`Building arRPC sidecar for ${targetTriple}...`);
 
         const binaryName = `arrpc-${targetTriple}`;
-        const outDir = join(process.cwd(), 'src-tauri', 'binaries');
+        const outDir = join(process.cwd(), 'src-tauri');
         const binaryFile = join(outDir, targetTriple.includes('windows') ? `${binaryName}.exe` : binaryName);
 
         if (existsSync(binaryFile)) {
             console.log(`Sidecar already exists at ${binaryFile}, skipping build.`);
             return;
-        }
-
-        if (!existsSync(outDir)) {
-            mkdirSync(outDir, { recursive: true });
         }
 
         // Determine pkg target

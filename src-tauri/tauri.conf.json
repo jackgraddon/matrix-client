@@ -46,7 +46,7 @@
   },
   "bundle": {
     "externalBin": [
-      "binaries/arrpc"
+      "arrpc"
     ],
     "active": true,
     "targets": "all",

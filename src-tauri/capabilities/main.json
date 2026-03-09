@@ -33,7 +33,7 @@
       "allow": [
         {
           "args": true,
-          "sidecar": "binaries/arrpc"
+          "sidecar": "arrpc"
         }
       ]
     }
