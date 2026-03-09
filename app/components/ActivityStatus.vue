@@ -90,6 +90,8 @@ const props = withDefaults(defineProps<{
 
 const store = useMatrixStore();
 
+const isSelf = computed(() => !props.userId || props.userId === store.user?.userId);
+
 // Presence state
 const presenceStatusMsg = ref<string | null>(null);
 const presenceStatus = ref<string>('offline');
@@ -193,8 +195,6 @@ onUnmounted(() => {
 });
 
 watch([() => props.userId, () => store.user?.userId], fetchPresence);
-
-const isSelf = computed(() => !props.userId || props.userId === store.user?.userId);
 
 const displayActivity = computed(() => {
   // Prefer local store details for self if running
