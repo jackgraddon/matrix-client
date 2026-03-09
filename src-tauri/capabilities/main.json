@@ -27,8 +27,9 @@
     "store:allow-load",
     "store:default",
     "shell:allow-execute",
+    "shell:allow-kill",
     {
-      "identifier": "shell:allow-sidecar",
+      "identifier": "shell:allow-spawn",
       "allow": [
         {
           "args": true,
