@@ -92,15 +92,35 @@ async fn start_rpc_server(
     // 3. Set environment variables for user mocking
     sidecar = sidecar.env("ARRPC_USER_ID", user_id);
     sidecar = sidecar.env("ARRPC_USER_NAME", user_name);
+    sidecar = sidecar.env("ARRPC_DEBUG", "1");
     if let Some(avatar_hash) = avatar {
         sidecar = sidecar.env("ARRPC_USER_AVATAR", avatar_hash);
     }
 
     log::info!("[rpc] Spawning arRPC sidecar...");
 
-    let (mut _rx, child) = sidecar
+    let (mut rx, child) = sidecar
         .spawn()
         .map_err(|e| format!("Failed to spawn sidecar: {}", e))?;
+
+    // Forward sidecar output to Tauri logs
+    tauri::async_runtime::spawn(async move {
+        use tauri_plugin_shell::process::CommandEvent;
+        while let Some(event) = rx.recv().await {
+            match event {
+                CommandEvent::Stdout(line) => {
+                    log::info!("[rpc-sidecar] {}", String::from_utf8_lossy(&line).trim());
+                }
+                CommandEvent::Stderr(line) => {
+                    log::error!("[rpc-sidecar] {}", String::from_utf8_lossy(&line).trim());
+                }
+                CommandEvent::Terminated(payload) => {
+                    log::warn!("[rpc-sidecar] Process terminated with status: {:?}", payload.code);
+                }
+                _ => {}
+            }
+        }
+    });
 
     *child_guard = Some(child);
 

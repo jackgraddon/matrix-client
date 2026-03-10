@@ -68,7 +68,32 @@ console.log(`Output path: ${outputPath}`);
 // 5. Run pkg
 // We use the entry point of arRPC
 try {
-  execSync(`npx pkg . --targets ${pkgTarget} --output ${outputPath}`, {
+  // pkg has trouble with ESM. We'll use esbuild to bundle it into a single CJS file first.
+  console.log('Bundling arRPC with esbuild...');
+  try {
+    execSync('npx esbuild --version', { stdio: 'ignore' });
+  } catch (e) {
+    console.log('Installing esbuild locally...');
+    execSync('npm install esbuild', { cwd: rootDir, stdio: 'inherit' });
+  }
+
+  const bundledPath = path.join(arrpcDir, 'dist', 'index.cjs');
+  if (!fs.existsSync(path.dirname(bundledPath))) {
+    fs.mkdirSync(path.dirname(bundledPath), { recursive: true });
+  }
+
+  // We bundle everything except 'ws' which pkg can handle or we can bundle too.
+  // Actually bundling ws is usually fine for node platform.
+  execSync(`npx esbuild src/index.js --bundle --platform=node --format=cjs --outfile=${bundledPath} --external:ws --define:import.meta.url='""'`, {
+    cwd: arrpcDir,
+    stdio: 'inherit'
+  });
+
+  // Copy detectable.json to dist so pkg can see it relative to index.cjs
+  fs.copyFileSync(path.join(arrpcDir, 'src', 'process', 'detectable.json'), path.join(arrpcDir, 'dist', 'detectable.json'));
+
+  console.log('Compiling bundle with pkg...');
+  execSync(`npx pkg package.json --targets ${pkgTarget} --output ${outputPath} --public`, {
     cwd: arrpcDir,
     stdio: 'inherit'
   });
