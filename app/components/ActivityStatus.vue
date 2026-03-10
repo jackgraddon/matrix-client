@@ -160,15 +160,26 @@ onUnmounted(() => {
 
 watch(() => props.userId, fetchPresence);
 
-const isSelf = computed(() => !props.userId || props.userId === store.user?.userId);
+const isSelf = computed(() => {
+  const currentUserId = store.client?.getUserId();
+  return !props.userId || (currentUserId && props.userId === currentUserId);
+});
+
+const sanitize = (val: any) => {
+  if (val === null || val === undefined) return null;
+  const s = String(val).trim();
+  if (!s || s === 'undefined' || s === 'null' || s === 'None') return null;
+  return s;
+};
 
 const displayActivity = computed(() => {
-  const userId = props.userId || store.user?.userId;
+  const userId = props.userId || store.client?.getUserId();
   if (!userId) return null;
 
   // 1. Prefer local store details for self if running (from sidecar)
   if (isSelf.value && store.activityDetails?.is_running) {
-    return store.activityDetails; 
+    const act = store.activityDetails;
+    if (sanitize(act.name)) return act;
   }
 
   // 2. Fallback to rich activity from account data (for self)
@@ -177,16 +188,19 @@ const displayActivity = computed(() => {
     const remote = store.remoteActivityDetails[userId];
     // Simple freshness check: if more than 5 minutes old, ignore
     if (Date.now() - (remote.last_updated || 0) < 5 * 60 * 1000) {
-      return remote;
+      if (sanitize(remote.name)) return remote;
     }
   }
   
   // 3. Last resort: basic string from presence (works for everyone)
   if (presenceStatusMsg.value && presenceStatusMsg.value.startsWith('Playing ')) {
-      return {
-          name: presenceStatusMsg.value.substring(8),
-          is_running: true
-      };
+      const name = sanitize(presenceStatusMsg.value.substring(8));
+      if (name) {
+        return {
+            name,
+            is_running: true
+        };
+      }
   }
   return null;
 });
@@ -194,11 +208,11 @@ const displayActivity = computed(() => {
 const displayCustomStatus = computed(() => {
   // Prefer local store custom status for self
   if (isSelf.value && store.customStatus) {
-    return store.customStatus;
+    return sanitize(store.customStatus);
   }
   
   if (presenceStatusMsg.value && !presenceStatusMsg.value.startsWith('Playing ')) {
-      return presenceStatusMsg.value;
+      return sanitize(presenceStatusMsg.value);
   }
   return null;
 });

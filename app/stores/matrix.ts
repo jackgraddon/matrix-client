@@ -401,6 +401,13 @@ export const useMatrixStore = defineStore('matrix', {
       }
     },
 
+    _sanitizeActivityString(val: any): string | null {
+      if (val === null || val === undefined) return null;
+      const s = String(val).trim();
+      if (!s || s === 'undefined' || s === 'null' || s === 'None') return null;
+      return s;
+    },
+
     async setGameDetection(enabled: boolean) {
       console.log('[MatrixStore] Setting game detection:', enabled);
       this.isGameDetectionEnabled = enabled;
@@ -469,7 +476,7 @@ export const useMatrixStore = defineStore('matrix', {
 
       const port = 13337; // use custom port to avoid conflicts
       console.log(`[MatrixStore] Connecting to arRPC bridge on port ${port}...`);
-      const socket = new WebSocket(`ws://localhost:${port}`);
+      const socket = new WebSocket(`ws://127.0.0.1:${port}`);
 
       socket.onopen = () => {
         console.log('[MatrixStore] Connected to arRPC bridge');
@@ -481,11 +488,14 @@ export const useMatrixStore = defineStore('matrix', {
           console.log('[MatrixStore] arRPC message:', data);
 
           if (data.activity) {
+            const name = this._sanitizeActivityString(data.activity.name);
+            const details = this._sanitizeActivityString(data.activity.details);
+
             // Enhanced activity details from arRPC
             this.activityDetails = {
-              name: data.activity.name,
-              details: data.activity.details,
-              state: data.activity.state,
+              name: name || details || 'a game',
+              details: details,
+              state: this._sanitizeActivityString(data.activity.state),
               applicationId: data.activity.application_id,
               iconHash: data.activity.assets?.large_image,
               startTimestamp: data.activity.timestamps?.start,
@@ -495,6 +505,17 @@ export const useMatrixStore = defineStore('matrix', {
           } else {
             this.activityDetails = null;
           }
+
+          // Update local remoteActivityDetails immediately to prevent stale fallbacks
+          const userId = this.client?.getUserId();
+          if (userId) {
+            if (this.activityDetails) {
+              this.remoteActivityDetails[userId] = { ...this.activityDetails };
+            } else {
+              delete this.remoteActivityDetails[userId];
+            }
+          }
+
           this.refreshPresence();
         } catch (e) {
           console.error('[MatrixStore] Failed to parse arRPC message:', e);
@@ -524,10 +545,19 @@ export const useMatrixStore = defineStore('matrix', {
     async goOffline() {
       if (this.client && this.isAuthenticated) {
         console.log('[MatrixStore] Sending offline flare...');
+
+        let status_msg = this.customStatus;
+        if (!status_msg && this.activityDetails?.is_running) {
+          const gameName = this._sanitizeActivityString(this.activityDetails.name);
+          if (gameName) {
+            status_msg = `Playing ${gameName}`;
+          }
+        }
+
         try {
           await this.client.setPresence({
             presence: 'offline',
-            status_msg: this.customStatus || (this.activityDetails?.is_running ? `Playing ${this.activityDetails.name}` : '')
+            status_msg: status_msg || ''
           });
         } catch (e) {
           console.error('[MatrixStore] Failed to send offline flare:', e);
@@ -546,7 +576,16 @@ export const useMatrixStore = defineStore('matrix', {
       if (!this.client || !this.isAuthenticated || !this.isClientReady) return;
 
       const presence = this.isIdle ? 'unavailable' : 'online';
-      const status_msg = this.customStatus || (this.activityDetails?.is_running ? `Playing ${this.activityDetails.name}` : '');
+
+      let status_msg = this.customStatus;
+      if (!status_msg && this.activityDetails?.is_running) {
+        const gameName = this._sanitizeActivityString(this.activityDetails.name);
+        if (gameName) {
+           status_msg = `Playing ${gameName}`;
+        }
+      }
+
+      if (!status_msg) status_msg = '';
 
       // Check if state has actually changed
       const stateChanged = !this.lastPresenceState ||
