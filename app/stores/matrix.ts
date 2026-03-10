@@ -162,6 +162,7 @@ export const useMatrixStore = defineStore('matrix', {
     activityStatus: null as string | null,
     activityDetails: null as any | null,
     remoteActivityDetails: {} as Record<string, any>,
+    appCache: {} as Record<string, { name: string; icon: string | null }>,
     isGameDetectionEnabled: false,
     rpcSocket: null as WebSocket | null,
 
@@ -378,6 +379,25 @@ export const useMatrixStore = defineStore('matrix', {
   },
 
   actions: {
+    async resolveApplicationInfo(appId: string) {
+      if (this.appCache[appId]) return this.appCache[appId];
+
+      try {
+        const response = await fetch(`https://discord.com/api/v9/applications/${appId}/rpc`);
+        if (response.ok) {
+          const data = await response.json();
+          this.appCache[appId] = {
+            name: data.name,
+            icon: data.icon
+          };
+          return this.appCache[appId];
+        }
+      } catch (e) {
+        console.warn(`[MatrixStore] Failed to resolve Discord app info for ${appId}:`, e);
+      }
+      return null;
+    },
+
     resolveActivity(userId: string | null): any {
       const currentUserId = this.client?.getUserId();
       const targetUserId = userId || currentUserId;
@@ -528,22 +548,32 @@ export const useMatrixStore = defineStore('matrix', {
         console.log('[MatrixStore] Connected to arRPC bridge');
       };
 
-      socket.onmessage = (event) => {
+      socket.onmessage = async (event) => {
         try {
           const data = JSON.parse(event.data);
           console.log('[MatrixStore] arRPC message:', data);
 
           if (data.activity) {
-            const name = this._sanitizeActivityString(data.activity.name);
+            let name = this._sanitizeActivityString(data.activity.name);
             const details = this._sanitizeActivityString(data.activity.details);
+            const appId = data.activity.application_id;
+
+            // If name is missing or generic, try to resolve from appId
+            if (appId && (!name || name === details)) {
+              const appInfo = await this.resolveApplicationInfo(appId);
+              if (appInfo) {
+                name = appInfo.name;
+              }
+            }
 
             // Enhanced activity details from arRPC
             this.activityDetails = {
               name: name || details || 'a game',
               details: details,
               state: this._sanitizeActivityString(data.activity.state),
-              applicationId: data.activity.application_id,
+              applicationId: appId,
               iconHash: data.activity.assets?.large_image,
+              smallIconHash: data.activity.assets?.small_image,
               startTimestamp: data.activity.timestamps?.start,
               is_running: true,
               last_updated: Date.now()

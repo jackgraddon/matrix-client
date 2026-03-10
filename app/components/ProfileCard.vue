@@ -12,7 +12,7 @@
 
     <!-- Game Activity -->
     <div class="mb-4">
-      <GameCard :user-id="userid" />
+      <GameCard :userId="userid" />
     </div>
 
     <div class="flex items-center gap-2 mt-auto">
