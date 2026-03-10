@@ -466,7 +466,8 @@ export const useMatrixStore = defineStore('matrix', {
     connectRpcWebSocket() {
       if (this.rpcSocket) this.rpcSocket.close();
 
-      const port = 1337; // arRPC default bridge port
+      const port = 13337; // use custom port to avoid conflicts
+      console.log(`[MatrixStore] Connecting to arRPC bridge on port ${port}...`);
       const socket = new WebSocket(`ws://localhost:${port}`);
 
       socket.onopen = () => {

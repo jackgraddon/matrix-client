@@ -58,6 +58,7 @@ function encode(type, data) {
   }));
 
   client.on('data', (data) => {
+  console.log(`Received raw data: ${data.length} bytes`);
   const type = data.readInt32LE(0);
   const size = data.readInt32LE(4);
   const body = JSON.parse(data.slice(8, 8 + size).toString());
