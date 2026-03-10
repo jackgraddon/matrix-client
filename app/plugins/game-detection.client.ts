@@ -13,6 +13,4 @@ export default defineNuxtPlugin(() => {
     // Initialize state from localStorage and sync with backend
     store.initGameDetection();
 
-    // Bind the Tauri event listener for game-activity events
-    store.bindGameActivityListener();
 });

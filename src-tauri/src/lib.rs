@@ -4,7 +4,13 @@ use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::time::Duration;
 use std::sync::{Arc, Mutex};
+use tauri_plugin_shell::process::CommandChild;
+use tauri_plugin_shell::ShellExt;
 use tokio::sync::Notify;
+
+pub struct RpcState {
+    pub child: Mutex<Option<CommandChild>>,
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -23,10 +29,15 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .manage(scanner_state)
+        .manage(RpcState {
+            child: Mutex::new(None),
+        })
         .invoke_handler(tauri::generate_handler![
             game_scanner::update_watch_list,
             game_scanner::set_scanner_enabled,
-            start_oauth_server
+            start_oauth_server,
+            start_rpc_server,
+            stop_rpc_server
         ])
         .setup(move |app| {
             #[cfg(any(target_os = "windows", target_os = "linux"))]
@@ -55,6 +66,55 @@ pub fn run() {
 
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[tauri::command]
+async fn start_rpc_server(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, RpcState>,
+    user_id: String,
+    user_name: String,
+    avatar: Option<String>,
+) -> Result<(), String> {
+    let mut child_guard = state.child.lock().unwrap();
+
+    // 1. Kill existing if running
+    if let Some(child) = child_guard.take() {
+        let _ = child.kill();
+    }
+
+    // 2. Spawn arRPC sidecar
+    let mut sidecar = app
+        .shell()
+        .sidecar("binaries/arrpc")
+        .map_err(|e| format!("Failed to create sidecar: {}", e))?;
+
+    // 3. Set environment variables for user mocking
+    sidecar = sidecar.env("ARRPC_USER_ID", user_id);
+    sidecar = sidecar.env("ARRPC_USER_NAME", user_name);
+    if let Some(avatar_hash) = avatar {
+        sidecar = sidecar.env("ARRPC_USER_AVATAR", avatar_hash);
+    }
+
+    log::info!("[rpc] Spawning arRPC sidecar...");
+
+    let (mut _rx, child) = sidecar
+        .spawn()
+        .map_err(|e| format!("Failed to spawn sidecar: {}", e))?;
+
+    *child_guard = Some(child);
+
+    Ok(())
+}
+
+#[tauri::command]
+async fn stop_rpc_server(state: tauri::State<'_, RpcState>) -> Result<(), String> {
+    let mut child_guard = state.child.lock().unwrap();
+    if let Some(child) = child_guard.take() {
+        log::info!("[rpc] Stopping arRPC sidecar...");
+        child.kill().map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 
 #[tauri::command]
