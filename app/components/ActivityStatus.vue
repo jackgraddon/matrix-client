@@ -163,11 +163,25 @@ watch(() => props.userId, fetchPresence);
 const isSelf = computed(() => !props.userId || props.userId === store.user?.userId);
 
 const displayActivity = computed(() => {
-  // Prefer local store details for self if running
+  const userId = props.userId || store.user?.userId;
+  if (!userId) return null;
+
+  // 1. Prefer local store details for self if running (from sidecar)
   if (isSelf.value && store.activityDetails?.is_running) {
     return store.activityDetails; 
   }
+
+  // 2. Fallback to rich activity from account data (for self)
+  // Note: Only self-sync via account data is implemented currently
+  if (isSelf.value && store.remoteActivityDetails[userId]?.is_running) {
+    const remote = store.remoteActivityDetails[userId];
+    // Simple freshness check: if more than 5 minutes old, ignore
+    if (Date.now() - (remote.last_updated || 0) < 5 * 60 * 1000) {
+      return remote;
+    }
+  }
   
+  // 3. Last resort: basic string from presence (works for everyone)
   if (presenceStatusMsg.value && presenceStatusMsg.value.startsWith('Playing ')) {
       return {
           name: presenceStatusMsg.value.substring(8),
