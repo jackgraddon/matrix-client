@@ -3,9 +3,10 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "build": "nuxt build",
-    "dev": "nuxt dev",
-    "generate": "nuxt generate",
+    "build:sidecar": "node scripts/build-arrpc-sidecar.cjs",
+    "build": "yarn build:sidecar && nuxt build",
+    "dev": "yarn build:sidecar && nuxt dev",
+    "generate": "yarn build:sidecar && nuxt generate",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
     "tauri": "tauri"

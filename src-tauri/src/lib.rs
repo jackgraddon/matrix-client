@@ -1,41 +1,41 @@
-mod game_scanner;
-
 use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::time::Duration;
-use std::sync::{Arc, Mutex};
-use tokio::sync::Notify;
+use std::sync::Mutex;
+use tauri_plugin_shell::process::CommandChild;
+use tauri_plugin_shell::ShellExt;
+
+// Note: Removed unused Arc and Notify imports to resolve warnings
+
+pub struct RpcState {
+    pub child: Mutex<Option<CommandChild>>,
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Create the shared scanner state
-    let scanner_state = Arc::new(game_scanner::ScannerState {
-        watch_list: Mutex::new(Vec::new()),
-        current_game: Mutex::new(None),
-        is_enabled: Mutex::new(false),
-        notify: Arc::new(Notify::new()),
-    });
-
-    let scanner_state_for_setup = scanner_state.clone();
-
     tauri::Builder::default()
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_store::Builder::default().build())
-        .manage(scanner_state)
+        // Removed .manage(scanner_state) as it no longer exists
+        .manage(RpcState {
+            child: Mutex::new(None),
+        })
         .invoke_handler(tauri::generate_handler![
-            game_scanner::update_watch_list,
-            game_scanner::set_scanner_enabled,
-            start_oauth_server
+            // Removed legacy game_scanner handlers to fix E0433
+            start_oauth_server,
+            start_rpc_server,
+            stop_rpc_server
         ])
         .setup(move |app| {
+            // macOS/Windows decoration logic
             #[cfg(any(target_os = "windows", target_os = "linux"))]
             {
-                use tauri::Manager;
+                // Note: tauri::Manager is required for get_webview_window. 
+                // If this fails, add 'use tauri::Manager;' back to the top.
+                use tauri::Manager; 
                 let window = app.get_webview_window("main").unwrap();
-                // 1. Strip the clunky default OS title bar
                 window.set_decorations(false).unwrap();
-                // 2. Force the OS to redraw the native drop shadow and rounded corners!
                 window.set_shadow(true).unwrap();
             }
 
@@ -47,19 +47,77 @@ pub fn run() {
                 )?;
             }
 
-            // Start the background game scanner
-            game_scanner::start(app.handle().clone(), scanner_state_for_setup);
-
             Ok(())
         })
-
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
 
 #[tauri::command]
+async fn start_rpc_server(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, RpcState>,
+    user_id: String,
+    user_name: String,
+    avatar: Option<String>,
+) -> Result<(), String> {
+    let mut child_guard = state.child.lock().unwrap();
+
+    if let Some(child) = child_guard.take() {
+        log::info!("[rpc] Killing existing sidecar instance...");
+        let _ = child.kill();
+    }
+
+    let mut sidecar = app
+        .shell()
+        .sidecar("arrpc")
+        .map_err(|e| format!("Failed to create sidecar: {}", e))?;
+
+    sidecar = sidecar.env("ARRPC_USER_ID", user_id);
+    sidecar = sidecar.env("ARRPC_USER_NAME", user_name);
+    sidecar = sidecar.env("ARRPC_BRIDGE_PORT", "1337");
+
+    if let Some(avatar_hash) = avatar {
+        sidecar = sidecar.env("ARRPC_USER_AVATAR", avatar_hash);
+    }
+
+    log::info!("[rpc] Spawning arRPC sidecar...");
+
+    let (mut rx, child) = sidecar
+        .spawn()
+        .map_err(|e| format!("Failed to spawn sidecar: {}", e))?;
+
+    tauri::async_runtime::spawn(async move {
+        use tauri_plugin_shell::process::CommandEvent;
+        while let Some(event) = rx.recv().await {
+            match event {
+                CommandEvent::Stdout(line) => {
+                    println!("[rpc-sidecar] {}", String::from_utf8_lossy(&line).trim());
+                }
+                CommandEvent::Stderr(line) => {
+                    eprintln!("[rpc-sidecar] {}", String::from_utf8_lossy(&line).trim());
+                }
+                _ => {}
+            }
+        }
+    });
+
+    *child_guard = Some(child);
+    Ok(())
+}
+
+#[tauri::command]
+async fn stop_rpc_server(state: tauri::State<'_, RpcState>) -> Result<(), String> {
+    let mut child_guard = state.child.lock().unwrap();
+    if let Some(child) = child_guard.take() {
+        log::info!("[rpc] Stopping arRPC sidecar...");
+        child.kill().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
 async fn start_oauth_server() -> Result<String, String> {
-    // Run in a blocking thread to keep the Tauri UI completely responsive
     tokio::task::spawn_blocking(|| {
         let listener = TcpListener::bind("127.0.0.1:1420").map_err(|e| e.to_string())?;
         let start_time = std::time::Instant::now();
@@ -71,47 +129,35 @@ async fn start_oauth_server() -> Result<String, String> {
             }
             match stream {
                 Ok(mut stream) => {
-                    // Set a read timeout on the stream itself
                     let _ = stream.set_read_timeout(Some(Duration::from_secs(10)));
                     let mut buffer = [0; 4096];
                     if let Ok(bytes_read) = stream.read(&mut buffer) {
                         let request = String::from_utf8_lossy(&buffer[..bytes_read]);
 
-                        // 1. The Greedy Trap: Ignore favicons and keep the server alive!
                         if request.contains("GET /favicon.ico") {
                             let _ = stream.write_all(b"HTTP/1.1 404 NOT FOUND\r\n\r\n");
                             continue;
                         }
 
-                        // 2. Look for the actual GET request
                         if request.starts_with("GET /") {
                             let first_line = request.lines().next().unwrap_or("");
                             let parts: Vec<&str> = first_line.split_whitespace().collect();
 
                             if parts.len() >= 2 {
-                                let path = parts[1]; // Extracts "/callback?code=..."
-
-                                // 3. ONLY terminate the server if MAS actually sent the OAuth payload
+                                let path = parts[1];
                                 if path.contains("code=") || path.contains("error=") {
-                                    // A sleek, dark-mode success screen!
                                     let html = "<html><body style=\"background: #0f1115; color: #fff; font-family: system-ui, sans-serif; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; margin: 0;\"><h2>Authentication Successful</h2><p style=\"color: #888;\">You can close this tab and return to Tumult.</p><script>setTimeout(() => window.close(), 2000);</script></body></html>";
                                     let response = format!("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\n\r\n{}", html.len(), html);
-
                                     let _ = stream.write_all(response.as_bytes());
                                     let _ = stream.flush();
-
-                                    // Break the loop and hand the URL back to Vue
                                     return Ok(format!("http://localhost:1420{}", path));
                                 }
                             }
                         }
-                        // Default response for any other random browser pings
                         let _ = stream.write_all(b"HTTP/1.1 404 NOT FOUND\r\n\r\n");
                     }
                 }
-                Err(_) => {
-                    return Err("OAuth server timed out after 5 minutes.".to_string());
-                }
+                Err(_) => return Err("OAuth server timed out after 5 minutes.".to_string()),
             }
         }
         Err("Listener closed unexpectedly.".to_string())

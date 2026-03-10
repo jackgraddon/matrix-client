@@ -34,10 +34,16 @@
             <h4 class="font-semibold text-[15px] leading-tight text-foreground truncate w-full">
               {{ displayActivity.name }}
             </h4>
+            <div v-if="displayActivity.details" class="text-xs text-foreground/90 mt-0.5 truncate">
+              {{ displayActivity.details }}
+            </div>
+            <div v-if="displayActivity.state" class="text-xs text-muted-foreground mt-0.5 truncate">
+              {{ displayActivity.state }}
+            </div>
             
             <div v-if="gameStartTimestamp" class="flex items-center gap-1.5 mt-1.5 text-emerald-500 font-medium text-xs">
               <Icon name="solar:gamepad-bold" class="w-3.5 h-3.5 shrink-0" />
-              <span class="tabular-nums tracking-tight">{{ elapsedDuration }}</span>
+              <span class="tabular-nums tracking-tight">{{ elapsedDuration }} elapsed</span>
             </div>
             <div v-else class="text-xs text-muted-foreground mt-1 truncate">
               Currently in-game

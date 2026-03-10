@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -64,13 +65,29 @@
     }
 
     @keyframes pulse {
-      0%, 100% { transform: scale(1); box-shadow: 0 0 20px rgba(16, 185, 129, 0.4); }
-      50% { transform: scale(1.05); box-shadow: 0 0 35px rgba(16, 185, 129, 0.6); }
+
+      0%,
+      100% {
+        transform: scale(1);
+        box-shadow: 0 0 20px rgba(16, 185, 129, 0.4);
+      }
+
+      50% {
+        transform: scale(1.05);
+        box-shadow: 0 0 35px rgba(16, 185, 129, 0.6);
+      }
     }
 
     @keyframes ripple {
-      0% { transform: scale(0.9); opacity: 0.5; }
-      100% { transform: scale(1.2); opacity: 0; }
+      0% {
+        transform: scale(0.9);
+        opacity: 0.5;
+      }
+
+      100% {
+        transform: scale(1.2);
+        opacity: 0;
+      }
     }
 
     .title {
@@ -92,38 +109,50 @@
     }
 
     @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(5px); }
-      to { opacity: 1; transform: translateY(0); }
+      from {
+        opacity: 0;
+        transform: translateY(5px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
     }
 
     /* Fallback controls */
-    #fallback, #login-section {
+    #fallback,
+    #login-section {
       display: none;
       flex-direction: column;
       gap: 12px;
       margin-top: 24px;
       width: 100%;
-      align-items: center; /* Added for consistency with original #fallback */
-      animation: fadeIn 0.5s ease-out; /* Added for consistency with original #fallback */
+      align-items: center;
+      /* Added for consistency with original #fallback */
+      animation: fadeIn 0.5s ease-out;
+      /* Added for consistency with original #fallback */
     }
- 
+
     #login-section input {
-      background: rgba(255,255,255,0.05);
-      border: 1px solid rgba(255,255,255,0.1);
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
       border-radius: 8px;
       padding: 8px 12px;
       color: white;
       font-size: 14px;
       outline: none;
       transition: border-color 0.2s;
-      text-align: center; /* Added for better UX */
-      max-width: 250px; /* Added to prevent input from being too wide */
+      text-align: center;
+      /* Added for better UX */
+      max-width: 250px;
+      /* Added to prevent input from being too wide */
     }
 
     #login-section input:focus {
       border-color: #00DC82;
     }
- 
+
     .btn {
       background: rgba(255, 255, 255, 0.05);
       border: 1px solid rgba(255, 255, 255, 0.1);
@@ -163,7 +192,7 @@
       flex-direction: column;
       z-index: 100;
       backdrop-filter: blur(10px);
-      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
     }
 
     #log-header {
@@ -192,17 +221,32 @@
       white-space: pre-wrap;
     }
 
-    .log-info { color: #aaa; }
-    .log-warn { color: #fbbf24; }
-    .log-error { color: #f87171; }
-    .log-timestamp { color: #555; margin-right: 8px; }
+    .log-info {
+      color: #aaa;
+    }
+
+    .log-warn {
+      color: #fbbf24;
+    }
+
+    .log-error {
+      color: #f87171;
+    }
+
+    .log-timestamp {
+      color: #555;
+      margin-right: 8px;
+    }
   </style>
 </head>
+
 <body>
   <div class="container">
     <div class="logo-pulse">
       <svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M21 15C21 15.5304 20.7893 16.0391 20.4142 16.4142C20.0391 16.7893 19.5304 17 19 17H7L3 21V5C3 4.46957 3.21071 3.96086 3.58579 3.58579C3.96086 3.21071 4.46957 3 5 3H19C19.5304 3 20.0391 3.21071 20.4142 3.58579C20.7893 3.96086 21 4.46957 21 5V15Z" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <path
+          d="M21 15C21 15.5304 20.7893 16.0391 20.4142 16.4142C20.0391 16.7893 19.5304 17 19 17H7L3 21V5C3 4.46957 3.21071 3.96086 3.58579 3.58579C3.96086 3.21071 4.46957 3 5 3H19C19.5304 3 20.0391 3.21071 20.4142 3.58579C20.7893 3.96086 21 4.46957 21 5V15Z"
+          stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
       </svg>
     </div>
     <h1 class="title">Tumult</h1>
@@ -222,8 +266,8 @@
 
     <div id="log-viewer">
       <div id="log-header">
-          <span>Main Window Console</span>
-          <button class="btn" onclick="clearLogs()" style="padding: 2px 8px; font-size: 10px;">Clear</button>
+        <span>Main Window Console</span>
+        <button class="btn" onclick="clearLogs()" style="padding: 2px 8px; font-size: 10px;">Clear</button>
       </div>
       <div id="log-content"></div>
     </div>
@@ -246,8 +290,8 @@
           if (WebviewWindow) {
             const main = WebviewWindow.getByLabel('main');
             if (main) {
-               await main.eval('window.location.href = "/"');
-               console.log("Forced main window to reload");
+              await main.eval('window.location.href = "/"');
+              console.log("Forced main window to reload");
             }
           }
         } catch (e) {
@@ -264,7 +308,7 @@
           // Fallback: forcefully set wipe flag in case main window is dead
           localStorage.setItem('HALT_AND_WIPE_DB', 'true');
           await window.__TAURI__.event.emit('splash-logout');
-          
+
           // Try to forcefully navigate main window to root so it can process the wipe
           try {
             const { WebviewWindow } = window.__TAURI__.window || {};
@@ -272,7 +316,7 @@
               const main = WebviewWindow.getByLabel('main');
               if (main) await main.eval('window.location.href = "/"');
             }
-          } catch(e) {}
+          } catch (e) { }
         } else {
           localStorage.setItem('HALT_AND_WIPE_DB', 'true');
           window.location.href = '/';
@@ -316,12 +360,12 @@
       const content = document.getElementById('log-content');
       const entry = document.createElement('div');
       entry.className = `log-entry log-${type}`;
-      
+
       const timeStr = new Date(timestamp).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
-      
+
       entry.innerHTML = `<span class="log-timestamp">[${timeStr}]</span>${message}`;
       content.appendChild(entry);
-      
+
       // Auto-scroll
       content.scrollTop = content.scrollHeight;
     }
@@ -330,35 +374,35 @@
     async function setupListeners() {
       try {
         if (window.__TAURI__) {
-            const { listen } = window.__TAURI__.event;
-            
-            // Existing status listener
-            await listen('splash-status', (event) => {
-                document.getElementById('status-text').textContent = event.payload;
-            });
+          const { listen } = window.__TAURI__.event;
 
-            // NEW: Log streaming listener
-            await listen('main-log', (event) => {
-                appendLog(event.payload);
-                // Also forward to the developer console
-                const type = event.payload.type;
-                const msg = `[Main Window] ${event.payload.message}`;
-                if (type === 'error') console.error(msg);
-                else if (type === 'warn') console.warn(msg);
-                else console.log(msg);
-            });
+          // Existing status listener
+          await listen('splash-status', (event) => {
+            document.getElementById('status-text').textContent = event.payload;
+          });
 
-            // NEW: Login requirement listener
-            await listen('splash-needs-login', (event) => {
-                document.getElementById('status-text').textContent = 'Please log in to continue';
-                document.getElementById('login-section').style.display = 'flex';
-                // Hide fallback buttons if they were up
-                document.getElementById('fallback').style.display = 'none';
-            });
+          // NEW: Log streaming listener
+          await listen('main-log', (event) => {
+            appendLog(event.payload);
+            // Also forward to the developer console
+            const type = event.payload.type;
+            const msg = `[Main Window] ${event.payload.message}`;
+            if (type === 'error') console.error(msg);
+            else if (type === 'warn') console.warn(msg);
+            else console.log(msg);
+          });
 
-            console.log('Splash listeners active');
+          // NEW: Login requirement listener
+          await listen('splash-needs-login', (event) => {
+            document.getElementById('status-text').textContent = 'Please log in to continue';
+            document.getElementById('login-section').style.display = 'flex';
+            // Hide fallback buttons if they were up
+            document.getElementById('fallback').style.display = 'none';
+          });
+
+          console.log('Splash listeners active');
         } else {
-            console.warn('Tauri API not found. If in browser, this is expected.');
+          console.warn('Tauri API not found. If in browser, this is expected.');
         }
       } catch (err) {
         console.error('Failed to setup splash listeners:', err);
@@ -368,4 +412,5 @@
     setupListeners();
   </script>
 </body>
+
 </html>
