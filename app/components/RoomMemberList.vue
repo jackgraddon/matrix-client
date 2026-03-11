@@ -26,6 +26,7 @@
               :name="member.name"
               :avatar-url="member.getMxcAvatarUrl()"
               size="list"
+              class="min-w-0 flex-1"
             />
           </div>
         </div>
@@ -48,6 +49,7 @@
               :name="member.name"
               :avatar-url="member.getMxcAvatarUrl()"
               size="list"
+              class="min-w-0 flex-1"
             />
           </div>
         </div>
