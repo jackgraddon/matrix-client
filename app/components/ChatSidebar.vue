@@ -148,6 +148,17 @@
 
                 <!-- Sidebar Space Categories List -->
                 <template v-if="isLinkActive('/chat/spaces') && activeSpaceId">
+                    <!-- Return to Lobby Button -->
+                    <UiButton
+                        variant="secondary"
+                        @click="navigateTo(`/chat/spaces/${activeSpaceId}`)"
+                        class="w-full mb-2 justify-start gap-2"
+                        :class="{ 'bg-secondary ring-1 ring-primary/20': isLobby }"
+                    >
+                        <Icon name="solar:home-2-bold" class="h-4 w-4" />
+                        Lobby Home
+                    </UiButton>
+
                     <!-- Skeleton Loader for Background Sync -->
                     <div v-if="!store.isFullySynced && draggableCategories.length === 0" class="flex flex-col gap-4">
                         <div v-for="i in 3" :key="i" class="flex flex-col gap-2 px-2">
@@ -286,6 +297,11 @@ const settingsPages = computed(() => {
 
 const store = useMatrixStore();
 const voiceStore = useVoiceStore();
+
+const isLobby = computed(() => {
+    const segments = route.path.split('/').filter(Boolean);
+    return segments.length === 3 && segments[1] === 'spaces';
+});
 
 const routeName = computed(() => {
     if (isLinkActive('/chat/dms')) return 'Direct Messages';
