@@ -146,6 +146,7 @@ export const useMatrixStore = defineStore('matrix', {
     verificationPhase: null as VerificationPhase | null,
     verificationModalOpen: false,
     globalSearchModalOpen: false,
+    createRoomModalOpen: false,
     // Secret Storage / Backup Code Verification
     secretStoragePrompt: null as {
       promise: { resolve: (val: [string, Uint8Array<ArrayBuffer>] | null) => void, reject: (err?: any) => void },
@@ -2624,6 +2625,14 @@ export const useMatrixStore = defineStore('matrix', {
       this.globalSearchModalOpen = false;
     },
 
+    openCreateRoomModal() {
+      this.createRoomModalOpen = true;
+    },
+
+    closeCreateRoomModal() {
+      this.createRoomModalOpen = false;
+    },
+
     async joinRoom(roomIdOrAlias: string): Promise<any> {
       if (!this.client) throw new Error("Matrix client not initialized.");
       console.log(`[MatrixStore] Joining room ${roomIdOrAlias}...`);
@@ -2638,6 +2647,47 @@ export const useMatrixStore = defineStore('matrix', {
       }
     },
 
+    async createRoom(options: {
+      name: string;
+      topic?: string;
+      isPublic: boolean;
+      enableEncryption: boolean;
+    }): Promise<string | undefined> {
+      if (!this.client) throw new Error("Matrix client not initialized.");
+      console.log(`[MatrixStore] Creating room: ${options.name}...`);
+
+      try {
+        const createOpts: sdk.ICreateRoomOpts = {
+          name: options.name,
+          topic: options.topic,
+          preset: options.isPublic ? sdk.Preset.PublicChat : sdk.Preset.TrustedPrivateChat,
+          visibility: options.isPublic ? sdk.Visibility.Public : sdk.Visibility.Private,
+        };
+
+        if (options.enableEncryption) {
+          createOpts.initial_state = [
+            {
+              type: 'm.room.encryption',
+              state_key: '',
+              content: {
+                algorithm: 'm.megolm.v1.aes-sha2',
+              },
+            },
+          ];
+        }
+
+        const result = await this.client.createRoom(createOpts);
+        const roomId = result.room_id;
+        console.log(`[MatrixStore] Created room ${roomId}`);
+
+        this.updateHierarchy();
+        return roomId;
+      } catch (err: any) {
+        console.error("[MatrixStore] Failed to create room:", err);
+        throw new Error(err.message || "Failed to create room.");
+      }
+    },
+
     async createDirectRoom(userId: string): Promise<string | undefined> {
       if (!this.client) throw new Error("Matrix client not initialized.");
       console.log(`[MatrixStore] Creating direct room with ${userId}...`);
@@ -2646,7 +2696,7 @@ export const useMatrixStore = defineStore('matrix', {
         const result = await this.client.createRoom({
           is_direct: true,
           invite: [userId],
-          preset: sdk.Preset.TrustedPrivateChat,
+          preset: sdk.Preset.PrivateChat,
         });
 
         const roomId = result.room_id;

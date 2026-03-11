@@ -875,7 +875,7 @@ const isInvited = computed(() => room.value?.getMyMembership() === 'invite');
 
 const inviterName = computed(() => {
   if (!room.value || !isInvited.value) return null;
-  const inviterId = room.value.getInviter();
+  const inviterId = room.value.getDMInviter();
   if (!inviterId) return null;
   return room.value.getMember(inviterId)?.name || inviterId;
 });

@@ -113,6 +113,7 @@
         </Transition>
     </div>
     <VerificationModal />
+    <CreateRoomModal />
     <GlobalSearchModal :friends="friends" :rooms="rooms" />
 </template>
 
