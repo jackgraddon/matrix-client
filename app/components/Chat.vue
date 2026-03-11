@@ -481,7 +481,31 @@
 
     <!-- Message Composer -->
     <footer v-if="room" class="flex-none p-4 border-t shrink-0">
-      
+      <div v-if="stagedFiles.length > 0" class="px-4 pb-3 flex gap-3 overflow-x-auto items-end">
+        <div 
+          v-for="(staged, index) in stagedFiles" 
+          :key="staged.previewUrl" 
+          class="relative group shrink-0"
+        >
+          <img 
+            v-if="staged.file.type.startsWith('image/')"
+            :src="staged.previewUrl" 
+            class="h-24 w-24 object-cover rounded-xl border-2 border-border shadow-sm" 
+          />
+          <div v-else class="h-24 w-24 rounded-xl border-2 border-border bg-muted flex flex-col items-center justify-center gap-1 p-2 text-center">
+            <Icon name="solar:file-bold" class="h-8 w-8 text-muted-foreground" />
+            <span class="text-[10px] text-muted-foreground truncate w-full">{{ staged.file.name }}</span>
+          </div>
+          
+          <button 
+            @click.prevent="removeStagedFile(index)" 
+            class="absolute -top-2 -right-2 bg-background border border-border hover:bg-destructive hover:text-destructive-foreground text-foreground rounded-full p-1 transition-colors shadow-md"
+            title="Remove attachment"
+          >
+             <Icon name="solar:close-circle-bold" class="h-4 w-4" />
+          </button>
+        </div>
+      </div>
       <!-- Reply / Edit Indicator -->
       <div v-if="replyingTo || editingMessage" class="px-4 pb-2 flex items-center justify-between text-sm text-muted-foreground bg-muted/30">
         <div class="flex items-center gap-2 overflow-hidden">
@@ -557,6 +581,7 @@
             class="min-h-10 max-h-[200px] resize-none border-0 focus-visible:ring-0 shadow-none py-2.5 flex-1"
             @keydown.enter.exact.prevent="sendMessage"
             @input="autoResize"
+            @paste="handlePaste"
           />
           <UiInputGroupAddon align="inline-end">
             <UiInputGroupButton
@@ -812,8 +837,9 @@ const otherUserId = computed(() => {
   return members.find(m => m.userId !== myUserId)?.userId;
 });
 
-const canSend = computed(() => newMessage.value.trim().length > 0 && !isSending.value);
-
+const canSend = computed(() => {
+  return (newMessage.value.trim().length > 0 || stagedFiles.value.length > 0) && !isSending.value;
+});
 // --- Helpers ---
 
 function mapEvent(event: MatrixEvent): ChatMessage | null {
@@ -1299,6 +1325,59 @@ function scrollToEvent(eventId: string) {
 const fileInput = ref<HTMLInputElement | null>(null);
 const textareaRef = ref<any>(null);
 
+interface StagedFile {
+  file: File;
+  previewUrl: string;
+}
+
+const stagedFiles = ref<StagedFile[]>([]);
+
+function removeStagedFile(index: number) {
+  // Free up browser memory
+  URL.revokeObjectURL(stagedFiles.value[index].previewUrl);
+  stagedFiles.value.splice(index, 1);
+}
+
+async function handlePaste(event: ClipboardEvent) {
+  const items = event.clipboardData?.items;
+  if (!items) return;
+
+  let addedImage = false;
+  for (const item of items) {
+    if (item.type.startsWith('image/')) {
+      const file = item.getAsFile();
+      if (file) {
+        stagedFiles.value.push({
+          file,
+          previewUrl: URL.createObjectURL(file)
+        });
+        addedImage = true;
+      }
+    }
+  }
+  
+  // Prevent the default paste behavior (pasting the filename as text) ONLY if we grabbed an image
+  if (addedImage) {
+    event.preventDefault();
+  }
+}
+
+async function handleFileSelect(event: Event) {
+  const input = event.target as HTMLInputElement;
+  if (!input.files?.length) return;
+  
+  for (let i = 0; i < input.files.length; i++) {
+    const file = input.files[i];
+    stagedFiles.value.push({
+      file,
+      // For non-images, you might want to show a generic icon, but URL.createObjectURL still works safely
+      previewUrl: URL.createObjectURL(file) 
+    });
+  }
+
+  input.value = ''; // Reset input
+}
+
 function triggerFileUpload() {
   fileInput.value?.click();
 }
@@ -1347,94 +1426,70 @@ async function handleTypingInput() {
     }, TYPING_TIMEOUT);
 }
 
-async function handleFileSelect(event: Event) {
-  const input = event.target as HTMLInputElement;
-  if (!input.files?.length || !store.client) return;
-  
-  const file = input.files[0];
-  if (!file) return;
-
-  input.value = ''; // Reset input so same file can be selected again
-  
-  isSending.value = true;
-  try {
-    await store.uploadFile(roomId.value!, file);
-  } catch (err) {
-    console.error('Failed to upload file:', err);
-    toast.error('Failed to upload file');
-  } finally {
-    isSending.value = false;
-  }
-}
-
 // --- Send message ---
 
 async function sendMessage() {
   if (!canSend.value || !store.client) return;
-  const text = newMessage.value.trim();
   
-  if (!text) return;
-
+  const text = newMessage.value.trim();
+  const filesToSend = [...stagedFiles.value]; // Copy array
+  
   const currentReply = replyingTo.value;
   const currentEdit = editingMessage.value;
 
-  // Clear input immediately for UX (restore on fail)
+  // Optimistically clear input UI immediately
   newMessage.value = '';
+  stagedFiles.value = [];
   if (textareaRef.value) {
     const el = textareaRef.value.$el || textareaRef.value;
-    if (el instanceof HTMLTextAreaElement) {
-        el.style.height = 'auto';
-    } else if (el.querySelector) {
+    if (el instanceof HTMLTextAreaElement) el.style.height = 'auto';
+    else if (el.querySelector) {
         const ta = el.querySelector('textarea');
         if (ta) ta.style.height = 'auto';
     }
   }
   
-  // Clear states
   replyingTo.value = null;
   editingMessage.value = null;
-  
   isSending.value = true;
 
   try {
-    if (currentEdit) {
-      const content = {
-        body: ` * ${text}`, // Fallback
-        msgtype: MsgType.Text,
-        'm.new_content': {
-            body: text,
-            msgtype: MsgType.Text,
-        },
-        'm.relates_to': {
-            rel_type: 'm.replace',
-            event_id: currentEdit.eventId,
-        }
-      } as any;
-      
-      await store.client.sendEvent(roomId.value!, EventType.RoomMessage, content);
-      
-    } else if (currentReply) {
-       const content = {
-           body: text,
-           msgtype: MsgType.Text,
-           'm.relates_to': {
-               'm.in_reply_to': {
-                   event_id: currentReply.eventId
-               }
-           }
-       } as any;
-       
-       await store.client.sendEvent(roomId.value!, EventType.RoomMessage, content);
-    } else {
-      await store.client.sendEvent(roomId.value!, EventType.RoomMessage, {
-        body: text,
-        msgtype: MsgType.Text,
-      });
+    // 1. Upload and send any staged files first
+    for (const staged of filesToSend) {
+      await store.uploadFile(roomId.value!, staged.file);
+      URL.revokeObjectURL(staged.previewUrl); // Clean up memory
+    }
+
+    // 2. Send the text message (if there is one)
+    if (text) {
+      if (currentEdit) {
+        const content = {
+          body: ` * ${text}`, // Fallback
+          msgtype: MsgType.Text,
+          'm.new_content': { body: text, msgtype: MsgType.Text },
+          'm.relates_to': { rel_type: 'm.replace', event_id: currentEdit.eventId }
+        } as any;
+        await store.client.sendEvent(roomId.value!, EventType.RoomMessage, content);
+        
+      } else if (currentReply) {
+         const content = {
+             body: text,
+             msgtype: MsgType.Text,
+             'm.relates_to': { 'm.in_reply_to': { event_id: currentReply.eventId } }
+         } as any;
+         await store.client.sendEvent(roomId.value!, EventType.RoomMessage, content);
+      } else {
+        await store.client.sendEvent(roomId.value!, EventType.RoomMessage, {
+          body: text,
+          msgtype: MsgType.Text,
+        });
+      }
     }
   } catch (err) {
     console.error('Failed to send message:', err);
-    // Restore message and states on failure
+    // Restore message and states on failure so the user doesn't lose their work
     newMessage.value = text;
+    stagedFiles.value = filesToSend; // Put files back in the staging area
     if (currentEdit) editingMessage.value = currentEdit;
     if (currentReply) replyingTo.value = currentReply;
     
