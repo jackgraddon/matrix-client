@@ -2,9 +2,9 @@
   <div class="flex flex-col gap-1 min-w-0">
     <!-- Game Activity -->
     <template v-if="displayActivity?.is_running && displayActivity?.name">
-      <div v-if="variant === 'small'" class="flex items-center gap-1.5 text-xs font-medium text-muted-foreground w-full">
+      <div v-if="variant === 'small'" class="flex items-center gap-1.5 text-xs font-medium text-muted-foreground min-w-0 w-full">
         <Icon name="solar:gamepad-bold" class="w-4 h-4 text-emerald-500 shrink-0" />
-        <span class="truncate">Playing <span class="text-foreground">{{ displayActivity.name }}</span></span>
+        <span class="truncate min-w-0">Playing <span class="text-foreground">{{ displayActivity.name }}</span></span>
       </div>
 
       <GameCard v-else-if="variant === 'large'" :user-id="userId" />
@@ -12,9 +12,9 @@
 
     <!-- Custom Status -->
     <template v-else-if="displayCustomStatus">
-      <div class="flex items-center gap-1.5 text-xs font-medium text-muted-foreground w-full">
+      <div class="flex items-center gap-1.5 text-xs font-medium text-muted-foreground min-w-0 w-full">
         <Icon name="solar:chat-round-line-bold" class="w-4 h-4 text-blue-500 shrink-0" />
-        <span class="text-foreground truncate">{{ displayCustomStatus }}</span>
+        <span class="text-foreground truncate min-w-0">{{ displayCustomStatus }}</span>
       </div>
     </template>
 
