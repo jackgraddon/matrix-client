@@ -129,7 +129,7 @@ const sanitize = (val: any) => {
   return s;
 };
 
-const displayActivity = computed(() => store.resolveActivity(props.userId));
+const displayActivity = computed(() => store.resolveActivity(props.userId as string | null));
 
 const displayCustomStatus = computed(() => {
   // Prefer local store custom status for self

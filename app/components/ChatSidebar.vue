@@ -35,7 +35,7 @@
                             />
                             <div class="flex flex-col min-w-0">
                                 <span class="text-sm font-semibold truncate">{{ invite.name }}</span>
-                                <span class="text-[10px] text-muted-foreground truncate">Invited by {{ invite.getMember(invite.getInviter()!)?.name || invite.getInviter() }}</span>
+                                <span class="text-[10px] text-muted-foreground truncate">Invited by {{ invite.getMember(invite.getDMInviter()!)?.name || invite.getDMInviter() }}</span>
                             </div>
                         </div>
                     </div>
