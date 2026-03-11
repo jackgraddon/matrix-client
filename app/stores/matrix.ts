@@ -2626,6 +2626,7 @@ export const useMatrixStore = defineStore('matrix', {
     },
 
     openCreateRoomModal() {
+      this.globalSearchModalOpen = false;
       this.createRoomModalOpen = true;
     },
 
