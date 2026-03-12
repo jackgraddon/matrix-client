@@ -146,7 +146,6 @@ export const useMatrixStore = defineStore('matrix', {
     verificationPhase: null as VerificationPhase | null,
     verificationModalOpen: false,
     globalSearchModalOpen: false,
-    createRoomModalOpen: false,
     // Secret Storage / Backup Code Verification
     secretStoragePrompt: null as {
       promise: { resolve: (val: [string, Uint8Array<ArrayBuffer>] | null) => void, reject: (err?: any) => void },
@@ -173,6 +172,8 @@ export const useMatrixStore = defineStore('matrix', {
     // Dehydration state
     isDehydrating: false,
     gameTrigger: 0,
+    unreadTrigger: 0,
+    unreadCountType: sdk.NotificationCountType.Total as sdk.NotificationCountType,
     gameStates: {} as Record<string, any>,
 
     customStatus: null as string | null,
@@ -216,6 +217,52 @@ export const useMatrixStore = defineStore('matrix', {
     totalInviteCount: (state) => {
       if (!state.client) return 0;
       return state.client.getVisibleRooms().filter(r => r.getMyMembership() === 'invite').length;
+    },
+    totalDmUnreadCount: (state) => {
+      state.unreadTrigger; // trigger reactivity
+      if (!state.client) return 0;
+      const { directMessages } = state.hierarchy;
+      return directMessages.reduce((sum, room) => sum + (room.getUnreadNotificationCount(state.unreadCountType) || 0), 0);
+    },
+    totalOrphanRoomUnreadCount: (state) => {
+      state.unreadTrigger; // trigger reactivity
+      if (!state.client) return 0;
+      const { orphanRooms } = state.hierarchy;
+      return orphanRooms.reduce((sum, room) => sum + (room.getUnreadNotificationCount(state.unreadCountType) || 0), 0);
+    },
+    getSpaceUnreadCount: (state) => (spaceId: string): number => {
+      state.unreadTrigger; // trigger reactivity
+      if (!state.client) return 0;
+
+      const roomIds = new Set<string>();
+      const queue = [spaceId];
+      const visited = new Set<string>();
+
+      while (queue.length > 0) {
+        const currentId = queue.shift()!;
+        if (visited.has(currentId)) continue;
+        visited.add(currentId);
+
+        const room = state.client.getRoom(currentId);
+        if (!room) continue;
+
+        if (room.isSpaceRoom()) {
+          const children = room.currentState.getStateEvents('m.space.child');
+          children.forEach(ev => {
+            const childId = ev.getStateKey();
+            if (childId) queue.push(childId);
+          });
+        } else {
+          roomIds.add(currentId);
+        }
+      }
+
+      let total = 0;
+      roomIds.forEach(id => {
+        const room = state.client?.getRoom(id);
+        total += room?.getUnreadNotificationCount(state.unreadCountType) || 0;
+      });
+      return total;
     },
     getVoiceParticipants: (state) => (roomId: string) => {
       // Access hierarchyTrigger for reactivity
@@ -352,16 +399,6 @@ export const useMatrixStore = defineStore('matrix', {
         }
       });
 
-      // Also identify DMs by checking the is_direct flag in memberships (robust fallback)
-      const myUserId = state.client.getUserId();
-      normalRooms.forEach(room => {
-        if (dmRoomIds.has(room.roomId)) return;
-        const myMember = room.getMember(myUserId!);
-        if (myMember?.events.member?.getContent().is_direct) {
-          dmRoomIds.add(room.roomId);
-        }
-      });
-
       // --- THE FINAL CATEGORIES ---
 
       // Servers: Spaces that have NO parents AND HAVE at least one child
@@ -475,32 +512,12 @@ export const useMatrixStore = defineStore('matrix', {
       const user = this.client?.getUser(targetUserId);
       const presenceMsg = user?.presenceStatusMsg;
       if (presenceMsg && presenceMsg.startsWith('Playing ')) {
-        // Check for Tumult-encoded metadata (separated by Zero Width Space)
-        const parts = presenceMsg.substring(8).split('\u200B');
-        const name = sanitize(parts[0]);
-        
+        const name = sanitize(presenceMsg.substring(8));
         if (name) {
-          const activity: any = {
+          return {
             name,
             is_running: true
           };
-
-          // If metadata is present, decode it
-          if (parts.length > 1) {
-            try {
-              const meta = JSON.parse(parts[1]);
-              activity.applicationId = meta.a;
-              activity.iconHash = meta.i;
-              activity.smallIconHash = meta.s;
-              activity.startTimestamp = meta.t;
-              activity.details = sanitize(meta.d);
-              activity.state = sanitize(meta.st);
-            } catch (e) {
-              // Not valid metadata, just continue with basic name
-            }
-          }
-
-          return activity;
         }
       }
 
@@ -813,24 +830,7 @@ export const useMatrixStore = defineStore('matrix', {
       if (!status_msg && this.activityDetails?.is_running) {
         const gameName = this._sanitizeActivityString(this.activityDetails.name);
         if (gameName) {
-           // Encode rich activity metadata into the presence message
-           // Using short keys to stay under common status length limits (often 255 chars)
-           const meta = {
-             a: this.activityDetails.applicationId,
-             i: this.activityDetails.iconHash,
-             s: this.activityDetails.smallIconHash,
-             t: this.activityDetails.startTimestamp,
-             d: this.activityDetails.details,
-             st: this.activityDetails.state
-           };
-           
-           // Filter out nulls to keep the JSON string small
-           const cleanMeta: any = {};
-           for (const [k, v] of Object.entries(meta)) {
-             if (v !== null && v !== undefined) cleanMeta[k] = v;
-           }
-
-           status_msg = `Playing ${gameName}\u200B${JSON.stringify(cleanMeta)}`;
+           status_msg = `Playing ${gameName}`;
         }
       }
       
@@ -1446,6 +1446,19 @@ export const useMatrixStore = defineStore('matrix', {
         this.hierarchyTrigger++;
       }, 150);
 
+      const debouncedUnreadTrigger = useDebounceFn(() => {
+        this.unreadTrigger++;
+      }, 200);
+
+      this.client.on(sdk.RoomEvent.Receipt, () => {
+        debouncedUnreadTrigger();
+      });
+
+      this.client.on(sdk.RoomEvent.Timeline, (event, room, toStartOfTimeline) => {
+        if (toStartOfTimeline) return;
+        debouncedUnreadTrigger();
+      });
+
       this.client.on(sdk.ClientEvent.Event, (event) => {
         const type = event.getType();
         const isMatrixRTC =
@@ -1686,7 +1699,7 @@ export const useMatrixStore = defineStore('matrix', {
     },
 
     showInviteNotification(room: sdk.Room) {
-      const inviterId = room.getDMInviter();
+      const inviterId = room.getInviter();
       const inviterName = room.getMember(inviterId!)?.name || inviterId;
       const myUserId = this.client?.getUserId();
       const isDirect = room.getMember(myUserId!)?.events.member?.getContent().is_direct;
@@ -2662,15 +2675,6 @@ export const useMatrixStore = defineStore('matrix', {
       this.globalSearchModalOpen = false;
     },
 
-    openCreateRoomModal() {
-      this.globalSearchModalOpen = false;
-      this.createRoomModalOpen = true;
-    },
-
-    closeCreateRoomModal() {
-      this.createRoomModalOpen = false;
-    },
-
     async joinRoom(roomIdOrAlias: string): Promise<any> {
       if (!this.client) throw new Error("Matrix client not initialized.");
       console.log(`[MatrixStore] Joining room ${roomIdOrAlias}...`);
@@ -2685,47 +2689,6 @@ export const useMatrixStore = defineStore('matrix', {
       }
     },
 
-    async createRoom(options: {
-      name: string;
-      topic?: string;
-      isPublic: boolean;
-      enableEncryption: boolean;
-    }): Promise<string | undefined> {
-      if (!this.client) throw new Error("Matrix client not initialized.");
-      console.log(`[MatrixStore] Creating room: ${options.name}...`);
-
-      try {
-        const createOpts: sdk.ICreateRoomOpts = {
-          name: options.name,
-          topic: options.topic,
-          preset: options.isPublic ? sdk.Preset.PublicChat : sdk.Preset.TrustedPrivateChat,
-          visibility: options.isPublic ? sdk.Visibility.Public : sdk.Visibility.Private,
-        };
-
-        if (options.enableEncryption) {
-          createOpts.initial_state = [
-            {
-              type: 'm.room.encryption',
-              state_key: '',
-              content: {
-                algorithm: 'm.megolm.v1.aes-sha2',
-              },
-            },
-          ];
-        }
-
-        const result = await this.client.createRoom(createOpts);
-        const roomId = result.room_id;
-        console.log(`[MatrixStore] Created room ${roomId}`);
-
-        this.updateHierarchy();
-        return roomId;
-      } catch (err: any) {
-        console.error("[MatrixStore] Failed to create room:", err);
-        throw new Error(err.message || "Failed to create room.");
-      }
-    },
-
     async createDirectRoom(userId: string): Promise<string | undefined> {
       if (!this.client) throw new Error("Matrix client not initialized.");
       console.log(`[MatrixStore] Creating direct room with ${userId}...`);
@@ -2734,26 +2697,11 @@ export const useMatrixStore = defineStore('matrix', {
         const result = await this.client.createRoom({
           is_direct: true,
           invite: [userId],
-          preset: sdk.Preset.PrivateChat,
+          preset: sdk.Preset.TrustedPrivateChat,
         });
 
-        const roomId = result.room_id;
-        console.log(`[MatrixStore] Created room ${roomId}`);
-
-        // Manually update m.direct account data to ensure it's categorized as a DM immediately
-        const dmEvent = this.client.getAccountData(sdk.EventType.Direct);
-        const content = dmEvent ? JSON.parse(JSON.stringify(dmEvent.getContent())) : {};
-
-        const userRooms = content[userId] || [];
-        if (!userRooms.includes(roomId)) {
-          userRooms.push(roomId);
-          content[userId] = userRooms;
-          await (this.client as any).setAccountData(sdk.EventType.Direct, content);
-          console.log(`[MatrixStore] Updated m.direct for ${userId} with room ${roomId}`);
-        }
-
-        this.updateHierarchy();
-        return roomId;
+        console.log(`[MatrixStore] Created room ${result.room_id}`);
+        return result.room_id;
       } catch (err: any) {
         console.error("[MatrixStore] Failed to create direct room:", err);
         throw new Error(err.message || "Failed to create room.");
@@ -2811,7 +2759,6 @@ export const useMatrixStore = defineStore('matrix', {
           await this.markRoomAsDirect(roomId);
         }
 
-        this.updateHierarchy();
         toast.success('Joined room');
       } catch (err: any) {
         console.error('Failed to accept invite:', err);
@@ -2847,7 +2794,6 @@ export const useMatrixStore = defineStore('matrix', {
         userRooms.push(roomId);
         content[otherMember.userId] = userRooms;
         await (this.client as any).setAccountData(sdk.EventType.Direct, content);
-        this.updateHierarchy();
       }
     },
 

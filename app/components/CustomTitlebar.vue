@@ -2,39 +2,26 @@
   <div
     class="fixed top-0 left-0 right-0 h-[30px] w-full flex items-center justify-between select-none transition-colors bg-neutral-200 dark:bg-background z-[9999]"
     data-tauri-drag-region
-    @mousedown="startDrag"
   >
-    <!-- Left Side: Spacer for Windows (to center title) -->
-    <div v-if="!isMac" class="w-[135px]" />
+    <div class="w-[135px] h-full flex items-center" data-tauri-drag-region />
 
-    <!-- Center: Optional Title -->
-    <div class="flex-1 flex justify-center text-[11px] font-medium text-muted-foreground pointer-events-none" data-tauri-drag-region @mousedown="startDrag">
+    <div 
+      class="flex-1 h-full flex items-center justify-center text-[11px] font-medium text-muted-foreground pointer-events-none"
+      data-tauri-drag-region
+    >
        Tumult
     </div>
 
-    <!-- Right Side: Windows/Linux standard controls (Only visible on non-macOS) -->
-    <div class="flex h-full w-[135px] items-center justify-end">
+    <div class="w-[135px] h-full flex items-center justify-end">
       <div v-if="!isMac" class="flex h-full">
-        <button 
-          class="h-full w-[45px] hover:bg-muted flex items-center justify-center transition-colors"
-          @click="minimizeWindow"
-          aria-label="Minimize Window"
-        >
-          <Icon name="lucide:minus" class="h-4 w-4 text-muted-foreground pointer-events-none" />
+        <button @click="minimizeWindow" class="h-full w-[45px] hover:bg-muted flex items-center justify-center transition-colors">
+          <Icon name="lucide:minus" class="h-4 w-4 text-muted-foreground" />
         </button>
-        <button 
-          class="h-full w-[45px] hover:bg-muted flex items-center justify-center transition-colors"
-          @click="maximizeWindow"
-          aria-label="Maximize Window"
-        >
-          <Icon name="lucide:square" class="h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+        <button @click="maximizeWindow" class="h-full w-[45px] hover:bg-muted flex items-center justify-center transition-colors">
+          <Icon name="lucide:square" class="h-3.5 w-3.5 text-muted-foreground" />
         </button>
-        <button 
-          class="h-full w-[45px] hover:bg-destructive hover:text-destructive-foreground flex items-center justify-center transition-colors"
-          @click="closeWindow"
-          aria-label="Close Window"
-        >
-          <Icon name="lucide:x" class="h-4 w-4 text-muted-foreground pointer-events-none" group-hover:text-destructive-foreground />
+        <button @click="closeWindow" class="h-full w-[45px] hover:bg-destructive hover:text-destructive-foreground flex items-center justify-center transition-colors">
+          <Icon name="lucide:x" class="h-4 w-4 text-muted-foreground" />
         </button>
       </div>
     </div>

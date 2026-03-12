@@ -161,7 +161,7 @@
                         :class="{ 'bg-secondary ring-1 ring-primary/20': isLobby }"
                     >
                         <Icon name="solar:home-2-bold" class="h-4 w-4" />
-                        Lobby Home
+                        Space Lobby
                     </UiButton>
 
                     <!-- Skeleton Loader for Background Sync -->
@@ -314,7 +314,7 @@ const settingsGroups = computed(() => {
         .map(cat => ({
             id: cat,
             name: categoryNames[cat] || cat,
-            pages: groupsMap[cat].sort((a, b) => a.place - b.place)
+            pages: groupsMap[cat!].sort((a, b) => a.place - b.place)
         }));
 });
 
@@ -367,11 +367,12 @@ const mapRoom = (room: Room): MappedRoom => {
     lastMessage: lastEvent ? lastEvent.getContent().body : 'No messages',
     lastActive: lastEvent?.getTs() ?? room.getLastActiveTimestamp() ?? 0,
     avatarUrl: room.getMxcAvatarUrl(),
-    unreadCount: room.getUnreadNotificationCount(NotificationCountType.Total) ?? 0,
+    unreadCount: room.getUnreadNotificationCount(store.unreadCountType) ?? 0,
   };
 };
 
 const isEmptyRoom = (room: Room): boolean => {
+  if (room.getMyMembership() === 'invite') return false;
   // If lazy loading is on, getJoinedMembers() might return 0 if members aren't fetched yet.
   // Instead, use getJoinedMemberCount() which is often more accurate/immediate from the sync state.
   return (room.getJoinedMemberCount?.() ?? room.getJoinedMembers().length) <= 1;
@@ -379,8 +380,9 @@ const isEmptyRoom = (room: Room): boolean => {
 
 const friends = computed(() => {
   if (!store.client) return [];
-  // Register dependency on activeVoiceCall for icon updates
+  // Register dependency on activeVoiceCall and unreadTrigger for updates
   voiceStore.activeRoomId;
+  store.unreadTrigger;
   
   const { directMessages } = store.hierarchy;
   const directEvent = store.client.getAccountData(EventType.Direct);
@@ -420,8 +422,9 @@ const friends = computed(() => {
 
 const rooms = computed(() => {
   if (!store.client) return [];
-  // Register dependency on activeVoiceCall for icon updates
+  // Register dependency on activeVoiceCall and unreadTrigger for updates
   voiceStore.activeRoomId;
+  store.unreadTrigger;
   
   const { orphanRooms } = store.hierarchy;
   // Filter out empty rooms unless the setting is enabled
@@ -508,8 +511,9 @@ const buildSpaceHierarchy = (spaceId: string, visited: Set<string> = new Set()):
 const spaceCategories = computed(() => {
   // Access hierarchy for reactivity trigger
   store.hierarchy;
-  // Register dependency on activeVoiceCall for icon updates
+  // Register dependency on activeVoiceCall and unreadTrigger for updates
   voiceStore.activeRoomId;
+  store.unreadTrigger;
   
   if (!store.client || !activeSpaceId.value) return [];
   
