@@ -140,6 +140,9 @@
 <script lang="ts" setup>
 definePageMeta({
   icon: 'solar:user-bold',
+  category: 'general',
+  title: 'Account',
+  place: 2
 })
 
 import { toast } from 'vue-sonner';

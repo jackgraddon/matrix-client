@@ -133,16 +133,21 @@
 
                 <!-- Sidebar Settings Nav -->
                 <template v-if="isLinkActive('/chat/settings')">
-                    <div 
-                        v-for="page in settingsPages"
-                        :key="page.path"
-                        role="button"
-                        class="inline-flex items-center justify-start px-2 h-9 w-full rounded-md text-sm font-medium transition-colors cursor-pointer hover:bg-accent/50"
-                        :class="[(page.path === '/chat/settings' ? route.path === '/chat/settings' : isLinkActive(page.path)) ? 'bg-secondary text-secondary-foreground' : '']"
-                        @click="(page.path === '/chat/settings' ? route.path === '/chat/settings' : isLinkActive(page.path)) ? null : navigateTo(page.path)"
-                    >
-                        <Icon :name="page.icon" class="h-4 w-4 mr-2 text-muted-foreground" />
-                        <span class="truncate">{{ page.label }}</span>
+                    <div v-for="(group, category) in settingsGroups" :key="category" class="flex flex-col gap-1 mb-4">
+                        <div class="px-2 mb-1">
+                            <span class="text-[10px] font-bold uppercase text-muted-foreground tracking-wider">{{ category }}</span>
+                        </div>
+                        <div
+                            v-for="page in group"
+                            :key="page.path"
+                            role="button"
+                            class="inline-flex items-center justify-start px-2 h-9 w-full rounded-md text-sm font-medium transition-colors cursor-pointer hover:bg-accent/50"
+                            :class="[(page.path === '/chat/settings' ? route.path === '/chat/settings' : isLinkActive(page.path)) ? 'bg-secondary text-secondary-foreground' : '']"
+                            @click="(page.path === '/chat/settings' ? route.path === '/chat/settings' : isLinkActive(page.path)) ? null : navigateTo(page.path)"
+                        >
+                            <Icon :name="page.icon" class="h-4 w-4 mr-2 text-muted-foreground" />
+                            <span class="truncate">{{ page.label }}</span>
+                        </div>
                     </div>
                 </template>
 
@@ -269,9 +274,9 @@ const isLinkActive = (to: string) => {
 };
 
 
-const settingsPages = computed(() => {
+const settingsGroups = computed(() => {
     const seen = new Set<string>();
-    return router.getRoutes()
+    const pages = router.getRoutes()
         .filter(r => r.path === '/chat/settings' || /^\/chat\/settings\/[^/]+$/.test(r.path))
         .filter(r => {
             const normalized = r.path.replace(/\/$/, '');
@@ -284,15 +289,25 @@ const settingsPages = computed(() => {
             const isIndex = r.path === '/chat/settings';
             return {
                 path: r.path,
-                label: isIndex ? 'General' : segment.charAt(0).toUpperCase() + segment.slice(1),
-                icon: (r.meta.icon as string) || 'solar:settings-linear', // Added a safe fallback
+                label: (r.meta.title as string) || (isIndex ? 'General' : segment.charAt(0).toUpperCase() + segment.slice(1)),
+                icon: (r.meta.icon as string) || 'solar:settings-linear',
+                category: (r.meta.category as string) || 'general',
+                place: (r.meta.place as number) || 99
             };
-        })
-        .sort((a, b) => {
-            if (a.label === 'General') return -1;
-            if (b.label === 'General') return 1;
-            return a.label.localeCompare(b.label);
         });
+
+    const groups: Record<string, typeof pages> = {};
+    pages.forEach(p => {
+        if (!groups[p.category]) groups[p.category] = [];
+        groups[p.category].push(p);
+    });
+
+    // Sort within groups by 'place'
+    Object.keys(groups).forEach(cat => {
+        groups[cat].sort((a, b) => a.place - b.place);
+    });
+
+    return groups;
 });
 
 const store = useMatrixStore();

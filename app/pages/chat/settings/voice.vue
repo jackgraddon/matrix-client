@@ -167,6 +167,9 @@
 <script lang="ts" setup>
 definePageMeta({
   icon: 'solar:phone-bold',
+  category: 'advanced',
+  title: 'Voice Diagnostics',
+  place: 1
 })
 
 import { ref, reactive } from 'vue';
