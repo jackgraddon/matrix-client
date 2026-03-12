@@ -1,7 +1,12 @@
 <template>
     <div class="flex flex-row h-full bg-neutral-200 dark:bg-background">
         <!-- Servers Sidebar (Guild Bar) -->
-        <aside class="bg-background dark:bg-neutral-900 rounded-lg ml-2 mb-2 flex flex-col items-center p-2 gap-2 shrink-0 overflow-y-auto overflow-x-hidden">
+        <aside
+            class="bg-background dark:bg-neutral-900 rounded-lg ml-2 mb-2 flex flex-col items-center p-2 gap-2 shrink-0 overflow-y-auto overflow-x-hidden transition-transform duration-300 ease-in-out"
+            :class="[
+                isMobile && (roomId || isSettingsPage) ? '-translate-x-full fixed' : 'translate-x-0 relative'
+            ]"
+        >
             <!-- Home Button -->
             <UiButton 
                 class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 flex items-center justify-center shrink-0 relative group" 
@@ -108,10 +113,21 @@
         </aside>
 
         <!-- Sidebar -->
-        <ChatSidebar ref="sidebarRef"/>
+        <ChatSidebar
+            ref="sidebarRef"
+            class="transition-transform duration-300 ease-in-out"
+            :class="[
+                isMobile && (roomId || isSettingsPage) ? '-translate-x-full fixed' : 'translate-x-0 relative'
+            ]"
+        />
 
         <!-- Main Content -->
-        <main class="flex-1 flex-col min-w-0 min-h-0 p-2 pt-0">
+        <main
+            class="flex-1 flex-col min-w-0 min-h-0 p-2 pt-0 transition-all duration-300 ease-in-out"
+            :class="[
+                isMobile && !(roomId || isSettingsPage) ? 'hidden' : 'flex'
+            ]"
+        >
             <div class="rounded-lg h-full bg-neutral-100 dark:bg-neutral-900 min-w-0 flex flex-col min-h-0 overflow-hidden">
                 <header class="landmark-banner shrink-0">
                     <SecurityBanner />
@@ -121,9 +137,15 @@
         </main>
         
         <!-- Member List Panel -->
-        <Transition name="slide-pane">
-            <div v-if="store.ui.memberListVisible && currentRoom" class="mb-2 mr-2 overflow-hidden shrink-0">
-                <RoomMemberList :room="(currentRoom as any)" class="h-full" />
+        <Transition :name="isMobile ? 'slide-full' : 'slide-pane'">
+            <div
+                v-if="store.ui.memberListVisible && currentRoom"
+                class="overflow-hidden shrink-0 z-[60]"
+                :class="[
+                    isMobile ? 'fixed inset-0 pt-[30px] bg-background' : 'mb-2 mr-2 relative'
+                ]"
+            >
+                <RoomMemberList :room="(currentRoom as any)" class="h-full" :class="isMobile ? 'w-full' : 'w-60'" />
             </div>
         </Transition>
     </div>
@@ -153,9 +175,19 @@ useGameActivity(); // Initialize game detection at layout level
 
 const sidebarRef = ref<any>(null);
 
+const isMobile = ref(false);
+const updateIsMobile = () => {
+    isMobile.value = window.innerWidth < 768;
+};
+
+const isSettingsPage = computed(() => route.path.startsWith('/chat/settings'));
+
 const roomId = computed(() => {
   const params = route.params.id;
   if (Array.isArray(params)) {
+    // If it's a space route, the last segment might be the room ID,
+    // but only if it's not the space root.
+    if (route.path.startsWith('/chat/spaces') && params.length === 1) return null;
     return params[params.length - 1];
   }
   return params;
@@ -247,6 +279,8 @@ const handleKeyDown = (event: KeyboardEvent) => {
 
 // 1. If client is ready on mount, set it up
 onMounted(() => {
+  updateIsMobile();
+  window.addEventListener('resize', updateIsMobile);
   window.addEventListener('keydown', handleKeyDown);
   if (store.client) {
     setupListeners();
@@ -262,6 +296,7 @@ onMounted(() => {
 
 // 3. Clean up listeners when leaving the page to prevent memory leaks
 onUnmounted(() => {
+  window.removeEventListener('resize', updateIsMobile);
   window.removeEventListener('keydown', handleKeyDown);
   if (store.client) {
     store.client.removeListener(ClientEvent.Room, updateRooms);
@@ -346,6 +381,16 @@ watch(
   max-width: 0;
   opacity: 0;
   transform: translateX(10px);
+}
+
+.slide-full-enter-active,
+.slide-full-leave-active {
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.slide-full-enter-from,
+.slide-full-leave-to {
+  transform: translateX(100%);
 }
 </style>
 

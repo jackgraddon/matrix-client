@@ -1,5 +1,5 @@
 <template>
-    <aside class="flex h-full flex-col w-[250px] shrink-0">
+    <aside class="flex h-full flex-col w-full md:w-[250px] shrink-0">
         <header class="h-16 flex items-center px-4 justify-between">
             <h2 class="text-lg font-semibold flex items-center gap-2">
                 <Icon name="solar:chat-round-dots-bold" class="h-5 w-5" />

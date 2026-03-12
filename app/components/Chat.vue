@@ -18,12 +18,22 @@
 
     <!-- Room Header -->
     <header v-if="room" class="flex-none p-4 border-b border-border">
-      <div class="flex items-center justify-between">
+      <div class="flex items-center justify-between gap-2">
+        <UiButton
+          v-if="isMobile"
+          variant="ghost"
+          size="icon-sm"
+          class="shrink-0"
+          @click="goBack"
+        >
+          <Icon name="solar:alt-arrow-left-linear" class="h-6 w-6" />
+        </UiButton>
+
         <RoomHeader 
           v-if="!isDm"
           :name="room?.name || 'Unknown Room'"
           :topic="roomTopic"
-          class="flex-1"
+          class="flex-1 min-w-0"
         />
         <UserProfile 
           v-else
@@ -687,6 +697,28 @@ const route = useRoute();
 const store = useMatrixStore();
 const voiceStore = useVoiceStore();
 const { showKeychainWarning, handleJoinCall, handleProceed, handleCancel } = useJoinCall();
+
+const isMobile = ref(false);
+const updateIsMobile = () => {
+  isMobile.value = window.innerWidth < 768;
+};
+
+function goBack() {
+  if (route.path.startsWith('/chat/dms')) {
+    navigateTo('/chat/dms');
+  } else if (route.path.startsWith('/chat/rooms')) {
+    navigateTo('/chat/rooms');
+  } else if (route.path.startsWith('/chat/spaces')) {
+    const params = route.params.id;
+    if (Array.isArray(params) && params.length > 1) {
+      navigateTo(`/chat/spaces/${params[0]}`);
+    } else {
+      navigateTo('/chat');
+    }
+  } else {
+    navigateTo('/chat');
+  }
+}
 
 async function handleInviteToGame(gameType: string = 'tictactoe') {
   console.log(`[Chat] Invite to ${gameType} requested`, { roomId: roomId.value, otherUserId: otherUserId.value });
@@ -1684,6 +1716,8 @@ function onRoomAdded(room: Room) {
 }
 
 onMounted(() => {
+  updateIsMobile();
+  window.addEventListener('resize', updateIsMobile);
   if (store.client && roomId.value) {
     initRoom(); // Assuming initializeRoom is a typo and it should be initRoom
     setupListener();
@@ -1745,6 +1779,7 @@ watch(
 );
 
 onUnmounted(() => {
+  window.removeEventListener('resize', updateIsMobile);
   teardownListener();
   store.client?.removeListener(ClientEvent.Room, onRoomAdded);
   if (observer) observer.disconnect();
