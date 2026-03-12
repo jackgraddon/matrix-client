@@ -1,6 +1,14 @@
 <template>
-  <aside class="w-60 flex flex-col shrink-0 h-full relative">
-    <div class="p-4 border-b border-border/50">
+  <aside class="w-60 flex flex-col shrink-0 h-full relative bg-neutral-100 dark:bg-neutral-900 border-l border-border/50 shadow-xl md:shadow-none">
+    <div class="p-4 border-b border-border/50 flex items-center gap-2">
+      <UiButton
+        variant="ghost"
+        size="icon-sm"
+        class="md:hidden shrink-0"
+        @click="store.toggleMemberList()"
+      >
+        <Icon name="solar:alt-arrow-left-linear" class="h-6 w-6" />
+      </UiButton>
       <h3 class="text-sm font-bold flex items-center gap-2">
         <Icon 
           name="solar:users-group-rounded-bold" 

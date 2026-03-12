@@ -24,26 +24,28 @@
           size="icon-sm"
           class="md:hidden shrink-0"
           @click="store.toggleSidebar(true)"
-          v-if="!store.ui.sidebarOpen"
+          v-if="!store.ui.sidebarOpen && !store.ui.memberListVisible"
         >
           <Icon name="solar:hamburger-menu-linear" class="h-6 w-6" />
         </UiButton>
 
-        <RoomHeader 
-          v-if="!isDm"
-          :name="room?.name || 'Unknown Room'"
-          :topic="roomTopic"
-          class="flex-1"
-        />
-        <UserProfile 
-          v-else
-          :avatar-url="roomAvatarUrl"
-          :name="room?.name"
-          :user-id="otherUserId"
-          :topic="roomTopic"
-          name-classes="text-lg font-semibold"
-          class="flex-1"
-        />
+        <div v-if="!store.ui.memberListVisible" class="flex-1 min-w-0">
+          <RoomHeader
+            v-if="!isDm"
+            :name="room?.name || 'Unknown Room'"
+            :topic="roomTopic"
+            class="w-full"
+          />
+          <UserProfile
+            v-else
+            :avatar-url="roomAvatarUrl"
+            :name="room?.name"
+            :user-id="otherUserId"
+            :topic="roomTopic"
+            name-classes="text-lg font-semibold"
+            class="w-full"
+          />
+        </div>
         <div class="flex items-center gap-2 pr-2">
           <UiButton 
             v-if="voiceStore.activeRoomId !== roomId && !otherUserId?.startsWith('@discord_')"
@@ -71,7 +73,7 @@
             <UiButton
               variant="ghost"
               size="icon-sm"
-              @click="store.toggleMemberList()"
+              @click="() => { store.toggleMemberList(); store.toggleSidebar(false); }"
               :class="{ 'bg-accent text-accent-foreground': store.ui.memberListVisible }"
               title="Toggle Member List"
               class="rounded-full"

@@ -2,10 +2,11 @@
     <div class="flex flex-row h-full bg-neutral-200 dark:bg-background relative overflow-hidden">
         <!-- Sidebar Pane (Guild Bar + Chat Sidebar) -->
         <div
-            class="flex flex-row h-full shrink-0 transition-transform duration-300 ease-in-out z-10"
+            class="flex flex-row h-full shrink-0 transition-transform duration-300 ease-in-out z-10 w-full md:w-auto"
             :class="[
                 store.ui.sidebarOpen ? 'translate-x-0' : 'translate-x-[-20%] md:translate-x-0',
-                'fixed top-0 left-0 md:relative'
+                'fixed top-0 left-0 md:relative',
+                !store.ui.sidebarOpen && 'pointer-events-none md:pointer-events-auto'
             ]"
         >
             <!-- Servers Sidebar (Guild Bar) -->
@@ -123,15 +124,20 @@
         <main
             class="flex-1 flex-col min-w-0 min-h-0 p-2 pt-0 transition-transform duration-300 ease-in-out z-20"
             :class="[
-                store.ui.sidebarOpen ? 'translate-x-[280px] md:translate-x-0' : 'translate-x-0'
+                store.ui.sidebarOpen ? 'translate-x-full md:translate-x-0' : (store.ui.memberListVisible ? '-translate-x-full md:translate-x-0' : 'translate-x-0')
             ]"
         >
             <div class="rounded-lg h-full bg-neutral-100 dark:bg-neutral-900 min-w-0 flex flex-col min-h-0 overflow-hidden relative">
-                <!-- Mobile Overlay to close sidebar -->
+                <!-- Mobile Overlays to close sidebars -->
                 <div
                     v-if="store.ui.sidebarOpen"
                     class="md:hidden absolute inset-0 z-50 bg-black/20"
                     @click="store.toggleSidebar(false)"
+                ></div>
+                <div
+                    v-if="store.ui.memberListVisible"
+                    class="md:hidden absolute inset-0 z-50 bg-black/20"
+                    @click="store.toggleMemberList()"
                 ></div>
 
                 <header class="landmark-banner shrink-0">
@@ -141,16 +147,18 @@
             </div>
         </main>
         
-        <!-- Member List Panel -->
-        <Transition name="slide-pane">
-            <div
-                v-if="store.ui.memberListVisible && currentRoom"
-                class="mb-2 mr-2 overflow-hidden shrink-0 fixed inset-0 z-[100] md:relative md:inset-auto"
-            >
-                <div class="md:hidden absolute inset-0 bg-black/40" @click="store.toggleMemberList()"></div>
-                <RoomMemberList :room="(currentRoom as any)" class="h-full relative z-10 w-full md:w-auto" />
-            </div>
-        </Transition>
+        <!-- Member List Pane -->
+        <div
+            v-if="currentRoom"
+            class="flex flex-row h-full shrink-0 transition-transform duration-300 ease-in-out z-10 w-full md:w-auto"
+            :class="[
+                store.ui.memberListVisible ? 'translate-x-0' : 'translate-x-[20%] md:translate-x-0',
+                'fixed top-0 right-0 md:relative',
+                !store.ui.memberListVisible && 'pointer-events-none md:pointer-events-auto'
+            ]"
+        >
+            <RoomMemberList :room="(currentRoom as any)" class="h-full w-full md:w-auto" />
+        </div>
     </div>
     <VerificationModal />
     <GlobalSearchModal :friends="friends" :rooms="rooms" />

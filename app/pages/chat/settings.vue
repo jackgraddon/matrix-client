@@ -6,7 +6,7 @@
           variant="ghost"
           size="icon-sm"
           class="md:hidden shrink-0"
-          @click="store.toggleSidebar(true)"
+          @click="() => { store.toggleSidebar(true); store.ui.memberListVisible = false; }"
           v-if="!store.ui.sidebarOpen"
         >
           <Icon name="solar:hamburger-menu-linear" class="h-6 w-6" />

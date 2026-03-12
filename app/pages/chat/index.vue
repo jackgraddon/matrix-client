@@ -22,7 +22,7 @@
           :key="room.roomId"
           :to="`/chat/dms/${room.roomId}`"
           class="block group"
-          @click="store.toggleSidebar(false)"
+          @click="() => { store.toggleSidebar(false); store.ui.memberListVisible = false; }"
         >
           <UiCard class="h-full transition-colors hover:bg-muted/50">
             <UiCardHeader class="flex flex-row items-center gap-4 space-y-0 pb-2">
@@ -57,7 +57,7 @@
           :key="room.roomId"
           :to="`/chat/rooms/${room.roomId}`"
           class="block group"
-          @click="store.toggleSidebar(false)"
+          @click="() => { store.toggleSidebar(false); store.ui.memberListVisible = false; }"
         >
           <UiCard class="h-full transition-colors hover:bg-muted/50">
              <UiCardHeader class="flex flex-row items-center gap-4 space-y-0 pb-2">

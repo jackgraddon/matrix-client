@@ -150,11 +150,8 @@ const navigateToRoom = () => {
     const room = store.client?.getRoom(props.roomData.room_id);
     if (!room) return;
 
-    if (isVoiceChannel(room)) {
-        // For voice channels, we usually navigate to the room view in spaces
-        navigateTo(`/chat/spaces/${props.spaceId}/${room.roomId}`);
-    } else {
-        navigateTo(`/chat/spaces/${props.spaceId}/${room.roomId}`);
-    }
+    store.toggleSidebar(false);
+    store.ui.memberListVisible = false;
+    navigateTo(`/chat/spaces/${props.spaceId}/${room.roomId}`);
 };
 </script>
