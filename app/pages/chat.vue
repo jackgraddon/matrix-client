@@ -2,9 +2,9 @@
     <div class="flex flex-row h-full bg-neutral-200 dark:bg-background relative overflow-hidden">
         <!-- Sidebar Pane (Guild Bar + Chat Sidebar) -->
         <div
-            class="flex flex-row h-full shrink-0 transition-transform duration-300 ease-in-out z-10 w-full md:w-auto"
+            class="flex flex-row h-full shrink-0 transition-transform duration-300 ease-in-out z-10 w-full md:w-auto bg-background"
             :class="[
-                store.ui.sidebarOpen ? 'translate-x-0' : 'translate-x-[-20%] md:translate-x-0',
+                store.ui.sidebarOpen ? 'translate-x-0' : 'translate-x-[-100%] md:translate-x-0',
                 'fixed top-0 left-0 md:relative',
                 !store.ui.sidebarOpen && 'pointer-events-none md:pointer-events-auto'
             ]"
@@ -16,6 +16,7 @@
                     class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 flex items-center justify-center shrink-0 relative group"
                     :class="isLinkActive('/chat') ? 'rounded-[16px]' : ''"
                     :variant="isLinkActive('/chat') ? 'default' : 'secondary'"
+                    @click="() => { store.toggleSidebar(false); store.ui.memberListVisible = false; }"
                     as-child
                 >
                     <NuxtLink to="/chat" aria-label="Home">
@@ -32,6 +33,7 @@
                     class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 flex items-center justify-center shrink-0 relative"
                     :class="isLinkActive('/chat/dms') ? 'rounded-[16px]' : ''"
                     :variant="isLinkActive('/chat/dms') ? 'default' : 'secondary'"
+                    @click="() => { store.toggleSidebar(false); store.ui.memberListVisible = false; }"
                     as-child
                 >
                     <NuxtLink :to="store.lastVisitedRooms.dm ? `/chat/dms/${store.lastVisitedRooms.dm}` : '/chat/dms'" aria-label="Direct Messages">
@@ -48,6 +50,7 @@
                     class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 flex items-center justify-center shrink-0 relative"
                     :class="isLinkActive('/chat/rooms') ? 'rounded-[16px]' : ''"
                     :variant="isLinkActive('/chat/rooms') ? 'default' : 'secondary'"
+                    @click="() => { store.toggleSidebar(false); store.ui.memberListVisible = false; }"
                     as-child
                 >
                     <NuxtLink :to="store.lastVisitedRooms.rooms ? `/chat/rooms/${store.lastVisitedRooms.rooms}` : '/chat/rooms'" aria-label="Rooms">
@@ -69,6 +72,7 @@
                                 variant="ghost"
                                 class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 group shrink-0 relative"
                                 :class="{ 'rounded-[16px]': isLinkActive(`/chat/spaces/${server.roomId}`) }"
+                                @click="() => { store.toggleSidebar(false); store.ui.memberListVisible = false; }"
                                 as-child
                             >
                                 <NuxtLink
@@ -122,7 +126,7 @@
 
         <!-- Main Content -->
         <main
-            class="flex-1 flex-col min-w-0 min-h-0 p-2 pt-0 transition-transform duration-300 ease-in-out z-20"
+            class="flex-1 flex-col min-w-0 min-h-0 p-2 pt-0 transition-transform duration-300 ease-in-out z-20 bg-neutral-200 dark:bg-background"
             :class="[
                 store.ui.sidebarOpen ? 'translate-x-full md:translate-x-0' : (store.ui.memberListVisible ? '-translate-x-full md:translate-x-0' : 'translate-x-0')
             ]"
@@ -149,15 +153,15 @@
         
         <!-- Member List Pane -->
         <div
-            v-if="currentRoom"
-            class="flex flex-row h-full shrink-0 transition-transform duration-300 ease-in-out z-10 w-full md:w-auto"
+            v-if="currentRoom && isChatRoute"
+            class="flex flex-row h-full shrink-0 transition-transform duration-300 ease-in-out z-10 w-full md:w-auto justify-end bg-background"
             :class="[
-                store.ui.memberListVisible ? 'translate-x-0' : 'translate-x-[20%] md:translate-x-0',
-                'fixed top-0 right-0 md:relative',
+                store.ui.memberListVisible ? 'translate-x-0' : 'translate-x-full md:translate-x-0',
+                'fixed top-0 left-0 md:left-auto md:right-0 md:relative',
                 !store.ui.memberListVisible && 'pointer-events-none md:pointer-events-auto'
             ]"
         >
-            <RoomMemberList :room="(currentRoom as any)" class="h-full w-full md:w-auto" />
+            <RoomMemberList :room="(currentRoom as any)" class="h-full w-full md:w-60 bg-background" />
         </div>
     </div>
     <VerificationModal />
@@ -180,6 +184,13 @@ const isLinkActive = (to: string) => {
     return route.path.startsWith(to);
 };
 
+const isChatRoute = computed(() => {
+    const path = route.path;
+    // Check if it's a DM, standard room, or space room (not space lobby)
+    return path.startsWith('/chat/dms/') ||
+           path.startsWith('/chat/rooms/') ||
+           (path.startsWith('/chat/spaces/') && Array.isArray(route.params.id) && route.params.id.length > 1);
+});
 
 const store = useMatrixStore();
 useGameActivity(); // Initialize game detection at layout level

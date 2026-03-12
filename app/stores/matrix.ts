@@ -909,6 +909,9 @@ export const useMatrixStore = defineStore('matrix', {
 
     async toggleMemberList() {
       this.ui.memberListVisible = !this.ui.memberListVisible;
+      if (this.ui.memberListVisible) {
+        this.ui.sidebarOpen = false;
+      }
       await setPref('matrix_member_list_visible', this.ui.memberListVisible);
     },
 
@@ -949,6 +952,9 @@ export const useMatrixStore = defineStore('matrix', {
         this.ui.sidebarOpen = open;
       } else {
         this.ui.sidebarOpen = !this.ui.sidebarOpen;
+      }
+      if (this.ui.sidebarOpen) {
+        this.ui.memberListVisible = false;
       }
     },
 
