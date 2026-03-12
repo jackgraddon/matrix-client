@@ -1,22 +1,22 @@
 <template>
-    <div class="flex flex-row h-full bg-neutral-200 dark:bg-background overflow-hidden relative">
+    <div class="flex flex-row h-full bg-neutral-200 dark:bg-background relative overflow-hidden">
         <!-- Sidebar Pane (Guild Bar + Chat Sidebar) -->
         <div 
-            class="flex flex-row shrink-0 h-full transition-transform duration-300 ease-in-out will-change-transform z-20"
+            class="flex flex-row h-full shrink-0 transition-transform duration-300 ease-in-out z-10 w-full md:w-auto bg-background"
             :class="[
-                isMobile ? 'w-full fixed inset-y-0 left-0 bg-background' : 'w-auto relative',
-                isMobile && isMainContentVisible ? '-translate-x-full' : 'translate-x-0'
+                store.ui.sidebarOpen ? 'translate-x-0' : 'translate-x-[-100%] md:translate-x-0',
+                'fixed top-0 left-0 md:relative',
+                !store.ui.sidebarOpen && 'pointer-events-none md:pointer-events-auto'
             ]"
         >
             <!-- Servers Sidebar (Guild Bar) -->
-            <aside 
-                class="bg-background dark:bg-neutral-900 rounded-lg ml-2 my-2 flex flex-col items-center p-2 gap-2 shrink-0 overflow-y-auto overflow-x-hidden"
-            >
+            <aside class="bg-background dark:bg-neutral-900 rounded-lg ml-2 mb-2 flex flex-col items-center p-2 gap-2 shrink-0 overflow-y-auto overflow-x-hidden">
                 <!-- Home Button -->
                 <UiButton 
                     class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 flex items-center justify-center shrink-0 relative group" 
                     :class="isLinkActive('/chat') ? 'rounded-[16px]' : ''"
                     :variant="isLinkActive('/chat') ? 'default' : 'secondary'"
+                    @click="() => { store.ui.memberListVisible = false; }"
                     as-child
                 >
                     <NuxtLink to="/chat" aria-label="Home">
@@ -33,6 +33,7 @@
                     class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 flex items-center justify-center shrink-0 relative" 
                     :class="isLinkActive('/chat/dms') ? 'rounded-[16px]' : ''"
                     :variant="isLinkActive('/chat/dms') ? 'default' : 'secondary'"
+                    @click="() => { store.ui.memberListVisible = false; }"
                     as-child
                 >
                     <NuxtLink :to="store.lastVisitedRooms.dm ? `/chat/dms/${store.lastVisitedRooms.dm}` : '/chat/dms'" aria-label="Direct Messages">
@@ -49,6 +50,7 @@
                     class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 flex items-center justify-center shrink-0 relative" 
                     :class="isLinkActive('/chat/rooms') ? 'rounded-[16px]' : ''"
                     :variant="isLinkActive('/chat/rooms') ? 'default' : 'secondary'"
+                    @click="() => { store.ui.memberListVisible = false; }"
                     as-child
                 >
                     <NuxtLink :to="store.lastVisitedRooms.rooms ? `/chat/rooms/${store.lastVisitedRooms.rooms}` : '/chat/rooms'" aria-label="Rooms">
@@ -70,6 +72,7 @@
                                 variant="ghost" 
                                 class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 group shrink-0 relative"
                                 :class="{ 'rounded-[16px]': isLinkActive(`/chat/spaces/${server.roomId}`) }"
+                                @click="() => { store.ui.memberListVisible = false; }"
                                 as-child
                             >
                                 <NuxtLink 
@@ -118,21 +121,29 @@
             </aside>
 
             <!-- Sidebar -->
-            <ChatSidebar 
-                ref="sidebarRef"
-                class="flex-1"
-            />
+            <ChatSidebar ref="sidebarRef"/>
         </div>
 
         <!-- Main Content -->
         <main 
-            class="flex-1 flex-col min-w-0 min-h-0 p-2 pt-0 transition-transform duration-300 ease-in-out will-change-transform z-10"
+            class="flex-1 flex-col min-w-0 min-h-0 p-2 pt-0 transition-transform duration-300 ease-in-out z-20 bg-neutral-200 dark:bg-background"
             :class="[
-                isMobile ? 'w-full fixed inset-y-0 left-0 pt-[env(safe-area-inset-top,0px)]' : 'relative',
-                isMobile && !isMainContentVisible ? 'translate-x-full' : 'translate-x-0'
+                store.ui.sidebarOpen ? 'translate-x-full md:translate-x-0' : (store.ui.memberListVisible ? '-translate-x-full md:translate-x-0' : 'translate-x-0')
             ]"
         >
-            <div class="rounded-lg h-full bg-neutral-100 dark:bg-neutral-900 min-w-0 flex flex-col min-h-0 overflow-hidden">
+            <div class="rounded-lg h-full bg-neutral-100 dark:bg-neutral-900 min-w-0 flex flex-col min-h-0 overflow-hidden relative">
+                <!-- Mobile Overlays to close sidebars -->
+                <div 
+                    v-if="store.ui.sidebarOpen" 
+                    class="md:hidden absolute inset-0 z-50 bg-black/20"
+                    @click="store.toggleSidebar(false)"
+                ></div>
+                <div 
+                    v-if="store.ui.memberListVisible" 
+                    class="md:hidden absolute inset-0 z-50 bg-black/20"
+                    @click="store.toggleMemberList()"
+                ></div>
+
                 <header class="landmark-banner shrink-0">
                     <SecurityBanner />
                 </header>
@@ -140,18 +151,18 @@
             </div>
         </main>
         
-        <!-- Member List Panel -->
-        <Transition :name="isMobile ? 'slide-full' : 'slide-pane'">
-            <div 
-                v-if="store.ui.memberListVisible && currentRoom" 
-                class="overflow-hidden shrink-0 z-[60] will-change-transform"
-                :class="[
-                    isMobile ? 'fixed inset-0 pt-[env(safe-area-inset-top,0px)] bg-background' : 'mb-2 mr-2 relative'
-                ]"
-            >
-                <RoomMemberList :room="(currentRoom as any)" class="h-full" :class="isMobile ? 'w-full' : 'w-60'" />
-            </div>
-        </Transition>
+        <!-- Member List Pane -->
+        <div 
+            v-if="currentRoom && isChatRoute" 
+            class="flex flex-row h-full shrink-0 transition-transform duration-300 ease-in-out z-10 w-full md:w-auto justify-end bg-background"
+            :class="[
+                store.ui.memberListVisible ? 'translate-x-0' : 'translate-x-full md:translate-x-0',
+                'fixed top-0 left-0 md:left-auto md:right-0 md:relative',
+                !store.ui.memberListVisible && 'pointer-events-none md:pointer-events-auto'
+            ]"
+        >
+            <RoomMemberList :room="(currentRoom as any)" class="h-full w-full md:w-60 bg-background" />
+        </div>
     </div>
     <VerificationModal />
     <GlobalSearchModal :friends="friends" :rooms="rooms" />
@@ -173,42 +184,25 @@ const isLinkActive = (to: string) => {
     return route.path.startsWith(to);
 };
 
+const isChatRoute = computed(() => {
+    const path = route.path;
+    // Check if it's a DM, standard room, or space room (not space lobby)
+    return path.startsWith('/chat/dms/') || 
+           path.startsWith('/chat/rooms/') || 
+           (path.startsWith('/chat/spaces/') && Array.isArray(route.params.id) && route.params.id.length > 1);
+});
 
 const store = useMatrixStore();
 useGameActivity(); // Initialize game detection at layout level
 
 const sidebarRef = ref<any>(null);
 
-const isMobile = ref(false);
-const updateIsMobile = () => {
-    isMobile.value = window.innerWidth < 768;
-};
-
-const isSettingsPage = computed(() => route.path.startsWith('/chat/settings'));
-
 const roomId = computed(() => {
   const params = route.params.id;
   if (Array.isArray(params)) {
-    // In space routes, the last segment is the room ID if length > 1
-    // If length == 1, it's the space root (Lobby), which should be treated as main content on mobile
     return params[params.length - 1];
   }
   return params;
-});
-
-const isSpaceRoot = computed(() => {
-    return route.path.startsWith('/chat/spaces') && Array.isArray(route.params.id) && route.params.id.length === 1;
-});
-
-const isMainContentVisible = computed(() => {
-    if (roomId.value) return true;
-    if (isSettingsPage.value) return true;
-    if (isSpaceRoot.value) return true;
-    // Special case for root /chat/dms or /chat/rooms on mobile - they should only show sidebar
-    if (route.path === '/chat/dms' || route.path === '/chat/rooms') return false;
-    // Default home page (/chat) shows main content (stats/recent)
-    if (route.path === '/chat') return true;
-    return false;
 });
 
 const currentRoom = computed(() => {
@@ -297,8 +291,6 @@ const handleKeyDown = (event: KeyboardEvent) => {
 
 // 1. If client is ready on mount, set it up
 onMounted(() => {
-  updateIsMobile();
-  window.addEventListener('resize', updateIsMobile);
   window.addEventListener('keydown', handleKeyDown);
   if (store.client) {
     setupListeners();
@@ -314,7 +306,6 @@ onMounted(() => {
 
 // 3. Clean up listeners when leaving the page to prevent memory leaks
 onUnmounted(() => {
-  window.removeEventListener('resize', updateIsMobile);
   window.removeEventListener('keydown', handleKeyDown);
   if (store.client) {
     store.client.removeListener(ClientEvent.Room, updateRooms);
@@ -399,16 +390,6 @@ watch(
   max-width: 0;
   opacity: 0;
   transform: translateX(10px);
-}
-
-.slide-full-enter-active,
-.slide-full-leave-active {
-  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.slide-full-enter-from,
-.slide-full-leave-to {
-  transform: translateX(100%);
 }
 </style>
 

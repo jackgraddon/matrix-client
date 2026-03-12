@@ -18,22 +18,34 @@
 
     <!-- Room Header -->
     <header v-if="room" class="flex-none p-4 border-b border-border">
-      <div class="flex items-center justify-between">
-        <RoomHeader 
-          v-if="!isDm"
-          :name="room?.name || 'Unknown Room'"
-          :topic="roomTopic"
-          class="flex-1"
-        />
-        <UserProfile 
-          v-else
-          :avatar-url="roomAvatarUrl"
-          :name="room?.name"
-          :user-id="otherUserId"
-          :topic="roomTopic"
-          name-classes="text-lg font-semibold"
-          class="flex-1"
-        />
+      <div class="flex items-center justify-between gap-2">
+        <UiButton
+          variant="ghost"
+          size="icon-sm"
+          class="md:hidden shrink-0"
+          @click="store.toggleSidebar(true)"
+          v-if="!store.ui.sidebarOpen && !store.ui.memberListVisible"
+        >
+          <Icon name="solar:hamburger-menu-linear" class="h-6 w-6" />
+        </UiButton>
+
+        <div v-if="!store.ui.memberListVisible" class="flex-1 min-w-0">
+          <RoomHeader 
+            v-if="!isDm"
+            :name="room?.name || 'Unknown Room'"
+            :topic="roomTopic"
+            class="w-full"
+          />
+          <UserProfile 
+            v-else
+            :avatar-url="roomAvatarUrl"
+            :name="room?.name"
+            :user-id="otherUserId"
+            :topic="roomTopic"
+            name-classes="text-lg font-semibold"
+            class="w-full"
+          />
+        </div>
         <div class="flex items-center gap-2 pr-2">
           <UiButton 
             v-if="voiceStore.activeRoomId !== roomId && !otherUserId?.startsWith('@discord_')"
@@ -61,7 +73,7 @@
             <UiButton
               variant="ghost"
               size="icon-sm"
-              @click="store.toggleMemberList()"
+              @click="() => { store.toggleMemberList(); store.toggleSidebar(false); }"
               :class="{ 'bg-accent text-accent-foreground': store.ui.memberListVisible }"
               title="Toggle Member List"
               class="rounded-full"
@@ -280,11 +292,6 @@
                 <template v-if="msg.gameId && latestGameEventMap[msg.gameId] === msg.eventId && hasGameState(msg.gameId)">
                    <TicTacToe 
                      v-if="getGameTypeFromState(msg.gameId) === 'tictactoe'"
-                     :game-id="msg.gameId"
-                     :room-id="(roomId as string)"
-                   />
-                   <SlangTiles
-                     v-else-if="getGameTypeFromState(msg.gameId) === 'slangtiles'"
                      :game-id="msg.gameId"
                      :room-id="(roomId as string)"
                    />
@@ -599,9 +606,6 @@
                       <UiDropdownMenuItem @click="handleInviteToGame('chess')" class="cursor-pointer">
                         <span>Chess</span>
                       </UiDropdownMenuItem>
-                      <UiDropdownMenuItem @click="handleInviteToGame('slangtiles')" class="cursor-pointer">
-                        <span>Slanguage Tiles</span>
-                      </UiDropdownMenuItem>
                     </UiDropdownMenuSubContent>
                   </UiDropdownMenuPortal>
                 </UiDropdownMenuSub>
@@ -653,7 +657,6 @@ import GameActionBubble from './game/GameActionBubble.vue';
 import GameResultCard from './game/GameResultCard.vue';
 import TicTacToe from './game/TicTacToe.vue';
 import Chess from './game/Chess.vue';
-import SlangTiles from './game/SlangTiles.vue';
 import EmojiPicker from 'vue3-emoji-picker';
 import 'vue3-emoji-picker/css';
 import { Room as LiveKitRoom, RoomEvent as LKRoomEvent, Track as LKTrack, BaseKeyProvider as BaseE2EEKeyProvider, createKeyMaterialFromBuffer } from 'livekit-client';
@@ -915,16 +918,13 @@ function mapEvent(event: MatrixEvent): ChatMessage | null {
   const isDecryptionError = isEncrypted && !content;
   const contentSafe: any = content || {};
 
-  // For classification, use the decrypted type if available
-  const effectiveType = isEncrypted ? (contentSafe.type || type) : type;
-
-  const isMessage = effectiveType === EventType.RoomMessage;
-  const isSticker = effectiveType === 'm.sticker';
-  const isRTC = effectiveType === 'org.matrix.msc3401.call.member' || effectiveType === 'm.call.member' || effectiveType === 'm.rtc.member';
-  const isGameInvite = effectiveType === EventType.RoomMessage && contentSafe.msgtype === 'cc.jackg.ruby.game.invite';
-  const isGameAction = effectiveType === 'cc.jackg.ruby.game.action';
-  const isGameOver = effectiveType === 'cc.jackg.ruby.game.over';
-  const isGameState = effectiveType === 'cc.jackg.ruby.game.state';
+  const isMessage = type === EventType.RoomMessage;
+  const isSticker = type === 'm.sticker';
+  const isRTC = type === 'org.matrix.msc3401.call.member' || type === 'm.call.member' || type === 'm.rtc.member';
+  const isGameInvite = type === EventType.RoomMessage && contentSafe.msgtype === 'cc.jackg.ruby.game.invite';
+  const isGameAction = type === 'cc.jackg.ruby.game.action';
+  const isGameOver = type === 'cc.jackg.ruby.game.over';
+  const isGameState = type === 'cc.jackg.ruby.game.state';
 
   // We allow these events through the first filter so they can be processed, 
   // but we might still return null if we don't want them in the visual timeline.
@@ -1237,55 +1237,24 @@ function refreshMessagesFromWindow() {
 
   const events = timelineWindow.value.getEvents();
   const newMessages: ChatMessage[] = [];
-  let foundNewGameState = false;
 
   for (const event of events) {
-    const isEncrypted = event.isEncrypted();
-    const content = isEncrypted ? event.getClearContent() : event.getContent();
-    const type = isEncrypted ? (content?.type || event.getType()) : event.getType();
-    const eventId = event.getId();
-
-    // 1. Discovery of game states to back-fill cache
-    if (type === 'cc.jackg.ruby.game.state' && content?.game_id) {
-      const existing = store.gameStates[content.game_id];
-      // Only update if we don't have it or this one is newer
-      if (!existing || event.getTs() >= (existing.origin_server_ts || 0)) {
-        store.gameStates[content.game_id] = {
-          ...content,
-          origin_server_ts: event.getTs() // Track timestamp for freshness
-        };
-        foundNewGameState = true;
-      }
-    }
-
-    // 2. Handle decryption listeners
-    if (isEncrypted && !content) {
+    if (event.isEncrypted() && !event.getClearContent()) {
+      const eventId = event.getId();
       if (eventId && !decryptionListenerIds.has(eventId)) {
         decryptionListenerIds.add(eventId);
         event.once(MatrixEventEvent.Decrypted, () => {
           decryptionListenerIds.delete(eventId!);
           refreshMessagesFromWindow();
+          // Force game re-evaluation in case this was a game event
+          store.gameTrigger++;
         });
       }
     }
-
-    // 3. Map to UI message
     const mapped = mapEvent(event);
     if (mapped) {
       newMessages.push(mapped);
-
-      // 4. Proactive state discovery for game bubbles
-      if ((mapped.isGameInvite || mapped.isGameAction || mapped.isGameOver) && mapped.gameId) {
-        if (!store.gameStates[mapped.gameId]) {
-           const { findGameState } = useMatrixGame(roomId.value!);
-           findGameState(mapped.gameId); // Scans timeline AND history, backfills store
-        }
-      }
     }
-  }
-
-  if (foundNewGameState) {
-    store.gameTrigger++;
   }
 
   messages.value = newMessages;
@@ -1685,8 +1654,20 @@ async function initRoom() {
     }
 
     // Now that everything is loaded (initial + proactive), update the UI once
-    // refreshMessagesFromWindow now also handles game state extraction
     refreshMessagesFromWindow();
+
+    // Populate gameStates cache from initial timeline events
+    const gameStateEvents = timelineWindow.value.getEvents();
+    for (const ev of gameStateEvents) {
+      const isEncrypted = ev.getType() === 'm.room.encrypted';
+      const content = isEncrypted ? ev.getClearContent() : ev.getContent();
+      const type = isEncrypted ? content?.type : ev.getType();
+
+      if (type === 'cc.jackg.ruby.game.state' && content?.game_id) {
+        store.gameStates[content.game_id] = content;
+      }
+    }
+    store.gameTrigger++;
 
   } catch (e) {
     console.error("Failed to load timeline window", e);

@@ -1,5 +1,5 @@
 <template>
-    <aside class="flex h-full flex-col w-full md:w-[250px] shrink-0 min-w-0">
+    <aside class="flex h-full flex-col w-[250px] shrink-0">
         <header class="h-16 flex items-center px-4 justify-between">
             <h2 class="text-lg font-semibold flex items-center gap-2">
                 <Icon name="solar:chat-round-dots-bold" class="h-5 w-5" />
@@ -10,7 +10,7 @@
                 <Icon name="solar:settings-minimalistic-bold-duotone"/>
             </UiButton>
         </header>
-        <nav class="grow flex-1 flex flex-col p-2 gap-2 overflow-y-auto min-w-0">
+        <nav class="grow flex-1 flex flex-col p-2 gap-2 overflow-y-auto">
             <div class="flex flex-col gap-2 flex-1">
                 <!-- Sidebar Home actions -->
                 <template v-if="isLinkActive('/chat')">
@@ -62,7 +62,15 @@
                         role="button"
                         class="inline-flex items-center justify-start px-2 h-9 w-full rounded-md text-sm font-medium transition-colors cursor-pointer hover:bg-accent/50 group relative"
                         :class="[(isLinkActive(`/chat/dms/${friend.roomId}`) || voiceStore.activeRoomId === friend.roomId) ? 'bg-secondary text-secondary-foreground' : '']"
-                        @click="isVoiceChannel(store.client?.getRoom(friend.roomId)) ? voiceStore.joinVoiceRoom(store.client!.getRoom(friend.roomId)!) : (isLinkActive(`/chat/dms/${friend.roomId}`) ? null : navigateTo(`/chat/dms/${friend.roomId}`))"
+                        @click="() => {
+                            if (isVoiceChannel(store.client?.getRoom(friend.roomId))) {
+                                voiceStore.joinVoiceRoom(store.client!.getRoom(friend.roomId)!);
+                            } else {
+                                navigateTo(`/chat/dms/${friend.roomId}`);
+                            }
+                            store.toggleSidebar(false);
+                            store.ui.memberListVisible = false;
+                        }"
                     >
                         <MatrixAvatar
                             :mxc-url="friend.avatarUrl"
@@ -109,7 +117,15 @@
                         role="button"
                         class="inline-flex items-center justify-start px-2 h-9 w-full rounded-md text-sm font-medium transition-colors cursor-pointer hover:bg-accent/50 group relative"
                         :class="[(isLinkActive(`/chat/rooms/${room.roomId}`) || voiceStore.activeRoomId === room.roomId) ? 'bg-secondary text-secondary-foreground' : '']"
-                        @click="isVoiceChannel(store.client?.getRoom(room.roomId)) ? voiceStore.joinVoiceRoom(store.client!.getRoom(room.roomId)!) : (isLinkActive(`/chat/rooms/${room.roomId}`) ? null : navigateTo(`/chat/rooms/${room.roomId}`))"
+                        @click="() => {
+                            if (isVoiceChannel(store.client?.getRoom(room.roomId))) {
+                                voiceStore.joinVoiceRoom(store.client!.getRoom(room.roomId)!);
+                            } else {
+                                navigateTo(`/chat/rooms/${room.roomId}`);
+                            }
+                            store.toggleSidebar(false);
+                            store.ui.memberListVisible = false;
+                        }"
                     >
                         <MatrixAvatar
                             :mxc-url="room.avatarUrl"
@@ -147,7 +163,11 @@
                             role="button"
                             class="inline-flex items-center justify-start px-2 h-9 w-full rounded-md text-sm font-medium transition-colors cursor-pointer hover:bg-accent/50"
                             :class="[(page.path === '/chat/settings' ? route.path === '/chat/settings' : isLinkActive(page.path)) ? 'bg-secondary text-secondary-foreground' : '']"
-                            @click="(page.path === '/chat/settings' ? route.path === '/chat/settings' : isLinkActive(page.path)) ? null : navigateTo(page.path)"
+                            @click="() => {
+                                navigateTo(page.path);
+                                store.toggleSidebar(false);
+                                store.ui.memberListVisible = false;
+                            }"
                         >
                             <Icon :name="page.icon" class="h-4 w-4 mr-2 text-muted-foreground" />
                             <span class="truncate">{{ page.label }}</span>
@@ -160,11 +180,11 @@
                     <!-- Return to Lobby Button -->
                     <UiButton 
                         :variant="isLobby ? 'default' : 'secondary'" 
-                        @click="navigateTo(`/chat/spaces/${activeSpaceId}`)" 
-                        class="w-full mb-2 justify-start gap-2 shrink-0 min-w-0"
+                        @click="() => { navigateTo(`/chat/spaces/${activeSpaceId}`); store.toggleSidebar(false); store.ui.memberListVisible = false; }" 
+                        class="w-full mb-2 justify-start gap-2"
                     >
-                        <Icon name="solar:home-2-bold" class="h-4 w-4 shrink-0" />
-                        <span class="truncate">Space Lobby</span>
+                        <Icon name="solar:home-2-bold" class="h-4 w-4" />
+                        Space Lobby
                     </UiButton>
 
                     <!-- Skeleton Loader for Background Sync -->
@@ -458,6 +478,8 @@ const navigateToInvite = (room: Room) => {
   const myMember = room.getMember(myUserId!);
   const isDirect = myMember?.events.member?.getContent().is_direct;
   const path = isDirect ? `/chat/dms/${room.roomId}` : `/chat/rooms/${room.roomId}`;
+  store.toggleSidebar(false);
+  store.ui.memberListVisible = false;
   navigateTo(path);
 };
 

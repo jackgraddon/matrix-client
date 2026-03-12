@@ -5,14 +5,15 @@
         <div class="absolute inset-0 bg-grid-white/[0.05] [mask-image:linear-gradient(0deg,white,rgba(255,255,255,0.6))]" />
         <div class="relative h-full max-w-5xl mx-auto px-8 flex items-end pb-6 gap-6">
             <UiButton
-                v-if="isMobile"
                 variant="ghost"
                 size="icon-sm"
-                class="mb-2 shrink-0 bg-background/50 hover:bg-background/80"
-                @click="navigateTo('/chat')"
+                class="md:hidden shrink-0 absolute top-4 left-4 z-10"
+                @click="() => { store.toggleSidebar(true); store.ui.memberListVisible = false; }"
+                v-if="!store.ui.sidebarOpen"
             >
-                <Icon name="solar:alt-arrow-left-linear" class="h-6 w-6" />
+                <Icon name="solar:hamburger-menu-linear" class="h-6 w-6" />
             </UiButton>
+
             <MatrixAvatar 
                 :mxc-url="space.getMxcAvatarUrl()" 
                 :name="space.name" 
@@ -168,7 +169,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted } from 'vue';
+import { computed } from 'vue';
 import { useMatrixStore } from '~/stores/matrix';
 import { useVoiceStore } from '~/stores/voice';
 import { isVoiceChannel } from '~/utils/room';
@@ -180,20 +181,6 @@ const props = defineProps<{
 
 const store = useMatrixStore();
 const voiceStore = useVoiceStore();
-
-const isMobile = ref(false);
-const updateIsMobile = () => {
-    isMobile.value = window.innerWidth < 768;
-};
-
-onMounted(() => {
-    updateIsMobile();
-    window.addEventListener('resize', updateIsMobile);
-});
-
-onUnmounted(() => {
-    window.removeEventListener('resize', updateIsMobile);
-});
 
 const isHierarchyCollapsed = ref(true);
 

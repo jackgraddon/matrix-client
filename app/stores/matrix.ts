@@ -46,6 +46,7 @@ export interface UIState {
     categories: Record<string, string[]>; // Order of categories per spaceId
     rooms: Record<string, string[]>; // Order of rooms per categoryId
   };
+  sidebarOpen: boolean;
 }
 
 // Enhanced HTML for OAuth Loopback Response
@@ -144,6 +145,7 @@ export const useMatrixStore = defineStore('matrix', {
     activeSas: null as ShowSasCallbacks | null,
     isVerificationCompleted: false,
     verificationPhase: null as VerificationPhase | null,
+    qrCodeData: null as string | null,
     verificationModalOpen: false,
     globalSearchModalOpen: false,
     // Secret Storage / Backup Code Verification
@@ -202,6 +204,7 @@ export const useMatrixStore = defineStore('matrix', {
       showEmptyRooms: false,
       composerStates: {},
       uiOrder: { rootSpaces: [], categories: {}, rooms: {} },
+      sidebarOpen: false,
     } as UIState,
   }),
 
@@ -906,6 +909,9 @@ export const useMatrixStore = defineStore('matrix', {
 
     async toggleMemberList() {
       this.ui.memberListVisible = !this.ui.memberListVisible;
+      if (this.ui.memberListVisible) {
+        this.ui.sidebarOpen = false;
+      }
       await setPref('matrix_member_list_visible', this.ui.memberListVisible);
     },
 
@@ -939,6 +945,17 @@ export const useMatrixStore = defineStore('matrix', {
     async toggleShowEmptyRooms() {
       this.ui.showEmptyRooms = !this.ui.showEmptyRooms;
       await setPref('matrix_show_empty_rooms', this.ui.showEmptyRooms);
+    },
+
+    toggleSidebar(open?: boolean) {
+      if (typeof open === 'boolean') {
+        this.ui.sidebarOpen = open;
+      } else {
+        this.ui.sidebarOpen = !this.ui.sidebarOpen;
+      }
+      if (this.ui.sidebarOpen) {
+        this.ui.memberListVisible = false;
+      }
     },
 
     cancelLogin(errorReason?: string | null) {
@@ -2011,6 +2028,14 @@ export const useMatrixStore = defineStore('matrix', {
           }
 
           if (phase === VerificationPhase.Ready) {
+            // Check for QR code data
+            const qrData = (request as any).qrCodeData;
+            if (qrData) {
+              this.qrCodeData = qrData.getEncodedData();
+            } else {
+              this.qrCodeData = null;
+            }
+
             // Initiator auto-starts SAS
             if (this.isVerificationInitiatedByMe && (methods.includes('m.sas.v1') || methods.length === 0) && !request.verifier && !this.activeSas) {
               console.log('[Verification] Auto-starting SAS...');
@@ -2401,6 +2426,7 @@ export const useMatrixStore = defineStore('matrix', {
       this.isVerificationInitiatedByMe = false;
       this.isRequestingVerification = false;
       this.activeSas = null;
+      this.qrCodeData = null;
       this.isVerificationCompleted = false;
       this.verificationPhase = null;
       this.verificationModalOpen = false;

@@ -1,15 +1,14 @@
 <template>
-  <aside class="w-60 flex flex-col shrink-0 h-full relative">
-    <div class="p-4 border-b border-border/50 flex items-center gap-4">
+  <aside class="w-full md:w-60 flex flex-col shrink-0 h-full relative bg-neutral-100 dark:bg-neutral-900 border-l border-border/50 shadow-xl md:shadow-none">
+    <div class="p-4 border-b border-border/50 flex items-center gap-2">
       <UiButton
-        v-if="isMobile"
         variant="ghost"
         size="icon-sm"
+        class="md:hidden shrink-0"
         @click="store.toggleMemberList()"
       >
         <Icon name="solar:alt-arrow-left-linear" class="h-6 w-6" />
       </UiButton>
-
       <h3 class="text-sm font-bold flex items-center gap-2">
         <Icon 
           name="solar:users-group-rounded-bold" 
@@ -99,11 +98,6 @@ const props = defineProps<{ room: Room }>();
 const store = useMatrixStore();
 const refreshKey = ref(0);
 
-const isMobile = ref(false);
-const updateIsMobile = () => {
-  isMobile.value = window.innerWidth < 768;
-};
-
 const isEncrypted = computed(() => {
   if (!props.room || !store.client) return false;
   return store.client.isRoomEncrypted(props.room.roomId);
@@ -181,8 +175,6 @@ const onRoomMemberEvent = () => {
 };
 
 onMounted(() => {
-  updateIsMobile();
-  window.addEventListener('resize', updateIsMobile);
   if (store.client && props.room) {
     props.room.on('RoomMember.name' as any, onRoomMemberEvent);
     props.room.on('RoomMember.membership' as any, onRoomMemberEvent);
@@ -191,7 +183,6 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-  window.removeEventListener('resize', updateIsMobile);
   if (store.client && props.room) {
     props.room.removeListener('RoomMember.name' as any, onRoomMemberEvent);
     props.room.removeListener('RoomMember.membership' as any, onRoomMemberEvent);

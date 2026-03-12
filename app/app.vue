@@ -4,11 +4,15 @@
   </div> -->
   <GlobalContextMenu>
     <CustomTitlebar />
-    <div class="pt-[30px] h-screen w-screen transition-colors overflow-hidden">
+    <div 
+      class="h-screen w-screen transition-colors overflow-hidden"
+      :class="{ 'pt-[30px]': isTauri }"
+    >
       <!-- Sync Progress Bar -->
       <div 
         v-if="!useMatrixStore().isFullySynced && useMatrixStore().isAuthenticated" 
-        class="fixed top-[30px] left-0 right-0 h-[1.5px] z-[100] bg-muted overflow-hidden pointer-events-none"
+        class="fixed left-0 right-0 h-[1.5px] z-[100] bg-muted overflow-hidden pointer-events-none"
+        :style="{ top: isTauri ? '30px' : '0' }"
       >
         <div class="h-full bg-accent animate-sync-progress origin-left w-full"></div>
       </div>
@@ -25,13 +29,13 @@
 import { Toaster } from '@/components/ui/sonner';
 
 const colorMode = useColorMode();
+const isTauri = ref(import.meta.client && !!(window as any).__TAURI_INTERNALS__);
 
 onMounted(async () => {
-  console.log("[App] onMounted started. isTauri:", !!(window as any).__TAURI_INTERNALS__);
+  console.log("[App] onMounted started. isTauri:", isTauri.value);
   const store = useMatrixStore();
-  const isTauri = !!(window as any).__TAURI_INTERNALS__;
 
-  if (isTauri) {
+  if (isTauri.value) {
     const { emit, listen } = await import('@tauri-apps/api/event');
     
     // Console streaming is now handled by the 00-console.client.ts plugin for earlier capture.
