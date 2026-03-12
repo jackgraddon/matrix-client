@@ -281,6 +281,7 @@ async function challengeMove() {
   await updateGameState(props.gameId, {
     ...state.value,
     status: 'challenged',
+    challenger_id: myUserId,
     challenge_votes: { valid: [], invalid: [] }
   });
 
@@ -319,13 +320,13 @@ async function resolveChallenge(accepted: boolean) {
     await updateGameState(props.gameId, {
       ...state.value,
       status: 'active',
+      challenger_id: undefined,
       challenge_votes: undefined
     });
     await sendGameAction(props.gameId, { action: 'resolve_challenge', result: 'accepted', player: myUserId });
   } else {
     // Reject move, revert to previous state.
-    // In 'challenged' state, current_turn is already the person who challenged.
-    // By reverting board/racks/scores but NOT current_turn, the active player effectively loses their turn.
+    // We want to give the turn back to the person who played the illegal word.
     const prevState = lastMove.value?.prevState;
     if (!prevState) {
       toast.error('Cannot revert: Previous state missing');
@@ -339,6 +340,8 @@ async function resolveChallenge(accepted: boolean) {
       racks: prevState.racks,
       scores: prevState.scores,
       bag: prevState.bag,
+      current_turn: prevState.current_turn, // Revert turn to the original player
+      challenger_id: undefined,
       challenge_votes: undefined,
       last_move: { type: 'revert', player: myUserId, timestamp: Date.now() }
     });
@@ -470,7 +473,7 @@ const opponentScore = computed(() => {
 
       <div class="w-full h-px bg-border" />
 
-      <div class="flex flex-col gap-3 w-full">
+      <div v-if="state.challenger_id === myUserId" class="flex flex-col gap-3 w-full">
         <span class="text-[10px] font-bold uppercase tracking-widest text-muted-foreground text-center">Final Resolution</span>
         <div class="flex gap-2">
           <UiButton
@@ -490,6 +493,10 @@ const opponentScore = computed(() => {
             Reject Move
           </UiButton>
         </div>
+      </div>
+      <div v-else class="flex flex-col gap-1 w-full text-center">
+        <span class="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Waiting for Challenger</span>
+        <p class="text-[10px] text-muted-foreground">Only the person who challenged can finalize the result.</p>
       </div>
     </div>
 
