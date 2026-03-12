@@ -35,7 +35,7 @@ onMounted(async () => {
   console.log("[App] onMounted started. isTauri:", isTauri.value);
   const store = useMatrixStore();
 
-  if (isTauri) {
+  if (isTauri.value) {
     const { emit, listen } = await import('@tauri-apps/api/event');
     
     // Console streaming is now handled by the 00-console.client.ts plugin for earlier capture.
