@@ -329,6 +329,7 @@ const mapRoom = (room: Room): MappedRoom => {
 };
 
 const isEmptyRoom = (room: Room): boolean => {
+  if (room.getMyMembership() === 'invite') return false;
   // If lazy loading is on, getJoinedMembers() might return 0 if members aren't fetched yet.
   // Instead, use getJoinedMemberCount() which is often more accurate/immediate from the sync state.
   return (room.getJoinedMemberCount?.() ?? room.getJoinedMembers().length) <= 1;

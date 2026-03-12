@@ -218,17 +218,17 @@ export const useMatrixStore = defineStore('matrix', {
       if (!state.client) return 0;
       return state.client.getVisibleRooms().filter(r => r.getMyMembership() === 'invite').length;
     },
-    totalDmUnreadCount: (state) => {
-      state.unreadTrigger; // trigger reactivity
-      if (!state.client) return 0;
-      const { directMessages } = state.hierarchy;
-      return directMessages.reduce((sum, room) => sum + (room.getUnreadNotificationCount(state.unreadCountType) || 0), 0);
+    totalDmUnreadCount() {
+      this.unreadTrigger; // trigger reactivity
+      if (!this.client) return 0;
+      const { directMessages } = this.hierarchy;
+      return directMessages.reduce((sum, room) => sum + (room.getUnreadNotificationCount(this.unreadCountType) || 0), 0);
     },
-    totalOrphanRoomUnreadCount: (state) => {
-      state.unreadTrigger; // trigger reactivity
-      if (!state.client) return 0;
-      const { orphanRooms } = state.hierarchy;
-      return orphanRooms.reduce((sum, room) => sum + (room.getUnreadNotificationCount(state.unreadCountType) || 0), 0);
+    totalOrphanRoomUnreadCount() {
+      this.unreadTrigger; // trigger reactivity
+      if (!this.client) return 0;
+      const { orphanRooms } = this.hierarchy;
+      return orphanRooms.reduce((sum, room) => sum + (room.getUnreadNotificationCount(this.unreadCountType) || 0), 0);
     },
     getSpaceUnreadCount: (state) => (spaceId: string): number => {
       state.unreadTrigger; // trigger reactivity
@@ -249,8 +249,11 @@ export const useMatrixStore = defineStore('matrix', {
         if (room.isSpaceRoom()) {
           const children = room.currentState.getStateEvents('m.space.child');
           children.forEach(ev => {
-            const childId = ev.getStateKey();
-            if (childId) queue.push(childId);
+            const content = ev.getContent();
+            if (content && Array.isArray(content.via) && content.via.length > 0) {
+              const childId = ev.getStateKey();
+              if (childId) queue.push(childId);
+            }
           });
         } else {
           roomIds.add(currentId);
@@ -260,7 +263,9 @@ export const useMatrixStore = defineStore('matrix', {
       let total = 0;
       roomIds.forEach(id => {
         const room = state.client?.getRoom(id);
-        total += room?.getUnreadNotificationCount(state.unreadCountType) || 0;
+        if (room && (room.getMyMembership() === 'join' || room.getMyMembership() === 'invite')) {
+          total += room.getUnreadNotificationCount(state.unreadCountType) || 0;
+        }
       });
       return total;
     },
@@ -342,7 +347,10 @@ export const useMatrixStore = defineStore('matrix', {
 
       if (!state.client) return { rootSpaces: [], directMessages: [], orphanRooms: [] };
 
-      const allRooms = state.client.getVisibleRooms();
+      const allRooms = state.client.getVisibleRooms().filter(room => {
+        const membership = room.getMyMembership();
+        return membership === 'join' || membership === 'invite';
+      });
       const spaces: sdk.Room[] = [];
       const normalRooms: sdk.Room[] = [];
 
@@ -2770,10 +2778,25 @@ export const useMatrixStore = defineStore('matrix', {
       if (!this.client) return;
       try {
         await this.client.leave(roomId);
+        await this.client.forget(roomId);
         toast.success('Invite declined');
+        this.hierarchyTrigger++;
       } catch (err: any) {
         console.error('Failed to decline invite:', err);
         toast.error('Failed to decline invite', { description: err.message });
+      }
+    },
+
+    async leaveRoom(roomId: string) {
+      if (!this.client) return;
+      try {
+        await this.client.leave(roomId);
+        await this.client.forget(roomId);
+        toast.success('Left room');
+        this.hierarchyTrigger++;
+      } catch (err: any) {
+        console.error('Failed to leave room:', err);
+        toast.error('Failed to leave room', { description: err.message });
       }
     },
 
