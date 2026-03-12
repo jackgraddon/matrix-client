@@ -1,4 +1,4 @@
-import { EventType } from 'matrix-js-sdk'
+import { EventType, MatrixEvent, Direction } from 'matrix-js-sdk'
 import type { TimelineEvents } from 'matrix-js-sdk'
 import { useMatrixStore } from '~/stores/matrix'
 
@@ -45,30 +45,81 @@ export function useMatrixGame(roomId: string) {
     } as any)
   }
 
-  // Read current game state (Scan live timeline backwards for the latest state event)
+  // Read current game state (Scan timeline for the latest state event)
   function getGameState(gameId: string) {
-    if (!matrixClient) return store.gameStates[gameId] || null
+    if (store.gameStates[gameId]) return store.gameStates[gameId]
+    if (!matrixClient) return null
     const room = matrixClient.getRoom(roomId)
     if (!room) return null
 
-    // 2. Fallback: Search live timeline backwards for the latest state event
-    const events = room.getLiveTimeline().getEvents()
-    for (let i = events.length - 1; i >= 0; i--) {
-      const ev = events[i]
-      const isEncrypted = ev?.getType() === 'm.room.encrypted'
-      const content = isEncrypted ? ev.getClearContent() : ev?.getContent()
-      const type = isEncrypted ? content?.type : ev?.getType()
+    // Fallback: Search all available timeline sets for the latest state event
+    const timelineSets = [room.getUnfilteredTimelineSet()]
+    for (const set of timelineSets) {
+      const events = set.getLiveTimeline().getEvents()
+      for (let i = events.length - 1; i >= 0; i--) {
+        const ev = events[i]
+        const isEncrypted = ev?.getType() === 'm.room.encrypted'
+        const content = isEncrypted ? ev.getClearContent() : ev?.getContent()
+        const type = isEncrypted ? content?.type : ev?.getType()
 
-      if (type === 'cc.jackg.ruby.game.state' && content?.game_id === gameId) {
-        // Back-fill the store cache
-        store.gameStates[gameId] = content
-        return content
+        if (type === 'cc.jackg.ruby.game.state' && content?.game_id === gameId) {
+          store.gameStates[gameId] = content
+          store.gameTrigger++
+          return content
+        }
       }
     }
 
-    // 3. Fallback to store cache if scan found nothing (prevents interactivity lock)
-    return store.gameStates[gameId] || null
+    return null
   }
 
-  return { inviteToGame, updateGameState, sendGameAction, getGameState }
+  // Deep search for game state in room history (paginated API call)
+  async function findGameState(gameId: string) {
+    if (store.gameStates[gameId]) return store.gameStates[gameId]
+    if (!matrixClient) return null
+
+    // 1. Try local timeline scan first
+    let state = getGameState(gameId)
+    if (state) return state
+
+    // 2. Search room history via API
+    try {
+      // Filter for both state events and encrypted events (which might be states)
+      const filter = { types: ['cc.jackg.ruby.game.state', 'm.room.encrypted'] }
+      let from: string | undefined = undefined
+
+      // Search up to 10 pages of 50 events
+      for (let i = 0; i < 10; i++) {
+        const response: any = await matrixClient.createMessagesRequest(roomId, from, 50, Direction.Backward, filter)
+        if (!response.chunk?.length) break
+
+        for (const eventData of response.chunk) {
+          const event = new MatrixEvent(eventData)
+          
+          if (event.getType() === 'm.room.encrypted' && matrixClient.getCrypto()) {
+            await matrixClient.decryptEventIfNeeded(event)
+          }
+
+          const content = event.isEncrypted() ? event.getClearContent() : event.getContent()
+          const type = event.isEncrypted() ? content?.type : event.getType()
+
+          if (type === 'cc.jackg.ruby.game.state' && content?.game_id === gameId) {
+            console.log(`[GameGame] Found state for ${gameId} in history`)
+            store.gameStates[gameId] = content
+            store.gameTrigger++
+            return content
+          }
+        }
+        
+        if (!response.end) break
+        from = response.end
+      }
+    } catch (e) {
+      console.warn(`[GameGame] Failed to deep-search for game state ${gameId}:`, e)
+    }
+
+    return null
+  }
+
+  return { inviteToGame, updateGameState, sendGameAction, getGameState, findGameState }
 }

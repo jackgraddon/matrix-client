@@ -1,5 +1,5 @@
 <template>
-    <aside class="flex h-full flex-col w-[250px] shrink-0">
+    <aside class="flex h-full flex-col w-full md:w-[250px] shrink-0 min-w-0">
         <header class="h-16 flex items-center px-4 justify-between">
             <h2 class="text-lg font-semibold flex items-center gap-2">
                 <Icon name="solar:chat-round-dots-bold" class="h-5 w-5" />
@@ -10,7 +10,7 @@
                 <Icon name="solar:settings-minimalistic-bold-duotone"/>
             </UiButton>
         </header>
-        <nav class="grow flex-1 flex flex-col p-2 gap-2 overflow-y-auto">
+        <nav class="grow flex-1 flex flex-col p-2 gap-2 overflow-y-auto min-w-0">
             <div class="flex flex-col gap-2 flex-1">
                 <!-- Sidebar Home actions -->
                 <template v-if="isLinkActive('/chat')">
@@ -161,10 +161,10 @@
                     <UiButton 
                         :variant="isLobby ? 'default' : 'secondary'" 
                         @click="navigateTo(`/chat/spaces/${activeSpaceId}`)" 
-                        class="w-full mb-2 justify-start gap-2"
+                        class="w-full mb-2 justify-start gap-2 shrink-0 min-w-0"
                     >
-                        <Icon name="solar:home-2-bold" class="h-4 w-4" />
-                        Space Lobby
+                        <Icon name="solar:home-2-bold" class="h-4 w-4 shrink-0" />
+                        <span class="truncate">Space Lobby</span>
                     </UiButton>
 
                     <!-- Skeleton Loader for Background Sync -->
@@ -186,7 +186,7 @@
                                 <Icon name="solar:check-circle-bold" class="h-4 w-4 text-green-500" />
                             </UiButton>
                         </div>
-                        <draggable v-model="draggableCategories" :animation="200" ghost-class="opacity-30" :force-fallback="true" :fallback-on-body="true" class="flex flex-col gap-1" chosen-class="drag-chosen">
+                        <draggable v-model="draggableCategories" :animation="200" ghost-class="opacity-30" :force-fallback="true" class="flex flex-col gap-1" chosen-class="drag-chosen">
                             <div 
                                 v-for="category in draggableCategories" 
                                 :key="category.id"
