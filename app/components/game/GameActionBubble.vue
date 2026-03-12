@@ -58,8 +58,12 @@ const actionText = computed(() => {
     return `${senderName.value} challenged the last move!`;
   }
   if (content.value.action === 'resolve_challenge') {
-    const result = content.value.result === 'accepted' ? 'accepted' : 'rejected';
-    return `${senderName.value} resolved the challenge: move was ${result}`;
+    const result = content.value.result === 'accepted' ? 'ACCEPTED' : 'REJECTED';
+    return `${senderName.value} resolved the challenge: Move was ${result}`;
+  }
+
+  if (content.value.type === 'revert') {
+     return `${senderName.value} reverted the illegal move ('${content.value.words?.filter((w: string) => w !== 'BINGO!')?.join(', ')}')`;
   }
 
   return `${senderName.value} action: ${content.value.action}`;

@@ -1277,8 +1277,8 @@ function refreshMessagesFromWindow() {
       // 4. Proactive state discovery for game bubbles
       if ((mapped.isGameInvite || mapped.isGameAction || mapped.isGameOver) && mapped.gameId) {
         if (!store.gameStates[mapped.gameId]) {
-           const { getGameState } = useMatrixGame(roomId.value!);
-           getGameState(mapped.gameId); // Scans timeline and backfills store
+           const { findGameState } = useMatrixGame(roomId.value!);
+           findGameState(mapped.gameId); // Scans timeline AND history, backfills store
         }
       }
     }

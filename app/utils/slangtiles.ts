@@ -137,7 +137,7 @@ export function validatePlacement(
 export function calculateScore(
   placed: PlacedTile[],
   board: (Tile | null)[][]
-): { total: number; words: { word: string; score: number }[] } {
+): { total: number; words: { word: string; score: number; isBingo?: boolean }[] } {
   const result = { total: 0, words: [] as { word: string; score: number }[] };
 
   // Temporarily apply placed tiles to board for word detection
@@ -209,7 +209,11 @@ export function calculateScore(
   result.total = result.words.reduce((sum, w) => sum + w.score, 0);
 
   // Bingo
-  if (placed.length === 7) result.total += 50;
+  if (placed.length === 7) {
+    result.total += 50;
+    // For feedback, add a virtual "word" for the bingo bonus
+    result.words.push({ word: 'BINGO!', score: 50, isBingo: true });
+  }
 
   return result;
 }

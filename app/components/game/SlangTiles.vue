@@ -13,7 +13,13 @@ const { sendGameAction, getGameState, updateGameState } = useMatrixGame(props.ro
 // Re-evaluate whenever gameTrigger changes in store
 const state = computed(() => {
   store.gameTrigger;
-  return getGameState(props.gameId);
+  const s = getGameState(props.gameId);
+  if (!s) {
+    // Attempt find if get failed (handles cold load)
+    const { findGameState } = useMatrixGame(props.roomId);
+    findGameState(props.gameId);
+  }
+  return s;
 });
 
 const myUserId = store.client?.getUserId();
@@ -35,6 +41,8 @@ const selectedRackIndex = ref<number | null>(null);
 
 const isZoomed = ref(false);
 const showBlankModal = ref(false);
+const showSwapModal = ref(false);
+const swapSelection = ref<number[]>([]); // indices in myRack
 const pendingBlankTile = ref<{ r: number; c: number; rackIndex: number } | null>(null);
 
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
@@ -185,7 +193,7 @@ async function playMove() {
     newScores[opponentId!] -= opponentPenalty;
   }
 
-  await updateGameState(props.gameId, {
+  const moveData = {
     ...state.value,
     board: newBoard,
     racks: newRacks,
@@ -201,7 +209,9 @@ async function playMove() {
       timestamp: Date.now(),
       prevState
     }
-  });
+  };
+
+  await updateGameState(props.gameId, moveData);
 
   await sendGameAction(props.gameId, {
     action: 'play',
@@ -209,6 +219,17 @@ async function playMove() {
     player: myUserId,
     words: formedWords.map(w => w.word)
   });
+
+  // If game is won, send game over event
+  if (newStatus === 'won') {
+    await store.client?.sendEvent(props.roomId, 'cc.jackg.ruby.game.over', {
+      game_id: props.gameId,
+      status: 'won',
+      winner: myUserId,
+      game_type: 'slangtiles',
+      scores: newScores
+    });
+  }
 
   placedTiles.value = [];
 }
@@ -227,25 +248,16 @@ async function passTurn() {
 }
 
 async function swapTiles() {
-  if (!isMyTurn.value || myRack.value.length === 0) return;
-
-  const toSwap = prompt('Enter letters to swap (e.g. ABC):')?.toUpperCase();
-  if (!toSwap) return;
+  if (!isMyTurn.value || swapSelection.value.length === 0) return;
 
   const newRack = [...myRack.value];
   const newBag = [...bag.value];
-  let swappedCount = 0;
+  const indices = [...swapSelection.value].sort((a, b) => b - a); // Sort descending to splice without shifting indices
 
-  for (const char of toSwap) {
-    const idx = newRack.indexOf(char);
-    if (idx !== -1) {
-      newRack.splice(idx, 1);
-      newBag.push(char);
-      swappedCount++;
-    }
+  for (const idx of indices) {
+    const char = newRack.splice(idx, 1)[0];
+    newBag.push(char);
   }
-
-  if (swappedCount === 0) return;
 
   const shuffledBag = shuffle(newBag);
   while (newRack.length < 7 && shuffledBag.length > 0) {
@@ -262,10 +274,23 @@ async function swapTiles() {
     racks: newRacks,
     bag: shuffledBag,
     current_turn: opponentId,
-    last_move: { type: 'swap', player: myUserId, count: swappedCount, timestamp: Date.now() }
+    last_move: { type: 'swap', player: myUserId, count: swapSelection.value.length, timestamp: Date.now() }
   });
 
-  await sendGameAction(props.gameId, { action: 'swap', player: myUserId, count: swappedCount });
+  await sendGameAction(props.gameId, { action: 'swap', player: myUserId, count: swapSelection.value.length });
+
+  swapSelection.value = [];
+  showSwapModal.value = false;
+}
+
+function toggleSwapSelection(index: number) {
+  const i = swapSelection.value.indexOf(index);
+  if (i === -1) swapSelection.value.push(index);
+  else swapSelection.value.splice(i, 1);
+}
+
+function clearPlaced() {
+  placedTiles.value = [];
 }
 
 function lookupWord() {
@@ -316,7 +341,8 @@ async function resolveChallenge(accepted: boolean) {
 
   if (accepted) {
     // Keep move, return to active.
-    // current_turn is already the challenger, so the game just resumes.
+    // current_turn is already the challenger (the opponent of the person who played),
+    // so it becomes the challenger's turn now.
     await updateGameState(props.gameId, {
       ...state.value,
       status: 'active',
@@ -326,13 +352,14 @@ async function resolveChallenge(accepted: boolean) {
     await sendGameAction(props.gameId, { action: 'resolve_challenge', result: 'accepted', player: myUserId });
   } else {
     // Reject move, revert to previous state.
-    // We want to give the turn back to the person who played the illegal word.
     const prevState = lastMove.value?.prevState;
     if (!prevState) {
       toast.error('Cannot revert: Previous state missing');
       return;
     }
 
+    // When a move is rejected, the turn returns to the person who made the illegal move
+    // so they can try again or pass.
     await updateGameState(props.gameId, {
       ...state.value,
       status: 'active',
@@ -340,10 +367,15 @@ async function resolveChallenge(accepted: boolean) {
       racks: prevState.racks,
       scores: prevState.scores,
       bag: prevState.bag,
-      current_turn: prevState.current_turn, // Revert turn to the original player
+      current_turn: prevState.current_turn,
       challenger_id: undefined,
       challenge_votes: undefined,
-      last_move: { type: 'revert', player: myUserId, timestamp: Date.now() }
+    last_move: {
+      type: 'revert',
+      player: myUserId,
+      timestamp: Date.now(),
+      words: lastMove.value?.words // Keep track of what was reverted for the action bubble
+    }
     });
     await sendGameAction(props.gameId, { action: 'resolve_challenge', result: 'rejected', player: myUserId });
   }
@@ -444,7 +476,7 @@ const opponentScore = computed(() => {
         <p class="text-sm text-muted-foreground max-w-[280px]">
           <span class="font-bold text-foreground">{{ opponentName }}</span> is challenging the words:
           <span class="block mt-1 p-2 bg-muted rounded-lg font-mono text-primary select-all">
-            {{ lastMove?.words?.join(', ') }}
+            {{ lastMove?.words?.filter(w => w !== 'BINGO!')?.join(', ') }}
           </span>
         </p>
       </div>
@@ -518,16 +550,46 @@ const opponentScore = computed(() => {
     </div>
 
     <!-- Actions -->
-    <div v-if="isMyTurn" class="flex flex-wrap gap-2 w-full justify-center mt-2">
-      <UiButton size="sm" @click="playMove" :disabled="placedTiles.length === 0" class="flex-1 min-w-[80px]">
-        Play ({{ currentMoveScoreResult.total }})
-      </UiButton>
-      <UiButton size="sm" variant="outline" @click="swapTiles" class="flex-1 min-w-[80px]">
-        Swap
-      </UiButton>
-      <UiButton size="sm" variant="outline" @click="passTurn" class="flex-1 min-w-[80px]">
-        Pass
-      </UiButton>
+    <div v-if="isMyTurn" class="flex flex-col gap-2 w-full max-w-[400px] mt-2">
+      <div v-if="placedTiles.length > 0" class="flex flex-col gap-1 px-1 mb-1">
+        <div class="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+          <span>Formed Words</span>
+          <button @click="clearPlaced" class="text-primary hover:underline">Clear all</button>
+        </div>
+        <div class="flex flex-wrap gap-1">
+          <span
+            v-for="w in currentMoveScoreResult.words"
+            :key="w.word"
+            class="px-2 py-0.5 bg-primary/10 text-primary rounded-full text-[10px] font-bold"
+          >
+            {{ w.word }} (+{{ w.score }})
+          </span>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap gap-2 w-full justify-center">
+        <UiButton size="sm" @click="playMove" :disabled="placedTiles.length === 0" class="flex-1 min-w-[80px] font-bold">
+          Play ({{ currentMoveScoreResult.total }})
+        </UiButton>
+        <UiButton
+          size="sm"
+          variant="outline"
+          @click="showSwapModal = true"
+          :disabled="placedTiles.length > 0"
+          class="flex-1 min-w-[80px]"
+        >
+          Swap
+        </UiButton>
+        <UiButton
+          size="sm"
+          variant="outline"
+          @click="passTurn"
+          :disabled="placedTiles.length > 0"
+          class="flex-1 min-w-[80px]"
+        >
+          Pass
+        </UiButton>
+      </div>
     </div>
 
     <!-- Footer Actions -->
@@ -597,7 +659,7 @@ const opponentScore = computed(() => {
     <UiDialog v-model:open="showBlankModal">
       <UiDialogContent class="max-w-[90vw] sm:max-w-md p-6">
         <UiDialogHeader>
-          <UiDialogTitle>Select Letter</UiDialogTitle>
+          <UiDialogTitle>Select Letter for Blank Tile</UiDialogTitle>
         </UiDialogHeader>
         <div class="grid grid-cols-6 gap-2 mt-4">
           <UiButton
@@ -609,6 +671,39 @@ const opponentScore = computed(() => {
             class="font-bold text-lg h-10 w-10 p-0"
           >
             {{ l }}
+          </UiButton>
+        </div>
+      </UiDialogContent>
+    </UiDialog>
+
+    <!-- Swap Modal -->
+    <UiDialog v-model:open="showSwapModal">
+      <UiDialogContent class="max-w-[90vw] sm:max-w-md p-6">
+        <UiDialogHeader>
+          <UiDialogTitle>Swap Tiles</UiDialogTitle>
+          <UiDialogDescription>Select the tiles you want to return to the bag.</UiDialogDescription>
+        </UiDialogHeader>
+
+        <div class="flex flex-wrap justify-center gap-2 my-6">
+          <div
+            v-for="(letter, idx) in myRack"
+            :key="idx"
+            @click="toggleSwapSelection(idx)"
+            class="h-12 w-10 rounded-md bg-[#f5deb3] text-stone-900 flex items-center justify-center font-bold shadow-md cursor-pointer transition-all border-2"
+            :class="swapSelection.includes(idx) ? 'border-primary ring-2 ring-primary/20 -translate-y-1' : 'border-transparent opacity-60'"
+          >
+            <span class="text-xl uppercase">{{ letter === ' ' ? '' : letter }}</span>
+          </div>
+        </div>
+
+        <div class="flex gap-3">
+          <UiButton variant="outline" class="flex-1" @click="showSwapModal = false">Cancel</UiButton>
+          <UiButton
+            class="flex-1 font-bold"
+            :disabled="swapSelection.length === 0"
+            @click="swapTiles"
+          >
+            Swap {{ swapSelection.length }} Tiles
           </UiButton>
         </div>
       </UiDialogContent>
