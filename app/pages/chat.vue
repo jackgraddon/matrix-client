@@ -76,9 +76,11 @@
                                     :size="64"
                                 />
                                 <!-- Space Unread Badge -->
-                                <div v-if="store.getSpaceUnreadCount(server.roomId) > 0" class="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground ring-2 ring-background pointer-events-none z-10">
-                                    {{ store.getSpaceUnreadCount(server.roomId) > 99 ? '99+' : store.getSpaceUnreadCount(server.roomId) }}
-                                </div>
+                                <template v-if="store.getSpaceUnreadCount(server.roomId) > 0">
+                                    <div class="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground ring-2 ring-background pointer-events-none z-10">
+                                        {{ store.getSpaceUnreadCount(server.roomId) > 99 ? '99+' : store.getSpaceUnreadCount(server.roomId) }}
+                                    </div>
+                                </template>
                             </NuxtLink>
                         </UiButton>
                     </UiContextMenuTrigger>
