@@ -1,131 +1,135 @@
 <template>
-    <div class="flex flex-row h-full bg-neutral-200 dark:bg-background">
-        <!-- Servers Sidebar (Guild Bar) -->
-        <aside
-            class="bg-background dark:bg-neutral-900 rounded-lg ml-2 mb-2 flex flex-col items-center p-2 gap-2 shrink-0 overflow-y-auto overflow-x-hidden transition-transform duration-300 ease-in-out"
+    <div class="flex flex-row h-full bg-neutral-200 dark:bg-background overflow-hidden relative">
+        <!-- Sidebar Pane (Guild Bar + Chat Sidebar) -->
+        <div
+            class="flex flex-row shrink-0 h-full transition-transform duration-300 ease-in-out will-change-transform z-20"
             :class="[
-                isMobile && (roomId || isSettingsPage) ? '-translate-x-full fixed' : 'translate-x-0 relative'
+                isMobile ? 'w-full fixed inset-y-0 left-0 bg-background' : 'w-auto relative',
+                isMobile && isMainContentVisible ? '-translate-x-full' : 'translate-x-0'
             ]"
         >
-            <!-- Home Button -->
-            <UiButton 
-                class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 flex items-center justify-center shrink-0 relative group" 
-                :class="isLinkActive('/chat') ? 'rounded-[16px]' : ''"
-                :variant="isLinkActive('/chat') ? 'default' : 'secondary'"
-                as-child
+            <!-- Servers Sidebar (Guild Bar) -->
+            <aside
+                class="bg-background dark:bg-neutral-900 rounded-lg ml-2 my-2 flex flex-col items-center p-2 gap-2 shrink-0 overflow-y-auto overflow-x-hidden"
             >
-                <NuxtLink to="/chat" aria-label="Home">
-                    <Icon name="solar:home-angle-bold" class="h-6 w-6" />
-                    <!-- Invite Badge -->
-                    <div v-if="store.totalInviteCount > 0" class="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground ring-2 ring-background">
-                        {{ store.totalInviteCount }}
-                    </div>
-                </NuxtLink>
-            </UiButton>
+                <!-- Home Button -->
+                <UiButton
+                    class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 flex items-center justify-center shrink-0 relative group"
+                    :class="isLinkActive('/chat') ? 'rounded-[16px]' : ''"
+                    :variant="isLinkActive('/chat') ? 'default' : 'secondary'"
+                    as-child
+                >
+                    <NuxtLink to="/chat" aria-label="Home">
+                        <Icon name="solar:home-angle-bold" class="h-6 w-6" />
+                        <!-- Invite Badge -->
+                        <div v-if="store.totalInviteCount > 0" class="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground ring-2 ring-background">
+                            {{ store.totalInviteCount }}
+                        </div>
+                    </NuxtLink>
+                </UiButton>
 
-            <!-- DMs Button -->
-            <UiButton 
-                class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 flex items-center justify-center shrink-0 relative" 
-                :class="isLinkActive('/chat/dms') ? 'rounded-[16px]' : ''"
-                :variant="isLinkActive('/chat/dms') ? 'default' : 'secondary'"
-                as-child
-            >
-                <NuxtLink :to="store.lastVisitedRooms.dm ? `/chat/dms/${store.lastVisitedRooms.dm}` : '/chat/dms'" aria-label="Direct Messages">
-                    <Icon name="solar:users-group-rounded-bold" class="h-6 w-6" />
-                    <!-- Unread Badge -->
-                    <div v-if="store.totalDmUnreadCount > 0" class="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground ring-2 ring-background pointer-events-none">
-                        {{ store.totalDmUnreadCount > 99 ? '99+' : store.totalDmUnreadCount }}
-                    </div>
-                </NuxtLink>
-            </UiButton>
+                <!-- DMs Button -->
+                <UiButton
+                    class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 flex items-center justify-center shrink-0 relative"
+                    :class="isLinkActive('/chat/dms') ? 'rounded-[16px]' : ''"
+                    :variant="isLinkActive('/chat/dms') ? 'default' : 'secondary'"
+                    as-child
+                >
+                    <NuxtLink :to="store.lastVisitedRooms.dm ? `/chat/dms/${store.lastVisitedRooms.dm}` : '/chat/dms'" aria-label="Direct Messages">
+                        <Icon name="solar:users-group-rounded-bold" class="h-6 w-6" />
+                        <!-- Unread Badge -->
+                        <div v-if="store.totalDmUnreadCount > 0" class="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground ring-2 ring-background pointer-events-none">
+                            {{ store.totalDmUnreadCount > 99 ? '99+' : store.totalDmUnreadCount }}
+                        </div>
+                    </NuxtLink>
+                </UiButton>
 
-            <!-- Rooms Button -->
-            <UiButton 
-                class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 flex items-center justify-center shrink-0 relative" 
-                :class="isLinkActive('/chat/rooms') ? 'rounded-[16px]' : ''"
-                :variant="isLinkActive('/chat/rooms') ? 'default' : 'secondary'"
-                as-child
-            >
-                <NuxtLink :to="store.lastVisitedRooms.rooms ? `/chat/rooms/${store.lastVisitedRooms.rooms}` : '/chat/rooms'" aria-label="Rooms">
-                    <Icon name="solar:inbox-archive-bold" class="h-6 w-6" />
-                    <!-- Unread Badge -->
-                    <div v-if="store.totalOrphanRoomUnreadCount > 0" class="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground ring-2 ring-background pointer-events-none">
-                        {{ store.totalOrphanRoomUnreadCount > 99 ? '99+' : store.totalOrphanRoomUnreadCount }}
-                    </div>
-                </NuxtLink>
-            </UiButton>
+                <!-- Rooms Button -->
+                <UiButton
+                    class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 flex items-center justify-center shrink-0 relative"
+                    :class="isLinkActive('/chat/rooms') ? 'rounded-[16px]' : ''"
+                    :variant="isLinkActive('/chat/rooms') ? 'default' : 'secondary'"
+                    as-child
+                >
+                    <NuxtLink :to="store.lastVisitedRooms.rooms ? `/chat/rooms/${store.lastVisitedRooms.rooms}` : '/chat/rooms'" aria-label="Rooms">
+                        <Icon name="solar:inbox-archive-bold" class="h-6 w-6" />
+                        <!-- Unread Badge -->
+                        <div v-if="store.totalOrphanRoomUnreadCount > 0" class="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground ring-2 ring-background pointer-events-none">
+                            {{ store.totalOrphanRoomUnreadCount > 99 ? '99+' : store.totalOrphanRoomUnreadCount }}
+                        </div>
+                    </NuxtLink>
+                </UiButton>
 
-            <div class="w-8 h-[2px] bg-neutral-300 dark:bg-neutral-800 shrink-0" />
+                <div class="w-8 h-[2px] bg-neutral-300 dark:bg-neutral-800 shrink-0" />
 
-            <!-- Server List -->
-            <draggable v-model="draggableRootSpaces" class="flex flex-col items-center gap-2 shrink-0" :animation="200" ghost-class="opacity-30" :force-fallback="true" :delay="150" :delay-on-touch-only="false" chosen-class="drag-chosen">
-                <UiContextMenu v-for="server in draggableRootSpaces" :key="server.roomId">
-                    <UiContextMenuTrigger>
-                        <UiButton 
-                            variant="ghost" 
-                            class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 group shrink-0 relative"
-                            :class="{ 'rounded-[16px]': isLinkActive(`/chat/spaces/${server.roomId}`) }"
-                            as-child
-                        >
-                            <NuxtLink 
-                                :to="store.lastVisitedRooms.spaces[server.roomId] 
-                                    ? `/chat/spaces/${server.roomId}/${store.lastVisitedRooms.spaces[server.roomId]}` 
-                                    : `/chat/spaces/${server.roomId}`" 
-                                :aria-label="server.name"
+                <!-- Server List -->
+                <draggable v-model="draggableRootSpaces" class="flex flex-col items-center gap-2 shrink-0" :animation="200" ghost-class="opacity-30" :force-fallback="true" :delay="150" :delay-on-touch-only="false" chosen-class="drag-chosen">
+                    <UiContextMenu v-for="server in draggableRootSpaces" :key="server.roomId">
+                        <UiContextMenuTrigger>
+                            <UiButton
+                                variant="ghost"
+                                class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 group shrink-0 relative"
+                                :class="{ 'rounded-[16px]': isLinkActive(`/chat/spaces/${server.roomId}`) }"
+                                as-child
                             >
-                                <MatrixAvatar 
-                                    :mxc-url="server.getMxcAvatarUrl()" 
-                                    :name="server.name" 
-                                    class="h-full w-full border-0 transition-all" 
-                                    :class="isLinkActive(`/chat/spaces/${server.roomId}`) ? 'rounded-[16px]' : 'rounded-[24px] group-hover:rounded-[16px]'"
-                                    :size="64"
-                                />
-                                <!-- Space Unread Badge -->
-                                <template v-if="store.getSpaceUnreadCount(server.roomId) > 0">
-                                    <div class="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground ring-2 ring-background pointer-events-none z-10">
-                                        {{ store.getSpaceUnreadCount(server.roomId) > 99 ? '99+' : store.getSpaceUnreadCount(server.roomId) }}
-                                    </div>
-                                </template>
-                            </NuxtLink>
-                        </UiButton>
-                    </UiContextMenuTrigger>
-                    <UiContextMenuContent>
-                        <UiContextMenuItem v-if="store.pinnedSpaces.includes(server.roomId)" @click="store.unpinSpace(server.roomId)" class="text-destructive focus:text-destructive">
-                            <Icon name="solar:pin-broken" class="mr-2 h-4 w-4" />
-                            Unpin from Sidebar
-                        </UiContextMenuItem>
-                        <UiContextMenuItem v-else disabled>
-                            <Icon name="solar:info-circle-broken" class="mr-2 h-4 w-4" />
-                            Root Space
-                        </UiContextMenuItem>
-                    </UiContextMenuContent>
-                </UiContextMenu>
-            </draggable>
+                                <NuxtLink
+                                    :to="store.lastVisitedRooms.spaces[server.roomId]
+                                        ? `/chat/spaces/${server.roomId}/${store.lastVisitedRooms.spaces[server.roomId]}`
+                                        : `/chat/spaces/${server.roomId}`"
+                                    :aria-label="server.name"
+                                >
+                                    <MatrixAvatar
+                                        :mxc-url="server.getMxcAvatarUrl()"
+                                        :name="server.name"
+                                        class="h-full w-full border-0 transition-all"
+                                        :class="isLinkActive(`/chat/spaces/${server.roomId}`) ? 'rounded-[16px]' : 'rounded-[24px] group-hover:rounded-[16px]'"
+                                        :size="64"
+                                    />
+                                    <!-- Space Unread Badge -->
+                                    <template v-if="store.getSpaceUnreadCount(server.roomId) > 0">
+                                        <div class="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground ring-2 ring-background pointer-events-none z-10">
+                                            {{ store.getSpaceUnreadCount(server.roomId) > 99 ? '99+' : store.getSpaceUnreadCount(server.roomId) }}
+                                        </div>
+                                    </template>
+                                </NuxtLink>
+                            </UiButton>
+                        </UiContextMenuTrigger>
+                        <UiContextMenuContent>
+                            <UiContextMenuItem v-if="store.pinnedSpaces.includes(server.roomId)" @click="store.unpinSpace(server.roomId)" class="text-destructive focus:text-destructive">
+                                <Icon name="solar:pin-broken" class="mr-2 h-4 w-4" />
+                                Unpin from Sidebar
+                            </UiContextMenuItem>
+                            <UiContextMenuItem v-else disabled>
+                                <Icon name="solar:info-circle-broken" class="mr-2 h-4 w-4" />
+                                Root Space
+                            </UiContextMenuItem>
+                        </UiContextMenuContent>
+                    </UiContextMenu>
+                </draggable>
 
-            <!-- Add Server / Explorer -->
-            <UiButton 
-                variant="secondary"
-                class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 flex items-center justify-center shrink-0 hover:bg-neutral-300 dark:hover:bg-neutral-800" 
-                @click="store.openGlobalSearchModal()"
-            >
-                <Icon name="solar:add-circle-linear" class="h-6 w-6" />
-            </UiButton>
-        </aside>
+                <!-- Add Server / Explorer -->
+                <UiButton
+                    variant="secondary"
+                    class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 flex items-center justify-center shrink-0 hover:bg-neutral-300 dark:hover:bg-neutral-800"
+                    @click="store.openGlobalSearchModal()"
+                >
+                    <Icon name="solar:add-circle-linear" class="h-6 w-6" />
+                </UiButton>
+            </aside>
 
-        <!-- Sidebar -->
-        <ChatSidebar
-            ref="sidebarRef"
-            class="transition-transform duration-300 ease-in-out"
-            :class="[
-                isMobile && (roomId || isSettingsPage) ? '-translate-x-full fixed' : 'translate-x-0 relative'
-            ]"
-        />
+            <!-- Sidebar -->
+            <ChatSidebar
+                ref="sidebarRef"
+                class="flex-1"
+            />
+        </div>
 
         <!-- Main Content -->
         <main
-            class="flex-1 flex-col min-w-0 min-h-0 p-2 pt-0 transition-all duration-300 ease-in-out"
+            class="flex-1 flex-col min-w-0 min-h-0 p-2 pt-0 transition-transform duration-300 ease-in-out will-change-transform z-10"
             :class="[
-                isMobile && !(roomId || isSettingsPage) ? 'hidden' : 'flex'
+                isMobile ? 'w-full fixed inset-y-0 left-0 pt-[env(safe-area-inset-top,0px)]' : 'relative',
+                isMobile && !isMainContentVisible ? 'translate-x-full' : 'translate-x-0'
             ]"
         >
             <div class="rounded-lg h-full bg-neutral-100 dark:bg-neutral-900 min-w-0 flex flex-col min-h-0 overflow-hidden">
@@ -140,9 +144,9 @@
         <Transition :name="isMobile ? 'slide-full' : 'slide-pane'">
             <div
                 v-if="store.ui.memberListVisible && currentRoom"
-                class="overflow-hidden shrink-0 z-[60]"
+                class="overflow-hidden shrink-0 z-[60] will-change-transform"
                 :class="[
-                    isMobile ? 'fixed inset-0 pt-[30px] bg-background' : 'mb-2 mr-2 relative'
+                    isMobile ? 'fixed inset-0 pt-[env(safe-area-inset-top,0px)] bg-background' : 'mb-2 mr-2 relative'
                 ]"
             >
                 <RoomMemberList :room="(currentRoom as any)" class="h-full" :class="isMobile ? 'w-full' : 'w-60'" />
@@ -185,12 +189,26 @@ const isSettingsPage = computed(() => route.path.startsWith('/chat/settings'));
 const roomId = computed(() => {
   const params = route.params.id;
   if (Array.isArray(params)) {
-    // If it's a space route, the last segment might be the room ID,
-    // but only if it's not the space root.
-    if (route.path.startsWith('/chat/spaces') && params.length === 1) return null;
+    // In space routes, the last segment is the room ID if length > 1
+    // If length == 1, it's the space root (Lobby), which should be treated as main content on mobile
     return params[params.length - 1];
   }
   return params;
+});
+
+const isSpaceRoot = computed(() => {
+    return route.path.startsWith('/chat/spaces') && Array.isArray(route.params.id) && route.params.id.length === 1;
+});
+
+const isMainContentVisible = computed(() => {
+    if (roomId.value) return true;
+    if (isSettingsPage.value) return true;
+    if (isSpaceRoot.value) return true;
+    // Special case for root /chat/dms or /chat/rooms on mobile - they should only show sidebar
+    if (route.path === '/chat/dms' || route.path === '/chat/rooms') return false;
+    // Default home page (/chat) shows main content (stats/recent)
+    if (route.path === '/chat') return true;
+    return false;
 });
 
 const currentRoom = computed(() => {
