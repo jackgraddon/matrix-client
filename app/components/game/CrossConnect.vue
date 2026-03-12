@@ -143,6 +143,15 @@ async function playMove() {
   const moveScore = currentMoveScoreResult.value.total;
   const formedWords = currentMoveScoreResult.value.words;
 
+  // Capture previous state for revert if challenged
+  const prevState = {
+    board: JSON.parse(JSON.stringify(board.value)),
+    racks: JSON.parse(JSON.stringify(racks.value)),
+    scores: JSON.parse(JSON.stringify(scores.value)),
+    bag: [...bag.value],
+    current_turn: currentTurn.value
+  };
+
   // Update state
   const newBoard = JSON.parse(JSON.stringify(board.value));
   placedTiles.value.forEach(p => {
@@ -189,7 +198,8 @@ async function playMove() {
       player: myUserId,
       score: moveScore,
       words: formedWords.map(w => w.word),
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      prevState
     }
   });
 
@@ -267,12 +277,73 @@ function lookupWord() {
 
 async function challengeMove() {
   if (!lastMove.value || lastMove.value.type !== 'play') return;
+
+  await updateGameState(props.gameId, {
+    ...state.value,
+    status: 'challenged',
+    challenge_votes: { valid: [], invalid: [] }
+  });
+
   await sendGameAction(props.gameId, {
     action: 'challenge',
     player: myUserId,
     target_move: lastMove.value
   });
-  toast.success('Move challenged! Discuss in chat.');
+  toast.success('Move challenged! Discussion poll started.');
+}
+
+async function voteChallenge(vote: 'valid' | 'invalid') {
+  if (status.value !== 'challenged') return;
+
+  const votes = { ...state.value.challenge_votes };
+  const userId = myUserId!;
+
+  // Remove existing vote if any
+  votes.valid = votes.valid.filter((id: string) => id !== userId);
+  votes.invalid = votes.invalid.filter((id: string) => id !== userId);
+
+  votes[vote].push(userId);
+
+  await updateGameState(props.gameId, {
+    ...state.value,
+    challenge_votes: votes
+  });
+}
+
+async function resolveChallenge(accepted: boolean) {
+  if (status.value !== 'challenged') return;
+
+  if (accepted) {
+    // Keep move, return to active.
+    // current_turn is already the challenger, so the game just resumes.
+    await updateGameState(props.gameId, {
+      ...state.value,
+      status: 'active',
+      challenge_votes: undefined
+    });
+    await sendGameAction(props.gameId, { action: 'resolve_challenge', result: 'accepted', player: myUserId });
+  } else {
+    // Reject move, revert to previous state.
+    // In 'challenged' state, current_turn is already the person who challenged.
+    // By reverting board/racks/scores but NOT current_turn, the active player effectively loses their turn.
+    const prevState = lastMove.value?.prevState;
+    if (!prevState) {
+      toast.error('Cannot revert: Previous state missing');
+      return;
+    }
+
+    await updateGameState(props.gameId, {
+      ...state.value,
+      status: 'active',
+      board: prevState.board,
+      racks: prevState.racks,
+      scores: prevState.scores,
+      bag: prevState.bag,
+      challenge_votes: undefined,
+      last_move: { type: 'revert', player: myUserId, timestamp: Date.now() }
+    });
+    await sendGameAction(props.gameId, { action: 'resolve_challenge', result: 'rejected', player: myUserId });
+  }
 }
 
 const opponentName = computed(() => {
@@ -310,7 +381,7 @@ const opponentScore = computed(() => {
     </div>
 
     <!-- Board -->
-    <div class="relative group">
+    <div v-if="status !== 'challenged'" class="relative group">
       <div
         class="grid grid-cols-15 grid-rows-15 gap-px bg-stone-400 dark:bg-stone-700 border border-stone-400 dark:border-stone-700 p-px shadow-xl"
         style="width: min(80vw, 400px); aspect-ratio: 1/1;"
@@ -356,10 +427,70 @@ const opponentScore = computed(() => {
     </div>
 
     <!-- Bag & Rack Info -->
-    <div class="w-full flex items-center justify-between px-1 text-[10px] text-muted-foreground uppercase tracking-widest font-bold">
+    <div v-if="status !== 'challenged'" class="w-full flex items-center justify-between px-1 text-[10px] text-muted-foreground uppercase tracking-widest font-bold">
       <span>Tiles in bag: {{ bag.length }}</span>
       <span v-if="status === 'active'">{{ isMyTurn ? 'Your Turn' : "Opponent's Turn" }}</span>
       <span v-else class="text-primary">{{ status }}</span>
+    </div>
+
+    <!-- Challenge Poll UI -->
+    <div v-if="status === 'challenged'" class="w-full flex flex-col items-center gap-6 py-8 px-4 bg-background/50 rounded-2xl border-2 border-primary/20 animate-in fade-in zoom-in duration-300">
+      <div class="flex flex-col items-center gap-2 text-center">
+        <Icon name="solar:danger-bold" class="h-12 w-12 text-primary animate-pulse" />
+        <h3 class="text-xl font-bold">Move Challenged!</h3>
+        <p class="text-sm text-muted-foreground max-w-[280px]">
+          <span class="font-bold text-foreground">{{ opponentName }}</span> is challenging the words:
+          <span class="block mt-1 p-2 bg-muted rounded-lg font-mono text-primary select-all">
+            {{ lastMove?.words?.join(', ') }}
+          </span>
+        </p>
+      </div>
+
+      <div class="w-full flex flex-col gap-3">
+        <div class="flex items-center gap-4">
+          <UiButton
+            class="flex-1 h-12 rounded-xl text-sm font-bold gap-2"
+            :variant="state.challenge_votes?.valid?.includes(myUserId) ? 'default' : 'outline'"
+            @click="voteChallenge('valid')"
+          >
+            <Icon name="solar:check-circle-bold" class="h-5 w-5" />
+            Valid ({{ state.challenge_votes?.valid?.length || 0 }})
+          </UiButton>
+          <UiButton
+            class="flex-1 h-12 rounded-xl text-sm font-bold gap-2"
+            :variant="state.challenge_votes?.invalid?.includes(myUserId) ? 'destructive' : 'outline'"
+            @click="voteChallenge('invalid')"
+          >
+            <Icon name="solar:close-circle-bold" class="h-5 w-5" />
+            Invalid ({{ state.challenge_votes?.invalid?.length || 0 }})
+          </UiButton>
+        </div>
+        <p class="text-[10px] text-center text-muted-foreground italic">Anyone in the room can vote!</p>
+      </div>
+
+      <div class="w-full h-px bg-border" />
+
+      <div class="flex flex-col gap-3 w-full">
+        <span class="text-[10px] font-bold uppercase tracking-widest text-muted-foreground text-center">Final Resolution</span>
+        <div class="flex gap-2">
+          <UiButton
+            variant="ghost"
+            size="sm"
+            class="flex-1 text-xs font-semibold rounded-full hover:bg-green-500/10 hover:text-green-600"
+            @click="resolveChallenge(true)"
+          >
+            Accept Word
+          </UiButton>
+          <UiButton
+            variant="ghost"
+            size="sm"
+            class="flex-1 text-xs font-semibold rounded-full hover:bg-red-500/10 hover:text-red-500"
+            @click="resolveChallenge(false)"
+          >
+            Reject Move
+          </UiButton>
+        </div>
+      </div>
     </div>
 
     <!-- Rack -->

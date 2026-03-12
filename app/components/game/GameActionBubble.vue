@@ -57,6 +57,10 @@ const actionText = computed(() => {
   if (content.value.action === 'challenge') {
     return `${senderName.value} challenged the last move!`;
   }
+  if (content.value.action === 'resolve_challenge') {
+    const result = content.value.result === 'accepted' ? 'accepted' : 'rejected';
+    return `${senderName.value} resolved the challenge: move was ${result}`;
+  }
 
   return `${senderName.value} action: ${content.value.action}`;
 });
