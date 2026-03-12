@@ -2,7 +2,11 @@
   <aside class="w-60 flex flex-col shrink-0 h-full relative">
     <div class="p-4 border-b border-border/50">
       <h3 class="text-sm font-bold flex items-center gap-2">
-        <Icon name="solar:users-group-rounded-bold" class="text-primary w-5 h-5" />
+        <Icon 
+          name="solar:users-group-rounded-bold" 
+          class="w-5 h-5" 
+          :class="isEncrypted ? 'text-green-500' : 'text-red-500'"
+        />
         Members
       </h3>
     </div>
@@ -26,6 +30,7 @@
               :name="member.name"
               :avatar-url="member.getMxcAvatarUrl()"
               size="list"
+              class="min-w-0 flex-1"
             />
           </div>
         </div>
@@ -48,6 +53,7 @@
               :name="member.name"
               :avatar-url="member.getMxcAvatarUrl()"
               size="list"
+              class="min-w-0 flex-1"
             />
           </div>
         </div>
@@ -83,6 +89,11 @@ import type { Room, RoomMember } from 'matrix-js-sdk';
 const props = defineProps<{ room: Room }>();
 const store = useMatrixStore();
 const refreshKey = ref(0);
+
+const isEncrypted = computed(() => {
+  if (!props.room || !store.client) return false;
+  return store.client.isRoomEncrypted(props.room.roomId);
+});
 
 // --- Popover State ---
 const selectedUserId = computed(() => store.ui.selectedUserId);

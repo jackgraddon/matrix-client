@@ -41,6 +41,13 @@
            <span>{{ createError ? createError : `Start Chat with ${parsedQuery}` }}</span>
         </UiCommandItem>
         <UiCommandItem 
+          value="action_create_room" 
+          @select="(e) => { e.preventDefault(); store.openCreateRoomModal(); }"
+        >
+           <Icon name="solar:add-circle-bold" class="mr-2 h-4 w-4" />
+           <span>Create Room</span>
+        </UiCommandItem>
+        <UiCommandItem 
           value="action_join" 
           @select="(e) => { e.preventDefault(); joinRoomFromQuery(); }"
           :class="{ 'text-destructive animate-shake': joinError }"
@@ -70,7 +77,7 @@ const joinError = ref('');
 
 const customFilter = (val: string, search: string) => {
   // Bypass filtering for action items based on exact programmatic values 
-  if (val === 'action_create' || val === 'action_join') {
+  if (val === 'action_create' || val === 'action_create_room' || val === 'action_join') {
     return true;
   }
   // Default case-insensitive search for rooms/people

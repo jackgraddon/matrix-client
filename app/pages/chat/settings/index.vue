@@ -28,6 +28,9 @@
 <script lang="ts" setup>
 definePageMeta({
   icon: 'solar:settings-bold',
+  category: 'app',
+  title: 'General',
+  place: 1
 })
 
 const store = useMatrixStore();

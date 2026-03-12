@@ -2,9 +2,9 @@
   <div class="flex flex-col gap-1 min-w-0">
     <!-- Game Activity -->
     <template v-if="displayActivity?.is_running && displayActivity?.name">
-      <div v-if="variant === 'small'" class="flex items-center gap-1.5 text-xs font-medium text-muted-foreground w-full">
+      <div v-if="variant === 'small'" class="flex items-center gap-1.5 text-xs font-medium text-muted-foreground min-w-0 w-full">
         <Icon name="solar:gamepad-bold" class="w-4 h-4 text-emerald-500 shrink-0" />
-        <span class="truncate">Playing <span class="text-foreground">{{ displayActivity.name }}</span></span>
+        <span class="truncate min-w-0">Playing <span class="text-foreground">{{ displayActivity.name }}</span></span>
       </div>
 
       <GameCard v-else-if="variant === 'large'" :user-id="userId" />
@@ -12,9 +12,9 @@
 
     <!-- Custom Status -->
     <template v-else-if="displayCustomStatus">
-      <div class="flex items-center gap-1.5 text-xs font-medium text-muted-foreground w-full">
+      <div class="flex items-center gap-1.5 text-xs font-medium text-muted-foreground min-w-0 w-full">
         <Icon name="solar:chat-round-line-bold" class="w-4 h-4 text-blue-500 shrink-0" />
-        <span class="text-foreground truncate">{{ displayCustomStatus }}</span>
+        <span class="text-foreground truncate min-w-0">{{ displayCustomStatus }}</span>
       </div>
     </template>
 
@@ -129,7 +129,7 @@ const sanitize = (val: any) => {
   return s;
 };
 
-const displayActivity = computed(() => store.resolveActivity(props.userId));
+const displayActivity = computed(() => store.resolveActivity(props.userId as string | null));
 
 const displayCustomStatus = computed(() => {
   // Prefer local store custom status for self
@@ -175,13 +175,19 @@ let timerInterval: number | null = null;
 
 const updateDuration = () => {
   const game = displayActivity.value;
-  if (!game || !(game as any).startTimestamp) {
+  let start = (game as any)?.startTimestamp;
+  if (!game || !start) {
     elapsedDuration.value = '';
     return;
   }
+
+  // Handle Unix seconds vs milliseconds
+  if (start < 10000000000) {
+    start *= 1000;
+  }
   
   const now = Date.now();
-  const diffInSeconds = Math.max(0, Math.floor((now - (game as any).startTimestamp) / 1000));
+  const diffInSeconds = Math.max(0, Math.floor((now - start) / 1000));
   
   const hours = Math.floor(diffInSeconds / 3600);
   const minutes = Math.floor((diffInSeconds % 3600) / 60);

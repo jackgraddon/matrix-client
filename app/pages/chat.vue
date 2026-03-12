@@ -107,12 +107,13 @@
         
         <!-- Member List Panel -->
         <Transition name="slide-pane">
-            <div v-if="store.ui.memberListVisible && currentRoom" class="mb-2 mr-2 overflow-hidden shrink-0">
+            <div v-if="store.ui.memberListVisible && currentRoom && !isLobby" class="mb-2 mr-2 overflow-hidden shrink-0">
                 <RoomMemberList :room="(currentRoom as any)" class="h-full" />
             </div>
         </Transition>
     </div>
     <VerificationModal />
+    <CreateRoomModal />
     <GlobalSearchModal :friends="friends" :rooms="rooms" />
 </template>
 
@@ -149,6 +150,12 @@ const roomId = computed(() => {
 const currentRoom = computed(() => {
   if (!roomId.value || !store.client) return null;
   return store.client.getRoom(roomId.value as string);
+});
+
+const isLobby = computed(() => {
+  const segments = route.path.split('/').filter(Boolean);
+  // Matches /chat/spaces/[spaceId] but NOT /chat/spaces/[spaceId]/[roomId]
+  return segments.length === 3 && segments[1] === 'spaces';
 });
 
 const friends = computed(() => sidebarRef.value?.friends ?? []);

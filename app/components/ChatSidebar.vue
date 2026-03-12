@@ -35,7 +35,7 @@
                             />
                             <div class="flex flex-col min-w-0">
                                 <span class="text-sm font-semibold truncate">{{ invite.name }}</span>
-                                <span class="text-[10px] text-muted-foreground truncate">Invited by {{ invite.getMember(invite.getInviter()!)?.name || invite.getInviter() }}</span>
+                                <span class="text-[10px] text-muted-foreground truncate">Invited by {{ invite.getMember(invite.getDMInviter()!)?.name || invite.getDMInviter() }}</span>
                             </div>
                         </div>
                     </div>
@@ -133,21 +133,37 @@
 
                 <!-- Sidebar Settings Nav -->
                 <template v-if="isLinkActive('/chat/settings')">
-                    <div 
-                        v-for="page in settingsPages"
-                        :key="page.path"
-                        role="button"
-                        class="inline-flex items-center justify-start px-2 h-9 w-full rounded-md text-sm font-medium transition-colors cursor-pointer hover:bg-accent/50"
-                        :class="[(page.path === '/chat/settings' ? route.path === '/chat/settings' : isLinkActive(page.path)) ? 'bg-secondary text-secondary-foreground' : '']"
-                        @click="(page.path === '/chat/settings' ? route.path === '/chat/settings' : isLinkActive(page.path)) ? null : navigateTo(page.path)"
-                    >
-                        <Icon :name="page.icon" class="h-4 w-4 mr-2 text-muted-foreground" />
-                        <span class="truncate">{{ page.label }}</span>
+                    <div v-for="group in settingsGroups" :key="group.id" class="flex flex-col gap-1 mb-4">
+                        <div class="px-2 mb-1">
+                            <span class="text-[10px] font-bold uppercase text-muted-foreground tracking-wider">{{ group.name }}</span>
+                        </div>
+                        <div 
+                            v-for="page in group.pages"
+                            :key="page.path"
+                            role="button"
+                            class="inline-flex items-center justify-start px-2 h-9 w-full rounded-md text-sm font-medium transition-colors cursor-pointer hover:bg-accent/50"
+                            :class="[(page.path === '/chat/settings' ? route.path === '/chat/settings' : isLinkActive(page.path)) ? 'bg-secondary text-secondary-foreground' : '']"
+                            @click="(page.path === '/chat/settings' ? route.path === '/chat/settings' : isLinkActive(page.path)) ? null : navigateTo(page.path)"
+                        >
+                            <Icon :name="page.icon" class="h-4 w-4 mr-2 text-muted-foreground" />
+                            <span class="truncate">{{ page.label }}</span>
+                        </div>
                     </div>
                 </template>
 
                 <!-- Sidebar Space Categories List -->
                 <template v-if="isLinkActive('/chat/spaces') && activeSpaceId">
+                    <!-- Return to Lobby Button -->
+                    <UiButton 
+                        variant="secondary" 
+                        @click="navigateTo(`/chat/spaces/${activeSpaceId}`)" 
+                        class="w-full mb-2 justify-start gap-2"
+                        :class="{ 'bg-secondary ring-1 ring-primary/20': isLobby }"
+                    >
+                        <Icon name="solar:home-2-bold" class="h-4 w-4" />
+                        Lobby Home
+                    </UiButton>
+
                     <!-- Skeleton Loader for Background Sync -->
                     <div v-if="!store.isFullySynced && draggableCategories.length === 0" class="flex flex-col gap-4">
                         <div v-for="i in 3" :key="i" class="flex flex-col gap-2 px-2">
@@ -210,9 +226,9 @@
             </div>
         </nav>
 
-        <footer class="p-4 h-fit w-full flex items-center justify-between cursor-pointer overflow-hidden">
+        <footer class="p-2 h-fit w-full flex flex-col gap-2 cursor-pointer overflow-hidden">
             <!-- Active Call Bar -->
-            <div v-if="voiceStore.activeRoomId" class="mx-2 p-2 bg-green-500/10 rounded-md flex items-center justify-between gap-2 overflow-hidden shadow-sm animate-in fade-in slide-in-from-bottom-2">
+            <div v-if="voiceStore.activeRoomId" class="p-2 bg-green-500/10 rounded-md flex items-center justify-between gap-2 overflow-hidden shadow-sm animate-in fade-in slide-in-from-bottom-2">
                 <div class="flex flex-col min-w-0">
                     <span class="text-[10px] font-bold text-green-500 uppercase tracking-wider">Active Call</span>
                     <!-- Use a safe getter or fallback name -->
@@ -228,10 +244,14 @@
                     <Icon name="solar:end-call-bold" class="h-4 w-4" />
                 </UiButton>
             </div>
-            <UserProfile :user="store.user" />
-            <UiButton variant="outline" @click="navigateTo('/chat/settings')">
-                <Icon name="solar:settings-linear" />
-            </UiButton>
+
+            <!-- Profile & Settings Row -->
+            <div class="flex items-center justify-between gap-2 w-full p-2">
+                <UserProfile :user="store.user" class="min-w-0 flex-1" />
+                <UiButton variant="ghost" size="icon-sm" class="shrink-0" @click="navigateTo('/chat/settings')">
+                    <Icon name="solar:settings-linear" class="h-5 w-5" />
+                </UiButton>
+            </div>
         </footer>
     </aside>
 </template>
@@ -254,9 +274,16 @@ const isLinkActive = (to: string) => {
 };
 
 
-const settingsPages = computed(() => {
+const settingsGroups = computed(() => {
+    const categoryNames: Record<string, string> = {
+        user: 'User Settings',
+        app: 'App Settings',
+        advanced: 'Advanced Settings'
+    };
+    const categoryOrder = ['user', 'app', 'advanced'];
+
     const seen = new Set<string>();
-    return router.getRoutes()
+    const pages = router.getRoutes()
         .filter(r => r.path === '/chat/settings' || /^\/chat\/settings\/[^/]+$/.test(r.path))
         .filter(r => {
             const normalized = r.path.replace(/\/$/, '');
@@ -269,19 +296,35 @@ const settingsPages = computed(() => {
             const isIndex = r.path === '/chat/settings';
             return {
                 path: r.path,
-                label: isIndex ? 'General' : segment.charAt(0).toUpperCase() + segment.slice(1),
-                icon: (r.meta.icon as string) || 'solar:settings-linear', // Added a safe fallback
+                label: (r.meta.title as string) || (isIndex ? 'General' : segment.charAt(0).toUpperCase() + segment.slice(1)),
+                icon: (r.meta.icon as string) || 'solar:settings-linear',
+                category: (r.meta.category as string) || 'app',
+                place: (r.meta.place as number) || 99
             };
-        })
-        .sort((a, b) => {
-            if (a.label === 'General') return -1;
-            if (b.label === 'General') return 1;
-            return a.label.localeCompare(b.label);
         });
+
+    const groupsMap: Record<string, typeof pages> = {};
+    pages.forEach(p => {
+        if (!groupsMap[p.category]) groupsMap[p.category] = [];
+        groupsMap[p.category].push(p);
+    });
+
+    return categoryOrder
+        .filter(cat => groupsMap[cat])
+        .map(cat => ({
+            id: cat,
+            name: categoryNames[cat] || cat,
+            pages: groupsMap[cat].sort((a, b) => a.place - b.place)
+        }));
 });
 
 const store = useMatrixStore();
 const voiceStore = useVoiceStore();
+
+const isLobby = computed(() => {
+    const segments = route.path.split('/').filter(Boolean);
+    return segments.length === 3 && segments[1] === 'spaces';
+});
 
 const routeName = computed(() => {
     if (isLinkActive('/chat/dms')) return 'Direct Messages';

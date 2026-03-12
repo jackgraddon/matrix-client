@@ -1,5 +1,5 @@
 <template>
-  <div class="flex items-end gap-3" :class="cardClasses">
+  <div class="flex items-center gap-3" :class="cardClasses">
     <div class="relative shrink-0">
       <div class="relative">
         <MatrixAvatar 
