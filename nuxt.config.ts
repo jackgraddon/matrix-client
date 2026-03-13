@@ -18,7 +18,7 @@ export default defineNuxtConfig({
     // Server-side config (not exposed to client)
     matrix: {
       baseUrl: process.env.NUXT_PUBLIC_MATRIX_BASE_URL || 'matrix.org',
-      clientUrl: process.env.NUXT_PUBLIC_CLIENT_URL || 'https://localho.st:3000',
+      clientUrl: process.env.NUXT_PUBLIC_CLIENT_URL || 'http://localhost:3000',
       redirectEndpoint: process.env.NUXT_MATRIX_REDIRECT_ENDPOINT || '/api/auth/oidc/callback',
       clientName: process.env.NUXT_MATRIX_CLIENT_NAME || 'Tumult',
       clientId: process.env.NUXT_MATRIX_CLIENT_ID || '',
@@ -48,13 +48,18 @@ export default defineNuxtConfig({
     clearScreen: false,
     envPrefix: ['VITE_', 'TAURI_'],
     server: {
-      allowedHosts: ['localho.st'],
+      allowedHosts: ['localho.st', 'localhost'],
       strictPort: true,
+      fs: {
+        allow: ['..']
+      }
     },
     optimizeDeps: {
       exclude: ['@matrix-org/matrix-sdk-crypto-wasm'],
+      include: ['@matrix-org/matrix-sdk-crypto-wasm'],
       entries: [
-        './app/**/*.{vue,ts,tsx}'
+        './app/app.vue',
+        './app/pages/**/*.vue'
       ]
     },
     esbuild: {
