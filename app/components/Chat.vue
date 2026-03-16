@@ -29,7 +29,7 @@
           <Icon name="solar:hamburger-menu-linear" class="h-6 w-6" />
         </UiButton>
 
-        <div v-if="!store.ui.memberListVisible" class="flex-1 min-w-0">
+        <div :class="{'hidden md:block': store.ui.memberListVisible}" class="flex-1 min-w-0">
           <RoomHeader 
             v-if="!isDm"
             :name="room?.name || 'Unknown Room'"
@@ -164,17 +164,17 @@
         <div
           v-else
           :data-event-id="msg.eventId"
-          class="flex gap-2.5 group items-end relative"
+          class="flex flex-col md:flex-row gap-2.5 group items-start md:items-end relative"
           :class="[
-            msg.isOwn ? 'flex-row-reverse' : 'flex-row',
+            msg.isOwn ? 'md:flex-row-reverse items-end' : 'md:flex-row items-start',
             (msg.reactions?.length || msg.readReceipts?.length) ? 'mb-4' : ''
           ]"
         >
           <!-- Avatar & Metadata Column -->
           <div 
-            class="flex flex-col shrink-0 gap-0.5"
+            class="flex flex-col shrink-0 gap-0.5 order-2 md:order-none"
             :class="[
-              msg.isOwn ? 'items-start' : 'items-end',
+              msg.isOwn ? 'items-end md:items-start text-right md:text-left' : 'items-start md:items-end text-left md:text-right',
               // Ensure minimum width to maintain alignment even if avatar is missing/timestamp is small
               'min-w-[32px]'
             ]"
@@ -184,14 +184,13 @@
               v-if="!isPreviousSameSender(index)"
               :mxc-url="msg.avatarUrl" 
               :name="msg.senderName" 
-              class="h-8 w-8 border"
+              class="h-8 w-8 border hidden md:block"
             />
             <!-- Spacer if no avatar but we still need the column to align (handled by flex parent alignment + min-width if timestamp is missing, but timestamp is always there) -->
             
             <!-- Timestamp & Edit Status -->
             <div 
               class="flex flex-col text-[10px] text-muted-foreground leading-none gap-0.5 mb-1 select-none"
-              :class="msg.isOwn ? 'items-start text-left' : 'items-end text-right'"
             >
                <span v-if="msg.isEdited" class="whitespace-nowrap">
                  (edited)
@@ -205,7 +204,7 @@
           <!-- Message content -->
           <UiContextMenu>
             <UiContextMenuTrigger as-child>
-            <div class="flex flex-col max-w-[75%] min-w-0 relative group/message" :class="msg.isOwn ? 'items-end' : 'items-start'">
+            <div class="flex flex-col max-w-[90%] md:max-w-[75%] min-w-0 relative group/message order-1 md:order-none" :class="msg.isOwn ? 'items-end' : 'items-start'">
               <!-- Sender name (only for first in a group) -->
               <span
                 v-if="!msg.isOwn && !isPreviousSameSender(index)"

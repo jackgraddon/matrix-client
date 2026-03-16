@@ -154,14 +154,14 @@
         <!-- Member List Pane -->
         <div 
             v-if="currentRoom && isChatRoute" 
-            class="flex flex-row h-full shrink-0 transition-transform duration-300 ease-in-out z-10 w-full md:w-auto justify-end"
+            class="flex flex-row h-full shrink-0 transition-all duration-300 ease-in-out z-10 w-full overflow-hidden"
             :class="[
-                store.ui.memberListVisible ? 'translate-x-0' : 'translate-x-full md:translate-x-0',
+                store.ui.memberListVisible ? 'translate-x-0 md:w-60' : 'translate-x-full md:translate-x-0 md:w-0',
                 'fixed top-0 left-0 md:left-auto md:right-0 md:relative',
-                !store.ui.memberListVisible && 'pointer-events-none md:pointer-events-auto'
+                !store.ui.memberListVisible && 'pointer-events-none'
             ]"
         >
-            <RoomMemberList :room="(currentRoom as any)" class="h-full w-full md:w-60 bg-background" />
+            <RoomMemberList :room="(currentRoom as any)" class="h-full w-full md:w-60 bg-background shrink-0" />
         </div>
     </div>
     <VerificationModal />

@@ -11,8 +11,7 @@ import { deriveRecoveryKeyFromPassphrase } from 'matrix-js-sdk/lib/crypto-api/ke
 import { decodeRecoveryKey } from 'matrix-js-sdk/lib/crypto-api/recovery-key';
 import type { IdTokenClaims } from 'oidc-client-ts';
 import { getOidcConfig, registerClient, getLoginUrl, completeLoginFlow, getHomeserverUrl, getDeviceDisplayName } from '~/utils/matrix-auth';
-import { MsgType, EventType, IndexedDBStore, IndexedDBCryptoStore, MemoryStore } from 'matrix-js-sdk';
-import { VerificationMethod } from 'matrix-js-sdk/lib/types';
+import { MsgType, EventType, IndexedDBStore, IndexedDBCryptoStore, MemoryStore, LocalStorageCryptoStore } from 'matrix-js-sdk';
 import { useRouter } from '#app';
 import { useVoiceStore } from './voice';
 import { MatrixRTCSessionManagerEvents } from 'matrix-js-sdk/lib/matrixrtc/MatrixRTCSessionManager';
@@ -1294,14 +1293,15 @@ export const useMatrixStore = defineStore('matrix', {
         tokenRefreshFunction,
         store: roomStore,
         verificationMethods: [
-          VerificationMethod.Sas, 
-          VerificationMethod.ShowQrCode, 
-          VerificationMethod.ScanQrCode, 
-          VerificationMethod.Reciprocate
+          'm.sas.v1', 
+          'm.qr_code.show.v1', 
+          'm.qr_code.scan.v1', 
+          'm.reciprocate.v1'
         ],
-        // CRITICAL: We DO NOT pass cryptoStore here.
-        // Rust crypto handles its own storage (matrix-sdk-crypto DB).
-        // Passing IndexedDBCryptoStore here can cause legacy sync errors in recent SDKs.
+        // CRITICAL: We DO NOT pass IndexedDBCryptoStore here as it conflicts with Rust crypto.
+        // However, we MUST pass LocalStorageCryptoStore so that Secret Storage Keys (like the 
+        // Megolm backup key) gossiped to us from other devices survive a page refresh.
+        cryptoStore: typeof window !== 'undefined' ? new LocalStorageCryptoStore(window.localStorage) : undefined,
         cryptoCallbacks: {
           getSecretStorageKey: async ({ keys }: { keys: Record<string, any> }): Promise<[string, Uint8Array<ArrayBuffer>] | null> => {
             const keyIds = Object.keys(keys);
@@ -1310,7 +1310,7 @@ export const useMatrixStore = defineStore('matrix', {
             const firstKeyId = keyIds[0];
             if (!firstKeyId) return null;
 
-            const cachedKeyId = keyIds.find(id => secretStorageKeys.get(id) instanceof Uint8Array);
+            const cachedKeyId = keyIds.find(id => secretStorageKeys.has(id));
             if (cachedKeyId) {
               return [cachedKeyId, secretStorageKeys.get(cachedKeyId)!] as [string, Uint8Array<ArrayBuffer>];
             }
@@ -1444,7 +1444,11 @@ export const useMatrixStore = defineStore('matrix', {
             cryptoCallbacks: {
               getSecretStorageKey: async ({ keys }: { keys: Record<string, any> }): Promise<[string, Uint8Array<ArrayBuffer>] | null> => {
                 const keyIds = Object.keys(keys);
-                const keyId = keyIds.find(id => secretStorageKeys.get(id) instanceof Uint8Array);
+                const keyId = keyIds.find(id => secretStorageKeys.has(id));
+                if (keyId) {
+                  console.log('[SecretStorage] Reusing cached memory key for fallback prompt:', keyId);
+                  return [keyId, secretStorageKeys.get(keyId)!] as [string, Uint8Array<ArrayBuffer>];
+                }
                 if (!keyId) {
                   return new Promise<[string, Uint8Array<ArrayBuffer>] | null>((resolve, reject) => {
                     const firstKeyId = Object.keys(keys)[0];
@@ -2005,6 +2009,9 @@ export const useMatrixStore = defineStore('matrix', {
 
         // Cache in memory Map for background SDK
         secretStorageKeys.set(keyId, keyArray! as Uint8Array<ArrayBuffer>);
+        // Force persistence to localStorage so it survives page refresh
+        persistSecretStorageKey(keyId, keyArray!);
+        
         // Also cache in the Pinia record for any other listeners
         this.secretStorageKeyCache[keyId] = keyArray! as Uint8Array<ArrayBuffer>;
 
@@ -2221,8 +2228,8 @@ export const useMatrixStore = defineStore('matrix', {
             }
 
             // Initiator auto-starts SAS only if QR is not an option
-            const canShowQr = (request as any).qrCodeData || request.otherPartySupportsMethod(VerificationMethod.ScanQrCode);
-            const canScanQr = request.otherPartySupportsMethod(VerificationMethod.ShowQrCode);
+            const canShowQr = (request as any).qrCodeData || request.otherPartySupportsMethod('m.qr_code.scan.v1');
+            const canScanQr = request.otherPartySupportsMethod('m.qr_code.show.v1');
             const qrPossible = canShowQr || canScanQr;
 
             if (this.isVerificationInitiatedByMe && (methods.includes('m.sas.v1') || methods.length === 0) && !request.verifier && !this.activeSas && !qrPossible) {
