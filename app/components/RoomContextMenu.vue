@@ -1,6 +1,6 @@
 <template>
   <UiContextMenu @update:open="onOpenChange">
-    <UiContextMenuTrigger as-child>
+    <UiContextMenuTrigger as-child @contextmenu.stop>
       <slot />
     </UiContextMenuTrigger>
     <UiContextMenuContent class="w-64">
