@@ -110,6 +110,8 @@ export default defineNuxtConfig({
     manifest: {
       name: 'Tumult',
       theme_color: '#ffffff',
+      scope: '/',
+      start_url: '/',
       icons: [
         {
           src: 'pwa-192x192.png',

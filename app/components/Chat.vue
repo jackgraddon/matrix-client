@@ -606,6 +606,9 @@
                       <UiDropdownMenuItem @click="handleInviteToGame('chess')" class="cursor-pointer">
                         <span>Chess</span>
                       </UiDropdownMenuItem>
+                      <UiDropdownMenuItem @click="handleInviteToGame('slangtiles')" class="cursor-pointer">
+                        <span>Slanguage Tiles</span>
+                      </UiDropdownMenuItem>
                     </UiDropdownMenuSubContent>
                   </UiDropdownMenuPortal>
                 </UiDropdownMenuSub>

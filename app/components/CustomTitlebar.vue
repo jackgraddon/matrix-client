@@ -1,7 +1,7 @@
 <template>
   <div
     v-if="isTauri"
-    class="fixed top-0 left-0 right-0 h-[30px] w-full flex items-center justify-between select-none transition-colors bg-neutral-200 dark:bg-background z-[9999]"
+    class="fixed top-0 left-0 right-0 h-[30px] w-full flex items-center justify-between select-none z-[9999]"
     data-tauri-drag-region
   >
     <div class="w-[135px] h-full flex items-center" data-tauri-drag-region />

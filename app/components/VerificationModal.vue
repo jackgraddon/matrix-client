@@ -2,9 +2,19 @@
   <UiDialog :open="store.verificationModalOpen || !!store.secretStoragePrompt" @update:open="handleClose">
     <UiDialogContent class="sm:max-w-md">
       <UiDialogHeader>
-        <UiDialogTitle>{{ store.secretStoragePrompt ? 'Security Key Required' : 'Device Verification' }}</UiDialogTitle>
+        <UiDialogTitle>
+          <template v-if="store.isVerificationCompleted">Verification Complete</template>
+          <template v-else-if="store.secretStoragePrompt && store.isCrossSigningReady">Restore Encrypted History</template>
+          <template v-else-if="store.secretStoragePrompt">Security Key Required</template>
+          <template v-else>Device Verification</template>
+        </UiDialogTitle>
         <UiDialogDescription v-if="store.secretStoragePrompt">
-          Enter your security key or passphrase to access encrypted messages.
+          <template v-if="store.isCrossSigningReady">
+            Your device is now verified! To access your previous message history, please enter your security key or passphrase.
+          </template>
+          <template v-else>
+            Enter your security key or passphrase to verify this session and access encrypted messages.
+          </template>
         </UiDialogDescription>
         <UiDialogDescription v-else-if="store.activeVerificationRequest">
           {{ store.isVerificationInitiatedByMe ? 'Verify this device with another session.' : 'Someone is trying to verify this device.' }}
@@ -13,7 +23,7 @@
           Sending verification request...
         </UiDialogDescription>
         <UiDialogDescription v-else>
-          Keep your messages secure by verifying this session.
+          Choose how you would like to secure your messages.
         </UiDialogDescription>
       </UiDialogHeader>
 
@@ -26,32 +36,68 @@
            </div>
         </template>
         <template v-else>
-          <p class="text-sm text-center text-muted-foreground">
-            How would you like to verify this session?
+          <p class="text-sm text-center text-muted-foreground pb-2">
+            Verification ensures that only you can read your messages.
           </p>
-          <div class="flex flex-col gap-2">
-            <UiButton @click="handleDeviceVerification">
-              <Icon name="solar:devices-bold" class="mr-2 size-4" />
-              Verify with another device
-            </UiButton>
-            <UiButton variant="outline" @click="store.bootstrapVerification()">
-              <Icon name="solar:key-bold" class="mr-2 size-4" />
-              Use Security Key / Passphrase
-            </UiButton>
-          </div>
+          <UiCard class="p-4 cursor-pointer hover:bg-accent/50 transition-colors" @click="handleDeviceVerification">
+            <div class="flex items-center gap-4">
+              <div class="bg-primary/10 p-2 rounded-full">
+                <Icon name="solar:devices-bold" class="size-6 text-primary" />
+              </div>
+              <div class="flex-1">
+                <h4 class="text-sm font-bold">Verify with another device</h4>
+                <p class="text-xs text-muted-foreground">Approve a request on your phone or computer.</p>
+              </div>
+              <Icon name="lucide:chevron-right" class="size-4 text-muted-foreground" />
+            </div>
+          </UiCard>
+
+          <UiCard class="p-4 cursor-pointer hover:bg-accent/50 transition-colors" @click="store.bootstrapVerification()">
+            <div class="flex items-center gap-4">
+              <div class="bg-muted p-2 rounded-full">
+                <Icon name="solar:key-bold" class="size-6 text-muted-foreground" />
+              </div>
+              <div class="flex-1">
+                <h4 class="text-sm font-bold">Use Security Key</h4>
+                <p class="text-xs text-muted-foreground">Enter your recovery passphrase instead.</p>
+              </div>
+              <Icon name="lucide:chevron-right" class="size-4 text-muted-foreground" />
+            </div>
+          </UiCard>
         </template>
       </div>
 
-      <!-- Secret Storage / Backup Key Input -->
-      <div v-if="store.secretStoragePrompt" class="flex flex-col gap-4 py-1">
+      <!-- Verification Success / Zero-Click Restoration -->
+      <div v-if="store.isRestoringHistory || store.isVerificationCompleted" class="flex flex-col items-center gap-6 py-8">
+        <div v-if="store.isRestoringHistory" class="flex flex-col items-center gap-6 w-full">
+           <div class="relative">
+              <UiSpinner class="h-16 w-16 text-primary" />
+              <div class="absolute inset-0 flex items-center justify-center">
+                 <Icon name="solar:key-bold" class="size-6 text-primary animate-pulse" />
+              </div>
+           </div>
+           <div class="text-center space-y-2">
+              <p class="font-bold text-lg">Verified!</p>
+              <p class="text-sm text-muted-foreground animate-pulse">Syncing encrypted history from your other devices...</p>
+           </div>
+        </div>
+        <div v-else class="flex flex-col items-center gap-4 text-green-600 w-full">
+          <div class="text-5xl">✅</div>
+          <p class="font-bold text-lg">Verified!</p>
+          <p class="text-sm text-muted-foreground text-center">Your session is now secure.</p>
+          <UiButton class="mt-2" variant="outline" size="sm" @click="store.closeVerificationModal()">
+            Close
+          </UiButton>
+        </div>
+      </div>
+
+      <!-- Secret Storage / Backup Key Input (Manual Fallback) -->
+      <div v-else-if="store.secretStoragePrompt" class="flex flex-col gap-4 py-1">
         <template v-if="store.isCrossSigningReady">
-          <div class="text-green-600 flex flex-col items-center">
-            <div class="text-3xl mb-1">✅</div>
-            <p class="font-bold text-sm">Verified!</p>
+          <div class="text-green-600 flex flex-col items-center mb-2">
+            <div class="text-4xl mb-1">✅</div>
+            <p class="font-bold">Verified!</p>
           </div>
-          <p class="text-xs text-muted-foreground text-center">
-            To restore your secure message history, please enter your Security Key or Passphrase.
-          </p>
         </template>
         
         <UiInput 
@@ -61,19 +107,20 @@
           class="my-2"
           @keyup.enter="submitKey"
         />
-        <div class="flex gap-3 justify-end">
-          <UiButton variant="secondary" size="sm" @click="store.cancelSecretStorageKey()">
+        <div class="flex gap-3 justify-end items-center">
+          <UiButton variant="ghost" size="sm" class="text-xs" @click="store.cancelSecretStorageKey()">
             {{ store.isCrossSigningReady ? 'Skip History' : 'Cancel' }}
           </UiButton>
           <UiButton size="sm" @click="submitKey">
-            {{ store.isCrossSigningReady ? 'Restore' : 'Verify' }}
+            {{ store.isCrossSigningReady ? 'Restore History' : 'Verify With Key' }}
           </UiButton>
         </div>
 
         <div v-if="!store.isCrossSigningReady" class="pt-4 border-t mt-2">
-          <p class="text-[10px] text-muted-foreground text-center mb-2">Alternatively</p>
-          <UiButton variant="ghost" size="sm" class="w-full text-xs" @click="switchToDeviceVerification">
-            Verify with another device instead
+          <p class="text-[10px] text-muted-foreground text-center mb-2 uppercase tracking-tight">Alternatively</p>
+          <UiButton variant="outline" size="sm" class="w-full text-xs" @click="switchToDeviceVerification">
+            <Icon name="solar:devices-bold" class="mr-2 size-3" />
+            Verify with another device
           </UiButton>
         </div>
       </div>
@@ -103,16 +150,52 @@
           Verification request has been accepted.
         </p>
         
-        <!-- QR Code Display -->
-        <div v-if="qrCodeUrl" class="flex flex-col items-center gap-4 py-4">
-          <div class="bg-white p-4 rounded-xl shadow-inner">
-            <img :src="qrCodeUrl" class="w-48 h-48" alt="Verification QR Code" />
-          </div>
-          <p class="text-xs text-muted-foreground max-w-[200px]">
-            Scan this code with your other device to verify instantly.
-          </p>
-          <div class="w-full h-px bg-border my-2" />
-          <p class="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">or</p>
+        <!-- QR Code Display / Scanner -->
+        <div class="flex flex-col items-center gap-4 py-4">
+          <template v-if="!isScanning">
+            <div v-if="qrCodeUrl" class="bg-white p-4 rounded-xl shadow-inner mb-2">
+              <img :src="qrCodeUrl" class="w-48 h-48" alt="Verification QR Code" />
+            </div>
+            <p v-if="qrCodeUrl" class="text-xs text-muted-foreground max-w-[200px] mb-2">
+              Scan this code with your other device to verify instantly.
+            </p>
+            
+            <div v-if="qrCodeUrl" class="w-full flex items-center gap-4 my-2">
+              <div class="h-px flex-1 bg-border" />
+              <span class="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">or</span>
+              <div class="h-px flex-1 bg-border" />
+            </div>
+
+            <UiButton v-if="isCameraSupported" variant="outline" size="sm" class="w-full" @click="startScanning">
+              <Icon name="solar:camera-bold" class="mr-2 size-4" />
+              Scan their QR code
+            </UiButton>
+            <p v-else-if="!isMobile" class="text-[10px] text-muted-foreground italic">
+              Camera scanning is not available on this browser/device.
+            </p>
+          </template>
+
+          <template v-else>
+            <div class="relative w-full aspect-square max-w-[280px] bg-black rounded-xl overflow-hidden shadow-2xl border-2 border-primary/50">
+               <video ref="video" class="absolute inset-0 w-full h-full object-cover" autoplay playsinline muted></video>
+               <canvas ref="canvas" class="hidden"></canvas>
+               
+               <!-- Scanner Overlay -->
+               <div class="absolute inset-0 border-[40px] border-black/40">
+                  <div class="w-full h-full border-2 border-primary/50 relative">
+                     <div class="absolute inset-0 animate-pulse bg-primary/5"></div>
+                     <!-- Corner Accents -->
+                     <div class="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-primary"></div>
+                     <div class="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-primary"></div>
+                     <div class="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-primary"></div>
+                     <div class="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-primary"></div>
+                  </div>
+               </div>
+            </div>
+            <UiButton variant="ghost" size="sm" @click="stopScanning">
+              Cancel Scanning
+            </UiButton>
+          </template>
         </div>
 
         <p class="text-xs text-muted-foreground">
@@ -175,16 +258,6 @@
           </UiButton>
         </div>
       </div>
-
-      <!-- Verification Success -->
-      <div v-else-if="store.isVerificationCompleted" class="flex flex-col items-center gap-4 py-8 text-green-600">
-        <div class="text-5xl">✅</div>
-        <p class="font-bold text-lg">Verified!</p>
-        <p class="text-sm text-muted-foreground text-center">Your session is now secure.</p>
-        <UiButton class="mt-2" variant="outline" size="sm" @click="store.closeVerificationModal()">
-          Close
-        </UiButton>
-      </div>
       
     </UiDialogContent>
   </UiDialog>
@@ -192,11 +265,35 @@
 
 <script setup lang="ts">
 import { useMatrixStore } from '~/stores/matrix';
+import { useMediaQuery } from '@vueuse/core';
+import { toast } from 'vue-sonner';
 import QRCode from 'qrcode';
+import jsQR from 'jsqr';
 
 const store = useMatrixStore();
 const backupKeyInput = ref('');
 const qrCodeUrl = ref<string | null>(null);
+
+// Scanner State
+const isScanning = ref(false);
+const isCameraSupported = ref(false);
+const video = ref<HTMLVideoElement | null>(null);
+const canvas = ref<HTMLCanvasElement | null>(null);
+let stream: MediaStream | null = null;
+let animationFrameId: number | null = null;
+
+const isMobile = useMediaQuery('(max-width: 768px)');
+
+onMounted(async () => {
+  isCameraSupported.value = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+});
+
+// Auto-start scanner on mobile if we are in the ready phase
+watch([() => store.isVerificationReady, isMobile], ([ready, mobile]) => {
+  if (ready && mobile && isCameraSupported.value && !isScanning.value && !store.activeSas) {
+    startScanning();
+  }
+}, { immediate: true });
 
 watch(() => store.qrCodeData, async (data) => {
   if (data) {
@@ -218,6 +315,70 @@ watch(() => store.qrCodeData, async (data) => {
   }
 }, { immediate: true });
 
+async function startScanning() {
+  if (!isCameraSupported.value) return;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ 
+      video: { facingMode: 'environment' } 
+    });
+    isScanning.value = true;
+    
+    await nextTick();
+    if (video.value) {
+      video.value.srcObject = stream;
+      video.value.play();
+      animationFrameId = requestAnimationFrame(tick);
+    }
+  } catch (err) {
+    console.error('Failed to access camera:', err);
+    isScanning.value = false;
+    toast.error('Camera Access Failed', {
+      description: 'Please ensure you have granted camera permissions to use QR verification.'
+    });
+  }
+}
+
+function stopScanning() {
+  isScanning.value = false;
+  if (stream) {
+    stream.getTracks().forEach(track => track.stop());
+    stream = null;
+  }
+  if (animationFrameId) {
+    cancelAnimationFrame(animationFrameId);
+    animationFrameId = null;
+  }
+}
+
+async function tick() {
+  if (!isScanning.value || !video.value || !canvas.value) return;
+
+  if (video.value.readyState === video.value.HAVE_ENOUGH_DATA) {
+    const ctx = canvas.value.getContext('2d', { willReadFrequently: true });
+    if (ctx) {
+      canvas.value.height = video.value.videoHeight;
+      canvas.value.width = video.value.videoWidth;
+      ctx.drawImage(video.value, 0, 0, canvas.value.width, canvas.value.height);
+      const imageData = ctx.getImageData(0, 0, canvas.value.width, canvas.value.height);
+      const code = jsQR(imageData.data, imageData.width, imageData.height, {
+        inversionAttempts: 'dontInvert',
+      });
+
+      if (code && code.data.startsWith('matrix-qrcode/')) {
+        console.log('[QRScanner] Found QR code:', code.data);
+        stopScanning();
+        await store.reciprocateQrCode(code.data);
+        return;
+      }
+    }
+  }
+  animationFrameId = requestAnimationFrame(tick);
+}
+
+onUnmounted(() => {
+  stopScanning();
+});
+
 async function submitKey() {
   if (!backupKeyInput.value) return;
   await store.submitSecretStorageKey(backupKeyInput.value);
@@ -238,6 +399,7 @@ function handleClose(open: boolean) {
     if (store.activeVerificationRequest && !store.isVerificationCompleted) {
       store.cancelVerification();
     }
+    stopScanning();
     store.closeVerificationModal();
   }
 }

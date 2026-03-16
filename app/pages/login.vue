@@ -1,5 +1,5 @@
 <template>
-  <div class="flex min-h-screen items-center justify-center bg-background">
+  <div class="flex min-h-screen items-center justify-center">
     <UiCard class="w-full max-w-md">
       <UiCardHeader class="text-center">
         <UiCardTitle>Let's get you logged in.</UiCardTitle>

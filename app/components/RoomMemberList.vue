@@ -1,5 +1,5 @@
 <template>
-  <aside class="w-full md:w-60 flex flex-col shrink-0 h-full relative bg-neutral-100 dark:bg-neutral-900 border-l border-border/50 shadow-xl md:shadow-none">
+  <aside class="w-full md:w-60 flex flex-col shrink-0 h-full relative">
     <div class="p-4 border-b border-border/50 flex items-center gap-2">
       <UiButton
         variant="ghost"

@@ -1,8 +1,8 @@
 <template>
-    <div class="flex flex-row h-full bg-neutral-200 dark:bg-background relative overflow-hidden">
+    <div class="flex flex-row h-full relative overflow-hidden">
         <!-- Sidebar Pane (Guild Bar + Chat Sidebar) -->
         <div 
-            class="flex flex-row h-full shrink-0 transition-transform duration-300 ease-in-out z-10 w-full md:w-auto bg-background"
+            class="flex flex-row h-full shrink-0 transition-transform duration-300 ease-in-out z-10 w-full md:w-auto"
             :class="[
                 store.ui.sidebarOpen ? 'translate-x-0' : 'translate-x-[-100%] md:translate-x-0',
                 'fixed top-0 left-0 md:relative',
@@ -10,7 +10,7 @@
             ]"
         >
             <!-- Servers Sidebar (Guild Bar) -->
-            <aside class="bg-background dark:bg-neutral-900 rounded-lg ml-2 mb-2 flex flex-col items-center p-2 gap-2 shrink-0 overflow-y-auto overflow-x-hidden">
+            <aside class="rounded-lg ml-2 mb-2 flex flex-col items-center p-2 gap-2 shrink-0 overflow-y-auto overflow-x-hidden">
                 <!-- Home Button -->
                 <UiButton 
                     class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 flex items-center justify-center shrink-0 relative group" 
@@ -121,7 +121,7 @@
             </aside>
 
             <!-- Sidebar -->
-            <ChatSidebar ref="sidebarRef"/>
+            <ChatSidebar ref="sidebarRef" class="min-w-0 flex-1"/>
         </div>
 
         <!-- Main Content -->
@@ -154,7 +154,7 @@
         <!-- Member List Pane -->
         <div 
             v-if="currentRoom && isChatRoute" 
-            class="flex flex-row h-full shrink-0 transition-transform duration-300 ease-in-out z-10 w-full md:w-auto justify-end bg-background"
+            class="flex flex-row h-full shrink-0 transition-transform duration-300 ease-in-out z-10 w-full md:w-auto justify-end"
             :class="[
                 store.ui.memberListVisible ? 'translate-x-0' : 'translate-x-full md:translate-x-0',
                 'fixed top-0 left-0 md:left-auto md:right-0 md:relative',

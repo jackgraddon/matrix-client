@@ -1,5 +1,7 @@
 import { defineStore } from 'pinia';
 import { toast } from 'vue-sonner';
+import { markRaw } from 'vue';
+import { navigateTo } from '#app';
 import * as sdk from 'matrix-js-sdk';
 import { OidcTokenRefresher } from 'matrix-js-sdk';
 import { CryptoEvent } from 'matrix-js-sdk/lib/crypto-api/CryptoEvent';
@@ -140,6 +142,7 @@ export const useMatrixStore = defineStore('matrix', {
     isRequestingVerification: false,
     activeSas: null as ShowSasCallbacks | null,
     isVerificationCompleted: false,
+    isRestoringHistory: false,
     verificationPhase: null as VerificationPhase | null,
     qrCodeData: null as string | null,
     verificationModalOpen: false,
@@ -150,13 +153,19 @@ export const useMatrixStore = defineStore('matrix', {
       keyId: string,
       keyInfo: any // SecretStorageKeyDescription
     } | null,
-    secretStorageKeyCache: {} as Record<string, Uint8Array>,
+    pendingSecretStorageRequests: [] as {
+      promise: { resolve: (val: [string, Uint8Array<ArrayBuffer>] | null) => void, reject: (err?: any) => void },
+      keyId: string,
+      keyInfo: any
+    }[],
+    secretStorageKeyCache: {} as Record<string, Uint8Array<ArrayBuffer>>,
     secretStorageSetup: null as {
       defaultKeyId: string;
       needsPassphrase: boolean;
       passphraseInfo?: any;
     } | null,
     // Activity Status (Game Detection)
+    isGameDetectionEnabled: false,
     activityStatus: null as string | null,
     activityDetails: null as any | null,
     remoteActivityDetails: {} as Record<string, any>,
@@ -218,17 +227,17 @@ export const useMatrixStore = defineStore('matrix', {
       if (!state.client) return 0;
       return state.client.getVisibleRooms().filter(r => r.getMyMembership() === 'invite').length;
     },
-    totalDmUnreadCount() {
+    totalDmUnreadCount(): number {
       this.unreadTrigger; // trigger reactivity
       if (!this.client) return 0;
-      const { directMessages } = this.hierarchy;
-      return directMessages.reduce((sum, room) => sum + (room.getUnreadNotificationCount(this.unreadCountType) || 0), 0);
+      const { directMessages } = (this as any).hierarchy;
+      return directMessages.reduce((sum: number, room: any) => sum + (room.getUnreadNotificationCount(this.unreadCountType) || 0), 0);
     },
-    totalOrphanRoomUnreadCount() {
+    totalOrphanRoomUnreadCount(): number {
       this.unreadTrigger; // trigger reactivity
       if (!this.client) return 0;
-      const { orphanRooms } = this.hierarchy;
-      return orphanRooms.reduce((sum, room) => sum + (room.getUnreadNotificationCount(this.unreadCountType) || 0), 0);
+      const { orphanRooms } = (this as any).hierarchy;
+      return orphanRooms.reduce((sum: number, room: any) => sum + (room.getUnreadNotificationCount(this.unreadCountType) || 0), 0);
     },
     getSpaceUnreadCount: (state) => (spaceId: string): number => {
       state.unreadTrigger; // trigger reactivity
@@ -551,7 +560,7 @@ export const useMatrixStore = defineStore('matrix', {
       console.log('[MatrixStore] Loading game detection config:', stored);
       this.gameDetectionLevel = stored as any;
 
-      const isTauri = import.meta.client && !!(window as any).__TAURI_INTERNALS__;
+      const isTauri = (process as any).client && !!(window as any).__TAURI_INTERNALS__;
       if (isTauri) {
         const { listen } = await import('@tauri-apps/api/event');
         listen('game-activity', (event: any) => {
@@ -596,7 +605,7 @@ export const useMatrixStore = defineStore('matrix', {
       this.gameDetectionLevel = level;
       await setPref('game_detection_level', level);
 
-      const isTauri = import.meta.client && !!(window as any).__TAURI_INTERNALS__;
+      const isTauri = (process as any).client && !!(window as any).__TAURI_INTERNALS__;
 
       // Disable everything first
       await this.stopRpcServer();
@@ -664,12 +673,12 @@ export const useMatrixStore = defineStore('matrix', {
     },
 
     async startRpcServer() {
-      const isTauri = import.meta.client && !!(window as any).__TAURI_INTERNALS__;
+      const isTauri = (process as any).client && !!(window as any).__TAURI_INTERNALS__;
       if (!isTauri) return;
 
       const userId = this.client?.getUserId() || 'unknown';
       const hashedId = await this._hashUserId(userId);
-      const userName = this.user?.displayName || userId.split(':')[0].replace('@', '');
+      const userName = this.user?.displayName || (userId.split(':')[0] || 'Unknown').replace('@', '');
       const avatarHash = this.user?.avatarUrl?.split('/').pop();
 
       try {
@@ -689,7 +698,7 @@ export const useMatrixStore = defineStore('matrix', {
     },
 
     async stopRpcServer() {
-      const isTauri = import.meta.client && !!(window as any).__TAURI_INTERNALS__;
+      const isTauri = (process as any).client && !!(window as any).__TAURI_INTERNALS__;
       if (!isTauri) return;
 
       try {
@@ -1029,7 +1038,7 @@ export const useMatrixStore = defineStore('matrix', {
       await this._clearPersistentStores();
       console.log('[MatrixStore] startLogin: Persistent stores cleared.');
 
-      const isTauri = import.meta.client && !!(window as any).__TAURI_INTERNALS__;
+      const isTauri = (process as any).client && !!(window as any).__TAURI_INTERNALS__;
 
       if (isTauri) {
         // --- Custom Loopback OAuth Flow (Desktop) ---
@@ -1225,6 +1234,15 @@ export const useMatrixStore = defineStore('matrix', {
         dbName: "matrix-js-sdk::matrix-store",
       });
 
+      // 1.1 Request persistent storage (iOS/PWA optimization)
+      if (typeof navigator !== 'undefined' && navigator.storage && navigator.storage.persist) {
+        navigator.storage.persist().then(persisted => {
+          console.log(`[MatrixStore] Storage persisted: ${persisted}`);
+        }).catch(err => {
+          console.warn('[MatrixStore] Failed to request storage persistence:', err);
+        });
+      }
+
       // Build client options
       const clientOpts: any = {
         baseUrl: getHomeserverUrl(),
@@ -1240,25 +1258,40 @@ export const useMatrixStore = defineStore('matrix', {
         cryptoCallbacks: {
           getSecretStorageKey: async ({ keys }: { keys: Record<string, any> }): Promise<[string, Uint8Array<ArrayBuffer>] | null> => {
             const keyIds = Object.keys(keys);
-            const keyId = keyIds.find(id => secretStorageKeys.get(id) instanceof Uint8Array);
-            if (!keyId) {
-              // This tells the SDK to pause and wait!
-              return new Promise<[string, Uint8Array<ArrayBuffer>] | null>((resolve, reject) => {
-                const firstKeyId = Object.keys(keys)[0];
-                if (!firstKeyId) {
-                  resolve(null);
-                  return;
-                }
-                const keyInfo = keys[firstKeyId];
+            console.log('[SecretStorage] getSecretStorageKey called for keys:', keyIds);
+            
+            const firstKeyId = keyIds[0];
+            if (!firstKeyId) return null;
 
-                this.secretStoragePrompt = {
-                  promise: { resolve, reject: (err: any) => reject(err) },
-                  keyId: firstKeyId,
-                  keyInfo
-                } as any;
-              }) as Promise<[string, Uint8Array<ArrayBuffer>] | null>;
+            const cachedKeyId = keyIds.find(id => secretStorageKeys.get(id) instanceof Uint8Array);
+            if (cachedKeyId) {
+              return [cachedKeyId, secretStorageKeys.get(cachedKeyId)!] as [string, Uint8Array<ArrayBuffer>];
             }
-            return [keyId, secretStorageKeys.get(keyId)!] as [string, Uint8Array<ArrayBuffer>];
+
+            // If a device verification is active, wait for it instead of prompting immediately.
+            // This prioritizes interactive verification (Emoji/QR) and gossip over backup keys.
+            if (this.activeVerificationRequest || this.isRequestingVerification) {
+              console.log('[SecretStorage] Verification in progress, deferring secret storage prompt...');
+              return new Promise<[string, Uint8Array<ArrayBuffer>] | null>((resolve, reject) => {
+                this.pendingSecretStorageRequests.push({
+                  promise: { resolve, reject: (err?: any) => reject(err) },
+                  keyId: firstKeyId,
+                  keyInfo: keys[firstKeyId]
+                });
+              });
+            }
+
+            // Otherwise, tell the SDK to pause and wait for user input via modal
+            return new Promise<[string, Uint8Array<ArrayBuffer>] | null>((resolve, reject) => {
+              const keyInfo = keys[firstKeyId];
+              console.log('[SecretStorage] Prompting user for key:', firstKeyId);
+
+              this.secretStoragePrompt = {
+                promise: { resolve, reject: (err: any) => reject(err) },
+                keyId: firstKeyId,
+                keyInfo
+              } as any;
+            });
           },
           cacheSecretStorageKey: (keyId: string, _keyInfo: any, privateKey: Uint8Array) => {
             secretStorageKeys.set(keyId, privateKey as Uint8Array<ArrayBuffer>);
@@ -1523,6 +1556,7 @@ export const useMatrixStore = defineStore('matrix', {
 
 
       // Register all listeners immediately — these are cheap and don't hit the network.
+      this.setupCryptoListeners();
       this.setupVerificationListeners();
       this.setupHierarchyListeners();
       this.setupMatrixRTCListeners();
@@ -1734,10 +1768,11 @@ export const useMatrixStore = defineStore('matrix', {
     },
 
     showInviteNotification(room: sdk.Room) {
-      const inviterId = room.getInviter();
-      const inviterName = room.getMember(inviterId!)?.name || inviterId;
       const myUserId = this.client?.getUserId();
-      const isDirect = room.getMember(myUserId!)?.events.member?.getContent().is_direct;
+      const member = room.getMember(myUserId!);
+      const inviterId = member?.events.member?.getSender();
+      const inviterName = room.getMember(inviterId!)?.name || inviterId || 'Someone';
+      const isDirect = member?.events.member?.getContent().is_direct;
 
       const title = isDirect ? 'New DM Invite' : 'New Room Invite';
       const body = `${inviterName} invited you to ${room.name}`;
@@ -1797,7 +1832,7 @@ export const useMatrixStore = defineStore('matrix', {
         let osType = 'Unknown OS';
         let osVersion = '';
 
-        const isTauri = import.meta.client && !!(window as any).__TAURI_INTERNALS__;
+        const isTauri = (process as any).client && !!(window as any).__TAURI_INTERNALS__;
         if (isTauri) {
           try {
             const { hostname, type, version } = await import('@tauri-apps/plugin-os');
@@ -1844,6 +1879,15 @@ export const useMatrixStore = defineStore('matrix', {
             };
             console.log('[SecretStorage] Setup detected:', this.secretStorageSetup);
           }
+        }
+
+        // Proactively bootstrap cross-signing (without overwriting) to ensure 
+        // this device is "ready to share" secrets with new verified devices.
+        const crypto = this.client.getCrypto();
+        if (crypto) {
+           await crypto.bootstrapCrossSigning({ setupNewCrossSigning: false }).catch(e => {
+             console.log('[SecretStorage] Background bootstrap (expected to fail if unverified):', e.message);
+           });
         }
       } catch (e) {
         console.error('[SecretStorage] Failed to check setup:', e);
@@ -1986,6 +2030,68 @@ export const useMatrixStore = defineStore('matrix', {
       }
     },
 
+    setupCryptoListeners() {
+      if (!this.client) return;
+
+      // 1. Responder Logic (Old Device)
+      // Listen for secret requests and share if the device is verified
+      this.client.on("crypto.secrets.request" as any, async (request: any) => {
+        const userId = request.userId;
+        const deviceId = request.deviceId;
+        
+        console.log(`[Gossip] Secret request received for ${request.name} from ${deviceId}`);
+
+        try {
+          const crypto = this.client?.getCrypto();
+          if (!crypto) return;
+
+          const status = await crypto.getDeviceVerificationStatus(userId, deviceId);
+          if (status && (status as any).isVerified()) {
+            console.log(`[Gossip] Device ${deviceId} is verified. Sharing ${request.name}...`);
+            await request.share();
+          } else {
+            console.warn(`[Gossip] Unverified device ${deviceId} requested ${request.name}. Ignoring.`);
+          }
+        } catch (e) {
+          console.error(`[Gossip] Error processing secret request from ${deviceId}:`, e);
+        }
+      });
+
+      // 2. Receiver Logic (New Device)
+      // Listen for secrets arriving to provide feedback and trigger recovery
+      this.client.on("crypto.secrets.receiving" as any, (name: string) => {
+        console.log(`[Gossip] Receiving secret: ${name}`);
+      });
+
+      this.client.on("crypto.secrets.received" as any, async (name: string) => {
+        console.log(`[Gossip] Successfully received and stored: ${name}`);
+        
+        if (name === 'm.megolm_backup.v1') {
+           console.log('[Gossip] Megolm backup key received! Triggering automated restoration...');
+           // Load the key into crypto memory
+           await this.loadSessionBackupPrivateKeyFromSecretStorage();
+           // Restore the actual keys from server
+           await this.restoreKeysFromBackup();
+           // Retry decryption of any blocked messages
+           await this.retryDecryption();
+           
+           // Close the modal if we were in the restoration phase
+           this.isRestoringHistory = false;
+           this.cancelSecretStorageKey();
+           
+           // If we've successfully restored history, we can likely reset the whole verification UI
+           setTimeout(() => {
+             if (this.isVerificationCompleted && !this.isRestoringHistory) {
+                this._resetVerificationState();
+             }
+           }, 1000);
+        } else if (name === 'm.cross_signing.master') {
+           await this.checkDeviceVerified();
+           this.cancelSecretStorageKey();
+        }
+      });
+    },
+
     setupVerificationListeners() {
       if (!this.client) return;
 
@@ -1998,7 +2104,7 @@ export const useMatrixStore = defineStore('matrix', {
 
         // 2. If we already have an active request that we initiated, ignore incoming ones 
         // until ours is resolved/cancelled to avoid UI flickering
-        if (this.isVerificationInitiatedByMe && this.activeVerificationRequest && !this.activeVerificationRequest.hasBeenCancelled) {
+        if (this.isVerificationInitiatedByMe && this.activeVerificationRequest && this.activeVerificationRequest.phase !== VerificationPhase.Cancelled && this.activeVerificationRequest.phase !== VerificationPhase.Done) {
           console.log('[Verification] Ignoring incoming request because we have an active outgoing one');
           return;
         }
@@ -2064,12 +2170,57 @@ export const useMatrixStore = defineStore('matrix', {
           } else if (phase === VerificationPhase.Done) {
             this.isVerificationCompleted = true;
             this.activeSas = null;
+            this.isRestoringHistory = true; // Show "Syncing History..." spinner
+            
+            // If we were prompting for a secret key, clear it since verification 
+            // should provide the keys via gossip soon.
+            this.cancelSecretStorageKey();
+
             await this.checkDeviceVerified();
+            
+            // Proactively trigger gossip once trusted
             await this.requestSecretsFromOtherDevices();
-            await this.restoreKeysFromBackup();
-            await this.retryDecryption();
+
+            // Use a longer timeout for the "grace period" before falling back to manual input
+            setTimeout(async () => {
+              // Final check: did secrets arrive?
+              await this.restoreKeysFromBackup();
+              
+              // Resolve any deferred requests if gossip provided the keys
+              const satisfiedIndices: number[] = [];
+              for (let i = 0; i < this.pendingSecretStorageRequests.length; i++) {
+                const req = this.pendingSecretStorageRequests[i];
+                if (!req) continue;
+                if (secretStorageKeys.has(req.keyId)) {
+                  console.log(`[SecretStorage] Resolving deferred request for ${req.keyId} via gossip.`);
+                  req.promise.resolve([req.keyId, secretStorageKeys.get(req.keyId)!]);
+                  satisfiedIndices.push(i);
+                }
+              }
+              satisfiedIndices.slice().reverse().forEach(idx => this.pendingSecretStorageRequests.splice(idx, 1));
+
+              // End the restoration phase
+              this.isRestoringHistory = false;
+
+              // If any requests remain, they likely need a manual security key.
+              if (this.pendingSecretStorageRequests.length > 0) {
+                 console.log('[SecretStorage] Gossip did not provide keys, showing manual prompt.');
+                 const nextReq = this.pendingSecretStorageRequests.shift();
+                 if (nextReq) {
+                   this.secretStoragePrompt = nextReq;
+                   this.verificationModalOpen = true;
+                 }
+              }
+
+              await this.retryDecryption();
+              
+              // If we are fully decrypted now, we can probably close the modal
+              if (!this.secretStoragePrompt) {
+                setTimeout(() => this._resetVerificationState(), 1000);
+              }
+            }, 5000); // 5 second grace period for gossip
+
             toast.success('Device verified!');
-            setTimeout(() => this._resetVerificationState(), 3000);
           } else if (phase === VerificationPhase.Cancelled) {
             this._resetVerificationState();
           }
@@ -2154,6 +2305,37 @@ export const useMatrixStore = defineStore('matrix', {
       }
     },
 
+    async reciprocateQrCode(scannedData: string) {
+      if (!this.activeVerificationRequest) return;
+      
+      console.log('[QRVerification] Reciprocating QR code...');
+      try {
+        // Matrix QR data as defined in MSC1543 is a byte array 
+        // encoded in base64, usually prefixed with 'matrix-qrcode/'
+        const parts = scannedData.split('/');
+        const base64 = parts[parts.length - 1];
+        
+        // Convert base64 to Uint8ClampedArray
+        const binaryString = atob(base64 || '');
+        const uint8Array = new Uint8ClampedArray(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          uint8Array[i] = binaryString.charCodeAt(i);
+        }
+
+        // Call the official SDK method for scanning a QR code
+        // (request as any) because the interface might not have scanQRCode exported if the type definitions are lagging
+        const verifier = await (this.activeVerificationRequest as any).scanQRCode(uint8Array);
+        this._setupVerifierListeners(verifier);
+        
+        console.log('[QRVerification] Reciprocal scan successful.');
+      } catch (e) {
+        console.error('[QRVerification] Failed to reciprocate QR code:', e);
+        toast.error('Invalid QR code', {
+          description: 'The scanned data is not a valid Matrix verification code.'
+        });
+      }
+    },
+
     async confirmSasMatch(match: boolean = true) {
       if (!this.activeSas) return;
       try {
@@ -2194,6 +2376,7 @@ export const useMatrixStore = defineStore('matrix', {
         const wasReady = this.isCrossSigningReady;
 
         // Force download our own keys to ensure we see our cross-signing status correctly
+        // and that other devices see us as verified so they can share secrets.
         await this.client?.downloadKeysForUsers([userId]);
 
         // Refresh security status
@@ -2439,6 +2622,8 @@ export const useMatrixStore = defineStore('matrix', {
       this.qrCodeData = null;
       this.isVerificationCompleted = false;
       this.verificationPhase = null;
+      this.isRestoringHistory = false;
+      this.activeVerificationRequest = null;
       this.verificationModalOpen = false;
     },
 
@@ -2544,31 +2729,51 @@ export const useMatrixStore = defineStore('matrix', {
         console.warn("[SecretGossiping] Failed to restore keys from backup:", err);
       } finally {
         this.isRestoringKeys = false;
+        this.isRestoringHistory = false;
       }
     },
 
     async requestSecretsFromOtherDevices() {
-      const crypto = this.client?.getCrypto();
-      if (!crypto) return;
-
-      console.log('[SecretGossiping] Requesting secrets from other trusted devices...');
+      if (!this.client) return;
+      
+      console.log('[SecretGossiping] Checking for available secrets and initiating gossip if needed...');
+      
       try {
-        // Request cross-signing keys and the megolm backup key for history
-        const requests = [];
-        if (typeof (crypto as any).requestSecret === 'function') {
-          requests.push((crypto as any).requestSecret('m.cross_signing.master'));
-          requests.push((crypto as any).requestSecret('m.cross_signing.self_signing'));
-          requests.push((crypto as any).requestSecret('m.cross_signing.user_signing'));
-          requests.push((crypto as any).requestSecret('m.megolm_backup.v1'));
-          await Promise.all(requests);
-          console.log('[SecretGossiping] Successfully requested secrets.');
-        } else {
-          console.log('[SecretGossiping] requestSecret not supported on this crypto implementation (likely Rust Crypto). Skipping manual request.');
+        // Trigger the gossip mechanism (broadcasts m.secret_storage.request)
+        // checkOwnCrossSigningTrust audits the local state and requests missing secrets.
+        if (typeof (this.client as any).checkOwnCrossSigningTrust === 'function') {
+           console.log('[SecretGossiping] Triggering checkOwnCrossSigningTrust...');
+           await (this.client as any).checkOwnCrossSigningTrust();
         }
-      } catch (err) {
-        console.warn('[SecretGossiping] Failed to gossip secrets, user may need manual key entry:', err);
+
+        // With Rust crypto, we also try to pull the megolm backup key once we have 4S access.
+        await this.loadSessionBackupPrivateKeyFromSecretStorage().catch(err => {
+          console.warn('[SecretGossiping] Automatic backup key load failed (expected if not yet verified or no backup exists):', err);
+        });
+
+        console.log('[SecretGossiping] Background secret sync initiated.');
+      } catch (e) {
+        console.error('[SecretGossiping] Error during secret sync:', e);
       }
     },
+
+    async loadSessionBackupPrivateKeyFromSecretStorage() {
+      if (!this.client) return;
+      const crypto = this.client.getCrypto();
+      if (!crypto) return;
+
+      console.log('[SecretStorage] Attempting to load Megolm backup key from secret storage...');
+      try {
+        await crypto.loadSessionBackupPrivateKeyFromSecretStorage();
+        console.log('[SecretStorage] Successfully loaded Megolm backup key.');
+        // Trigger decryption retry since we now have the backup key
+        (this as any).retryDecryption();
+      } catch (e) {
+        console.warn('[SecretStorage] Failed to load backup key from secret storage:', e);
+        throw e;
+      }
+    },
+
 
     async retryDecryption() {
       if (!this.client) return;

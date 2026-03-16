@@ -5,8 +5,8 @@
   <GlobalContextMenu>
     <CustomTitlebar v-if="isTauri" />
     <div 
-      class="h-screen w-screen transition-colors overflow-hidden"
-      :class="{ 'pt-[30px]': isTauri }"
+      class="h-screen w-screen transition-colors overflow-hidden transition-colors bg-neutral-200 dark:bg-background"
+      :class="{ 'pt-[30px]': isTauri, 'pt-2': !isTauri }"
     >
       <!-- Sync Progress Bar -->
       <div 
