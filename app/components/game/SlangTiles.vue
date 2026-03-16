@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { SLANG_TILES, BOARD_MULTIPLIERS, MultiplierType, validatePlacement, calculateScore, shuffle } from '~/utils/slangtiles';
+// Fix: Use 'type' for type-only imports [Error 1484]
+import { SLANG_TILES, BOARD_MULTIPLIERS, type MultiplierType, validatePlacement, calculateScore, shuffle } from '~/utils/slangtiles';
 import { toast } from 'vue-sonner';
 
 const props = defineProps<{
@@ -10,12 +11,10 @@ const props = defineProps<{
 const store = useMatrixStore();
 const { sendGameAction, getGameState, updateGameState } = useMatrixGame(props.roomId);
 
-// Re-evaluate whenever gameTrigger changes in store
 const state = computed(() => {
   store.gameTrigger;
   const s = getGameState(props.gameId);
   if (!s) {
-    // Attempt find if get failed (handles cold load)
     const { findGameState } = useMatrixGame(props.roomId);
     findGameState(props.gameId);
   }
@@ -35,19 +34,19 @@ const lastMove = computed(() => state.value?.last_move);
 const isMyTurn = computed(() => currentTurn.value === myUserId && status.value === 'active');
 const myRack = computed(() => (myUserId ? racks.value[myUserId] || [] : []));
 
-// Local state for pending move
 const placedTiles = ref<{ r: number; c: number; letter: string; isBlank: boolean; assigned?: string; rackIndex: number }[]>([]);
 const selectedRackIndex = ref<number | null>(null);
 
 const isZoomed = ref(false);
 const showBlankModal = ref(false);
 const showSwapModal = ref(false);
-const swapSelection = ref<number[]>([]); // indices in myRack
+const swapSelection = ref<number[]>([]); 
 const pendingBlankTile = ref<{ r: number; c: number; rackIndex: number } | null>(null);
 
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
 
-function getMultiplierClass(m: MultiplierType) {
+function getMultiplierClass(m: MultiplierType | undefined) {
+  if (!m) return 'bg-stone-200 dark:bg-stone-800';
   switch (m) {
     case 'TW': return 'bg-orange-500 text-white';
     case 'DW': return 'bg-pink-400 text-white';
@@ -57,7 +56,8 @@ function getMultiplierClass(m: MultiplierType) {
   }
 }
 
-function getMultiplierLabel(m: MultiplierType) {
+function getMultiplierLabel(m: MultiplierType | undefined) {
+  if (!m) return '';
   switch (m) {
     case 'TW': return 'TW';
     case 'DW': return 'DW';
@@ -68,9 +68,7 @@ function getMultiplierLabel(m: MultiplierType) {
 }
 
 function getTileAt(r: number, c: number) {
-  // Check board
-  if (board.value[r][c]) return board.value[r][c];
-  // Check placed tiles
+  if (board.value[r] && board.value[r][c]) return board.value[r][c];
   return placedTiles.value.find(p => p.r === r && p.c === c);
 }
 
@@ -79,14 +77,10 @@ function handleSquareClick(r: number, c: number) {
 
   const existing = getTileAt(r, c);
   if (existing) {
-    // If it's a placed tile, remove it and put back in rack
     const placedIndex = placedTiles.value.findIndex(p => p.r === r && p.c === c);
     if (placedIndex !== -1) {
-      const removed = placedTiles.value.splice(placedIndex, 1)[0];
-      if (removed.isBlank) {
-        // Re-open blank modal if they want to change it? 
-        // Or just let them place it again.
-      }
+      // Fix: Null safety for removed tile [Error 18048]
+      placedTiles.value.splice(placedIndex, 1);
     }
     return;
   }
@@ -123,9 +117,8 @@ function assignBlank(letter: string) {
   }
 }
 
-// We need a local rack that maintains original indices to avoid selection bugs
 const rackWithIndices = computed(() => {
-  return myRack.value.map((letter, index) => ({
+  return myRack.value.map((letter: string, index: number) => ({
     letter,
     index,
     isPlaced: placedTiles.value.some(p => p.rackIndex === index)
@@ -140,7 +133,7 @@ function handleRackClick(index: number) {
 const currentMoveScoreResult = computed(() => calculateScore(placedTiles.value, board.value));
 
 async function playMove() {
-  if (placedTiles.value.length === 0) return;
+  if (placedTiles.value.length === 0 || !myUserId) return;
 
   const validation = validatePlacement(placedTiles.value, board.value);
   if (!validation.valid) {
@@ -151,7 +144,6 @@ async function playMove() {
   const moveScore = currentMoveScoreResult.value.total;
   const formedWords = currentMoveScoreResult.value.words;
 
-  // Capture previous state for revert if challenged
   const prevState = {
     board: JSON.parse(JSON.stringify(board.value)),
     racks: JSON.parse(JSON.stringify(racks.value)),
@@ -160,7 +152,6 @@ async function playMove() {
     current_turn: currentTurn.value
   };
 
-  // Update state
   const newBoard = JSON.parse(JSON.stringify(board.value));
   placedTiles.value.forEach(p => {
     newBoard[p.r][p.c] = { letter: p.letter, assigned: p.assigned, isBlank: p.isBlank, player: myUserId };
@@ -171,26 +162,26 @@ async function playMove() {
     .filter(item => !item.isPlaced)
     .map(item => item.index);
   
-  newRacks[myUserId!] = rackIndicesToKeep.map(idx => myRack.value[idx]);
+  newRacks[myUserId] = rackIndicesToKeep.map(idx => myRack.value[idx]);
   
-  // Draw new tiles
   const newBag = [...bag.value];
-  while (newRacks[myUserId!].length < 7 && newBag.length > 0) {
-    newRacks[myUserId!].push(newBag.pop()!);
+  while (newRacks[myUserId].length < 7 && newBag.length > 0) {
+    const nextTile = newBag.pop();
+    if (nextTile) newRacks[myUserId].push(nextTile);
   }
 
   const newScores = { ...scores.value };
-  newScores[myUserId!] = (newScores[myUserId!] || 0) + moveScore;
+  newScores[myUserId] = (newScores[myUserId] || 0) + moveScore;
 
   const opponentId = Object.keys(players.value).find(id => id !== myUserId);
 
   let newStatus = 'active';
-  let turnsSinceEmpty = state.value.turns_since_empty || 0;
+  let turnsSinceEmpty = state.value?.turns_since_empty || 0;
   if (bag.value.length === 0) {
     turnsSinceEmpty++;
   }
 
-  const finishedTiles = newRacks[myUserId!].length === 0;
+  const finishedTiles = newRacks[myUserId].length === 0;
   const maxTurnsReached = turnsSinceEmpty >= 2;
 
   let finalWinnerId: string | undefined = undefined;
@@ -199,7 +190,6 @@ async function playMove() {
     const finalScores = { ...newScores };
     const playerIds = Object.keys(players.value);
     
-    // Scrabble Scoring: Subtract remaining tiles from each player
     const penalties: Record<string, number> = {};
     playerIds.forEach(pid => {
       const rack = newRacks[pid] || [];
@@ -208,10 +198,9 @@ async function playMove() {
       finalScores[pid] -= penalty;
     });
 
-    // If someone finished, they get the sum of all penalties
     if (finishedTiles) {
       const totalPenalties = Object.values(penalties).reduce((a, b) => a + b, 0);
-      finalScores[myUserId!] += totalPenalties;
+      finalScores[myUserId] += totalPenalties;
     }
 
     playerIds.forEach(pid => {
@@ -252,7 +241,6 @@ async function playMove() {
   };
 
   await updateGameState(props.gameId, moveData);
-
   await sendGameAction(props.gameId, {
     action: 'play',
     score: moveScore,
@@ -260,9 +248,9 @@ async function playMove() {
     words: formedWords.map(w => w.word)
   });
 
-  // If game is over, send game over event
   if (newStatus === 'won' || newStatus === 'draw') {
-    await store.client?.sendEvent(props.roomId, 'cc.jackg.ruby.game.over', {
+    // Note: Verify 'cc.jackg.ruby.game.over' exists in your TimelineEvents type
+    await store.client?.sendEvent(props.roomId, 'cc.jackg.ruby.game.over' as any, {
       game_id: props.gameId,
       status: newStatus,
       winner: finalWinnerId,
@@ -275,11 +263,11 @@ async function playMove() {
 }
 
 async function passTurn() {
-  if (!isMyTurn.value) return;
+  if (!isMyTurn.value || !myUserId) return;
   const opponentId = Object.keys(players.value).find(id => id !== myUserId);
   
   let newStatus = 'active';
-  let turnsSinceEmpty = state.value.turns_since_empty || 0;
+  let turnsSinceEmpty = state.value?.turns_since_empty || 0;
   if (bag.value.length === 0) {
     turnsSinceEmpty++;
   }
@@ -328,7 +316,7 @@ async function passTurn() {
   await sendGameAction(props.gameId, { action: 'pass', player: myUserId });
 
   if (newStatus === 'won' || newStatus === 'draw') {
-    await store.client?.sendEvent(props.roomId, 'cc.jackg.ruby.game.over', {
+    await store.client?.sendEvent(props.roomId, 'cc.jackg.ruby.game.over' as any, {
       game_id: props.gameId,
       status: newStatus,
       winner: finalWinnerId,
@@ -339,11 +327,11 @@ async function passTurn() {
 }
 
 async function swapTiles() {
-  if (!isMyTurn.value || swapSelection.value.length === 0) return;
+  if (!isMyTurn.value || swapSelection.value.length === 0 || !myUserId) return;
   
   const newRack = [...myRack.value];
   const newBag = [...bag.value];
-  const indices = [...swapSelection.value].sort((a, b) => b - a); // Sort descending to splice without shifting indices
+  const indices = [...swapSelection.value].sort((a, b) => b - a);
 
   for (const idx of indices) {
     const char = newRack.splice(idx, 1)[0];
@@ -352,11 +340,12 @@ async function swapTiles() {
 
   const shuffledBag = shuffle(newBag);
   while (newRack.length < 7 && shuffledBag.length > 0) {
-    newRack.push(shuffledBag.pop()!);
+    const nextTile = shuffledBag.pop();
+    if (nextTile) newRack.push(nextTile);
   }
 
   const newRacks = { ...racks.value };
-  newRacks[myUserId!] = newRack;
+  newRacks[myUserId] = newRack;
 
   const opponentId = Object.keys(players.value).find(id => id !== myUserId);
 
@@ -410,14 +399,13 @@ async function challengeMove() {
 }
 
 async function voteChallenge(vote: 'valid' | 'invalid') {
-  if (status.value !== 'challenged') return;
+  if (status.value !== 'challenged' || !myUserId) return;
   
   const votes = { ...state.value.challenge_votes };
-  const userId = myUserId!;
+  const userId = myUserId;
 
-  // Remove existing vote if any
-  votes.valid = votes.valid.filter((id: string) => id !== userId);
-  votes.invalid = votes.invalid.filter((id: string) => id !== userId);
+  votes.valid = (votes.valid || []).filter((id: string) => id !== userId);
+  votes.invalid = (votes.invalid || []).filter((id: string) => id !== userId);
 
   votes[vote].push(userId);
 
@@ -431,9 +419,6 @@ async function resolveChallenge(accepted: boolean) {
   if (status.value !== 'challenged') return;
 
   if (accepted) {
-    // Keep move, return to active. 
-    // current_turn is already the challenger (the opponent of the person who played), 
-    // so it becomes the challenger's turn now.
     await updateGameState(props.gameId, {
       ...state.value,
       status: 'active',
@@ -442,15 +427,12 @@ async function resolveChallenge(accepted: boolean) {
     });
     await sendGameAction(props.gameId, { action: 'resolve_challenge', result: 'accepted', player: myUserId });
   } else {
-    // Reject move, revert to previous state.
     const prevState = lastMove.value?.prevState;
     if (!prevState) {
       toast.error('Cannot revert: Previous state missing');
       return;
     }
 
-    // When a move is rejected, the turn returns to the person who made the illegal move
-    // so they can try again or pass.
     await updateGameState(props.gameId, {
       ...state.value,
       status: 'active',
@@ -461,12 +443,12 @@ async function resolveChallenge(accepted: boolean) {
       current_turn: prevState.current_turn, 
       challenger_id: undefined,
       challenge_votes: undefined,
-    last_move: { 
-      type: 'revert', 
-      player: myUserId, 
-      timestamp: Date.now(),
-      words: lastMove.value?.words // Keep track of what was reverted for the action bubble
-    }
+      last_move: { 
+        type: 'revert', 
+        player: myUserId, 
+        timestamp: Date.now(),
+        words: lastMove.value?.words 
+      }
     });
     await sendGameAction(props.gameId, { action: 'resolve_challenge', result: 'rejected', player: myUserId });
   }
@@ -482,7 +464,6 @@ const opponentScore = computed(() => {
   const id = Object.keys(players.value).find(pid => pid !== myUserId);
   return id ? scores.value[id] || 0 : 0;
 });
-
 </script>
 
 <template>

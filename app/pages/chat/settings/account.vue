@@ -146,6 +146,7 @@ definePageMeta({
 })
 
 import { toast } from 'vue-sonner';
+import { Preset, EventType } from 'matrix-js-sdk';
 
 const store = useMatrixStore();
 const gameActivity = useGameActivity();
@@ -211,31 +212,69 @@ async function unlink(account: string) {
 }
 
 async function bridge(account: string) {
-  let bridgeAccount = `@${account}bot:jackg.cc`; // e.g. "discordbot"
+  const bridgeBotId = `@${account}bot:jackg.cc`;
+  let roomId = findExistingDM(bridgeBotId);
   
-  // Check if the user already has a DM with this bridge bot
-  const existingDmRoom = store.directMessageMap[bridgeAccount];
-  
-  if (existingDmRoom) {
-    toast.error(`It looks like you already have a ${account} bridge connected. Please unlink it from your account management page before linking a new one.`);
-    console.log(`Existing bridge account: ${bridgeAccount}`);
-    return;
+  // If we already have a room, just go there
+  if (roomId) {
+    return await navigateTo(`/chat/rooms/${roomId}`);
   }
-  
-  // Otherwise, open a new DM with the bot to trigger the bridge linking flow
+
   try {    
-    await store.client?.createRoom({
+    // Create the room
+    const response = await store.client?.createRoom({
       is_direct: true,
-      invite: [bridgeAccount],
+      invite: [bridgeBotId],
+      preset: Preset.TrustedPrivateChat, 
     });
-    toast.success(`Successfully started ${account} bridge setup. Check your DMs with ${bridgeAccount}`);
+
+    const newRoomId = response?.room_id;
+
+    if (newRoomId) {
+      // Update m.direct so the next check finds it
+      await updateDirectMessagingData(bridgeBotId, newRoomId);
+      
+      toast.success(`Started ${account} bridge setup.`);
+      await navigateTo(`/chat/rooms/${newRoomId}`);
+    }
   } catch (err) {
-    console.error(`Failed to create DM with ${bridgeAccount}:`, err);
-    toast.error(`Failed to start ${account} linking flow. Please try again.`);
+    console.error(`Failed to create DM:`, err);
+    toast.error(`Failed to start ${account} linking flow.`);
   }
 }
 
+async function updateDirectMessagingData(userId: string, roomId: string) {
+  if (!store.client) return;
 
+  // Get current m.direct content or start with an empty object
+  const dmEvent = store.client.getAccountData(EventType.Direct);
+  const content = dmEvent ? { ...dmEvent.getContent() } : {};
+
+  // Ensure the user entry is an array and add the new room ID
+  if (!content[userId]) {
+    content[userId] = [];
+  }
+  
+  if (!content[userId].includes(roomId)) {
+    content[userId].push(roomId);
+    
+    // Save back to the server
+    await store.client.setAccountData(EventType.Direct, content);
+  }
+}
+
+function findExistingDM(userId: string): string | null {
+  if (!store.client) return null;
+  
+  const dmEvent = store.client.getAccountData(EventType.Direct);
+  if (!dmEvent) return null;
+  
+  const content = dmEvent.getContent();
+  const rooms = content[userId];
+  
+  // Check if rooms is an array and has at least one ID
+  return (Array.isArray(rooms) && rooms.length > 0) ? rooms[0] : null;
+}
 
 async function manageDevices() {
   const oidcConfigStr = localStorage.getItem('matrix_oidc_config');
