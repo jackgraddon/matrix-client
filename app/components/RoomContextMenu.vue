@@ -1,63 +1,63 @@
 <template>
-  <UiContextMenu @update:open="onOpenChange">
-    <UiContextMenuTrigger as-child>
-      <div @contextmenu.stop class="contents">
+  <div @contextmenu.stop class="contents">
+    <UiContextMenu @update:open="onOpenChange">
+      <UiContextMenuTrigger as-child>
         <slot />
-      </div>
-    </UiContextMenuTrigger>
-    <UiContextMenuContent class="w-64">
-      <template v-if="room">
-        <!-- Room/DM Options -->
-        <template v-if="!isSpace">
-          <UiContextMenuItem @click="toggleRead" class="cursor-pointer">
-            <Icon :name="isUnread ? 'solar:letter-opened-bold-duotone' : 'solar:letter-bold-duotone'" class="mr-2 h-4 w-4" />
-            Mark as {{ isUnread ? 'Read' : 'Unread' }}
-          </UiContextMenuItem>
-          <UiContextMenuItem @click="toggleFavorite" class="cursor-pointer">
-            <Icon :name="isFavorite ? 'solar:star-fall-bold-duotone' : 'solar:star-bold-duotone'" class="mr-2 h-4 w-4" />
-            {{ isFavorite ? 'Remove from Favorites' : 'Favorite' }}
-          </UiContextMenuItem>
-          <UiContextMenuItem @click="openInvite" class="cursor-pointer">
-            <Icon name="solar:user-plus-bold-duotone" class="mr-2 h-4 w-4" />
-            Invite
-          </UiContextMenuItem>
-          <UiContextMenuItem @click="copyLink" class="cursor-pointer">
-            <Icon name="solar:link-bold-duotone" class="mr-2 h-4 w-4" />
-            Copy Room Link
-          </UiContextMenuItem>
-          <UiContextMenuSeparator />
-          <UiContextMenuItem @click="confirmLeave = true" class="cursor-pointer text-destructive focus:text-destructive">
-            <Icon name="solar:logout-bold-duotone" class="mr-2 h-4 w-4" />
-            {{ isDM ? 'Close DM' : 'Leave Room' }}
-          </UiContextMenuItem>
-        </template>
+      </UiContextMenuTrigger>
+      <UiContextMenuContent class="w-64">
+        <template v-if="room">
+          <!-- Room/DM Options -->
+          <template v-if="!isSpace">
+            <UiContextMenuItem @click="toggleRead" class="cursor-pointer">
+              <Icon :name="isUnread ? 'solar:letter-opened-bold-duotone' : 'solar:letter-bold-duotone'" class="mr-2 h-4 w-4" />
+              Mark as {{ isUnread ? 'Read' : 'Unread' }}
+            </UiContextMenuItem>
+            <UiContextMenuItem @click="toggleFavorite" class="cursor-pointer">
+              <Icon :name="isFavorite ? 'solar:star-fall-bold-duotone' : 'solar:star-bold-duotone'" class="mr-2 h-4 w-4" />
+              {{ isFavorite ? 'Remove from Favorites' : 'Favorite' }}
+            </UiContextMenuItem>
+            <UiContextMenuItem @click="openInvite" class="cursor-pointer">
+              <Icon name="solar:user-plus-bold-duotone" class="mr-2 h-4 w-4" />
+              Invite
+            </UiContextMenuItem>
+            <UiContextMenuItem @click="copyLink" class="cursor-pointer">
+              <Icon name="solar:link-bold-duotone" class="mr-2 h-4 w-4" />
+              Copy Room Link
+            </UiContextMenuItem>
+            <UiContextMenuSeparator />
+            <UiContextMenuItem @click="confirmLeave = true" class="cursor-pointer text-destructive focus:text-destructive">
+              <Icon name="solar:logout-bold-duotone" class="mr-2 h-4 w-4" />
+              {{ isDM ? 'Close DM' : 'Leave Room' }}
+            </UiContextMenuItem>
+          </template>
 
-        <!-- Space Options -->
-        <template v-else>
-          <UiContextMenuItem @click="markSpaceAsRead" class="cursor-pointer">
-            <Icon name="solar:letter-opened-bold-duotone" class="mr-2 h-4 w-4" />
-            Mark Space as Read
-          </UiContextMenuItem>
-          <UiContextMenuItem @click="openInvite" class="cursor-pointer">
-            <Icon name="solar:user-plus-bold-duotone" class="mr-2 h-4 w-4" />
-            Invite
-          </UiContextMenuItem>
-          <UiContextMenuItem @click="copyLink" class="cursor-pointer">
-            <Icon name="solar:link-bold-duotone" class="mr-2 h-4 w-4" />
-            Copy Space Link
-          </UiContextMenuItem>
-          <UiContextMenuSeparator />
-          <UiContextMenuItem @click="confirmLeave = true" class="cursor-pointer text-destructive focus:text-destructive">
-            <Icon name="solar:logout-bold-duotone" class="mr-2 h-4 w-4" />
-            Leave Space
-          </UiContextMenuItem>
+          <!-- Space Options -->
+          <template v-else>
+            <UiContextMenuItem @click="markSpaceAsRead" class="cursor-pointer">
+              <Icon name="solar:letter-opened-bold-duotone" class="mr-2 h-4 w-4" />
+              Mark Space as Read
+            </UiContextMenuItem>
+            <UiContextMenuItem @click="openInvite" class="cursor-pointer">
+              <Icon name="solar:user-plus-bold-duotone" class="mr-2 h-4 w-4" />
+              Invite
+            </UiContextMenuItem>
+            <UiContextMenuItem @click="copyLink" class="cursor-pointer">
+              <Icon name="solar:link-bold-duotone" class="mr-2 h-4 w-4" />
+              Copy Space Link
+            </UiContextMenuItem>
+            <UiContextMenuSeparator />
+            <UiContextMenuItem @click="confirmLeave = true" class="cursor-pointer text-destructive focus:text-destructive">
+              <Icon name="solar:logout-bold-duotone" class="mr-2 h-4 w-4" />
+              Leave Space
+            </UiContextMenuItem>
+          </template>
         </template>
-      </template>
-      <template v-else>
-        <UiContextMenuItem disabled>Loading room...</UiContextMenuItem>
-      </template>
-    </UiContextMenuContent>
-  </UiContextMenu>
+        <template v-else>
+          <UiContextMenuItem disabled>Loading room...</UiContextMenuItem>
+        </template>
+      </UiContextMenuContent>
+    </UiContextMenu>
+  </div>
 
   <!-- Leave Confirmation Dialog -->
   <UiAlertDialog :open="confirmLeave" @update:open="confirmLeave = $event">

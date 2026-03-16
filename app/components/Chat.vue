@@ -206,6 +206,7 @@
           </div>
 
           <!-- Message content -->
+          <div @contextmenu.stop class="contents">
           <UiContextMenu>
             <UiContextMenuTrigger as-child>
             <div class="flex flex-col max-w-[90%] md:max-w-[75%] min-w-0 relative group/message order-1 md:order-none" :class="msg.isOwn ? 'items-end' : 'items-start'">
@@ -440,6 +441,7 @@
             </UiContextMenuItem>
           </UiContextMenuContent>
         </UiContextMenu>
+        </div>
 
         <!-- Read Receipts -->
         <div v-if="msg.readReceipts && msg.readReceipts.length > 0" 
