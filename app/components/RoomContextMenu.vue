@@ -1,7 +1,9 @@
 <template>
   <UiContextMenu @update:open="onOpenChange">
-    <UiContextMenuTrigger as-child @contextmenu.stop>
-      <slot />
+    <UiContextMenuTrigger as-child>
+      <div @contextmenu.stop class="contents">
+        <slot />
+      </div>
     </UiContextMenuTrigger>
     <UiContextMenuContent class="w-64">
       <template v-if="room">
