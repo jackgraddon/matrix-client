@@ -2,6 +2,10 @@
 import type { ContextMenuTriggerProps } from "reka-ui"
 import { ContextMenuTrigger, useForwardProps } from "reka-ui"
 
+defineOptions({
+  inheritAttrs: false,
+})
+
 const props = defineProps<ContextMenuTriggerProps>()
 
 const forwardedProps = useForwardProps(props)
@@ -10,7 +14,7 @@ const forwardedProps = useForwardProps(props)
 <template>
   <ContextMenuTrigger
     data-slot="context-menu-trigger"
-    v-bind="forwardedProps"
+    v-bind="{ ...forwardedProps, ...$attrs }"
   >
     <slot />
   </ContextMenuTrigger>

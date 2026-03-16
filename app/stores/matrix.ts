@@ -45,6 +45,19 @@ export interface UIState {
     rooms: Record<string, string[]>; // Order of rooms per categoryId
   };
   sidebarOpen: boolean;
+  contextMenu: {
+    type: 'room' | 'message' | 'global' | null;
+    data: any;
+  };
+      _contextMenuHandled: boolean;
+  confirmationDialog: {
+    isOpen: boolean;
+    title: string;
+    description: string;
+    confirmLabel: string;
+    cancelLabel: string;
+    onConfirm: () => void;
+  };
 }
 
 // Enhanced HTML for OAuth Loopback Response
@@ -249,6 +262,19 @@ export const useMatrixStore = defineStore('matrix', {
       composerStates: {},
       uiOrder: { rootSpaces: [], categories: {}, rooms: {} },
       sidebarOpen: false,
+        contextMenu: {
+          type: null,
+          data: null,
+        },
+        _contextMenuHandled: false,
+        confirmationDialog: {
+          isOpen: false,
+          title: '',
+          description: '',
+          confirmLabel: 'Confirm',
+          cancelLabel: 'Cancel',
+          onConfirm: () => {},
+        },
     } as UIState,
   }),
 
@@ -1023,6 +1049,82 @@ export const useMatrixStore = defineStore('matrix', {
       }
     },
 
+    setContextMenu(type: UIState['contextMenu']['type'], data: any = null) {
+      this.ui.contextMenu.type = type;
+      this.ui.contextMenu.data = data;
+    },
+
+    openRoomContextMenu(roomId: string) {
+      this.setContextMenu('room', { roomId });
+      this.ui._contextMenuHandled = true;
+    },
+
+    openMessageContextMenu(msg: any) {
+      this.setContextMenu('message', { msg });
+      this.ui._contextMenuHandled = true;
+    },
+
+    openConfirmationDialog(opts: {
+      title: string;
+      description: string;
+      confirmLabel?: string;
+      cancelLabel?: string;
+      onConfirm: () => void;
+    }) {
+      this.ui.confirmationDialog = {
+        isOpen: true,
+        title: opts.title,
+        description: opts.description,
+        confirmLabel: opts.confirmLabel || 'Confirm',
+        cancelLabel: opts.cancelLabel || 'Cancel',
+        onConfirm: opts.onConfirm,
+      };
+    },
+
+    closeConfirmationDialog() {
+      this.ui.confirmationDialog.isOpen = false;
+    },
+
+    // Message Actions (Global)
+    handleReply(msg: any) {
+      if (!msg || !msg.roomId) return;
+      this.setUIComposerState(msg.roomId, { replyingTo: msg, editingMessage: null });
+      // Focus will be handled by Chat.vue watching the state
+    },
+
+    handleEdit(msg: any) {
+      if (!msg || !msg.roomId) return;
+      this.setUIComposerState(msg.roomId, { editingMessage: msg, replyingTo: null, text: msg.body });
+    },
+
+    async handleReaction(msg: any, key: string) {
+      if (!this.client || !msg || !msg.roomId) return;
+      try {
+        await this.client.sendEvent(msg.roomId, 'm.reaction' as any, {
+          'm.relates_to': {
+            rel_type: 'm.annotation',
+            event_id: msg.eventId,
+            key: key
+          }
+        });
+        toast.success('Reaction sent');
+      } catch (err) {
+        console.error('Failed to send reaction', err);
+        toast.error('Failed to react');
+      }
+    },
+
+    async redactEvent(roomId: string, eventId: string) {
+      if (!this.client) return;
+      try {
+        await this.client.redactEvent(roomId, eventId);
+        toast.success('Message deleted');
+      } catch (err) {
+        console.error('Failed to delete message', err);
+        toast.error('Failed to delete message');
+      }
+    },
+
     cancelLogin(errorReason?: string | null) {
       this.isLoggingIn = false;
       this.loginStatus = '';
@@ -1360,7 +1462,7 @@ export const useMatrixStore = defineStore('matrix', {
       };
 
       // Create new client FIRST, then startup the store
-      this.client = sdk.createClient(clientOpts);
+      this.client = markRaw(sdk.createClient(clientOpts));
 
       try {
         console.log('[MatrixStore] Starting IndexedDBStore (after assignment to client)...');
@@ -1445,7 +1547,7 @@ export const useMatrixStore = defineStore('matrix', {
           await deleteDb('matrix-js-sdk::matrix-sdk-crypto');
           await deleteDb('matrix-js-sdk::matrix-sdk-crypto-meta');
           // Recreate the client
-          this.client = sdk.createClient({
+          this.client = markRaw(sdk.createClient({
             baseUrl: getHomeserverUrl(),
             accessToken,
             userId,
@@ -1482,7 +1584,7 @@ export const useMatrixStore = defineStore('matrix', {
                 secretStorageKeys.set(keyId, privateKey as Uint8Array<ArrayBuffer>);
               },
             }
-          });
+          }));
           // Retry init
           try {
             await this.client.initRustCrypto();
@@ -3202,9 +3304,7 @@ export const useMatrixStore = defineStore('matrix', {
         }
       }
 
-      for (const roomId of joinedRooms) {
-        await this.markAsRead(roomId);
-      }
+      await Promise.all(joinedRooms.map(id => this.markAsRead(id)));
       toast.success('Marked space as read');
     },
 
