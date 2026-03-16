@@ -1055,13 +1055,11 @@ export const useMatrixStore = defineStore('matrix', {
     },
 
     openRoomContextMenu(roomId: string) {
-      if (this.ui._contextMenuHandled) return;
       this.setContextMenu('room', { roomId });
       this.ui._contextMenuHandled = true;
     },
 
     openMessageContextMenu(msg: any) {
-      if (this.ui._contextMenuHandled) return;
       this.setContextMenu('message', { msg });
       this.ui._contextMenuHandled = true;
     },
@@ -1464,7 +1462,7 @@ export const useMatrixStore = defineStore('matrix', {
       };
 
       // Create new client FIRST, then startup the store
-      this.client = sdk.createClient(clientOpts);
+      this.client = markRaw(sdk.createClient(clientOpts));
 
       try {
         console.log('[MatrixStore] Starting IndexedDBStore (after assignment to client)...');
@@ -1549,7 +1547,7 @@ export const useMatrixStore = defineStore('matrix', {
           await deleteDb('matrix-js-sdk::matrix-sdk-crypto');
           await deleteDb('matrix-js-sdk::matrix-sdk-crypto-meta');
           // Recreate the client
-          this.client = sdk.createClient({
+          this.client = markRaw(sdk.createClient({
             baseUrl: getHomeserverUrl(),
             accessToken,
             userId,
@@ -1586,7 +1584,7 @@ export const useMatrixStore = defineStore('matrix', {
                 secretStorageKeys.set(keyId, privateKey as Uint8Array<ArrayBuffer>);
               },
             }
-          });
+          }));
           // Retry init
           try {
             await this.client.initRustCrypto();

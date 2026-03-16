@@ -1,6 +1,6 @@
 <template>
   <UiContextMenu @update:open="onOpenChange">
-    <UiContextMenuTrigger @contextmenu="onGlobalContextMenu">
+    <UiContextMenuTrigger class="contents" @contextmenu="onGlobalContextMenu">
       <slot />
     </UiContextMenuTrigger>
     <UiContextMenuContent class="w-64">
@@ -133,7 +133,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, toRaw } from 'vue';
 import { useMatrixStore } from '~/stores/matrix';
 import { toast } from 'vue-sonner';
 import { EventType } from 'matrix-js-sdk';
@@ -151,8 +151,13 @@ const openAboutModal = () => {};
 
 // --- Context Menu Management ---
 const onGlobalContextMenu = (e: MouseEvent) => {
+  // If a child component handled the right click, _contextMenuHandled will be true.
+  // We don't want to reset it to false until AFTER the menu has been triggered to render.
+  // Using nextTick or a small timeout to clear the flag ensures it stays true during the bubble phase.
   if (store.ui._contextMenuHandled) {
-    store.ui._contextMenuHandled = false;
+    setTimeout(() => {
+        store.ui._contextMenuHandled = false;
+    }, 10);
     return;
   }
   store.setContextMenu('global');
@@ -166,8 +171,12 @@ const onOpenChange = (open: boolean) => {
 
 // --- Room Context Logic ---
 const roomId = computed(() => store.ui.contextMenu.type === 'room' ? store.ui.contextMenu.data?.roomId : null);
-const room = computed(() => roomId.value ? store.client?.getRoom(roomId.value) : null);
-const isSpace = computed(() => room.value?.isSpaceRoom());
+const room = computed(() => {
+  if (!roomId.value || !store.client) return null;
+  const r = store.client.getRoom(roomId.value);
+  return r ? toRaw(r) : null;
+});
+const isSpace = computed(() => room.value && typeof room.value.isSpaceRoom === 'function' && room.value.isSpaceRoom());
 const isDM = computed(() => {
   if (!room.value || !store.client || !roomId.value) return false;
   const directEvent = store.client.getAccountData(EventType.Direct);
@@ -176,14 +185,14 @@ const isDM = computed(() => {
 });
 
 const isUnread = computed(() => {
-  if (!room.value || !roomId.value) return false;
+  if (!room.value || !roomId.value || typeof room.value.getUnreadNotificationCount !== 'function') return false;
   const count = room.value.getUnreadNotificationCount(store.unreadCountType) ?? 0;
   const manual = store.manualUnread[roomId.value] ? 1 : 0;
   return Math.max(count, manual) > 0;
 });
 
 const isFavorite = computed(() => {
-  if (!room.value) return false;
+  if (!room.value || typeof room.value.getTags !== 'function') return false;
   const tags = room.value.getTags();
   return 'm.favourite' in tags;
 });
@@ -222,7 +231,7 @@ const openInvite = () => {
 };
 
 const copyLink = () => {
-  if (!room.value || !roomId.value) return;
+  if (!room.value || !roomId.value || !room.value.currentState) return;
   const via = room.value.currentState.getStateEvents('m.room.member')
     .map(ev => ev.getSender().split(':').pop())
     .filter((v, i, a) => v && a.indexOf(v) === i)
