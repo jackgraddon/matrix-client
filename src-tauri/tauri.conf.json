@@ -28,7 +28,14 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.discordapp.com https://*.duckduckgo.com; connect-src 'self' ws://127.0.0.1:13337 ws://localhost:3000 http://localhost:3000 http://localhost:1420 https://*.matrix.org https://discord.com;"
+      "csp": "default-src 'self' https://tumult.jackg.cc; script-src 'self' https://tumult.jackg.cc; style-src 'self' 'unsafe-inline' https://tumult.jackg.cc; img-src 'self' blob: data: https://*.discordapp.com https://*.duckduckgo.com https://tumult.jackg.cc; connect-src 'self' ws://127.0.0.1:13337 ws://localhost:3000 http://localhost:3000 http://localhost:1420 https://*.matrix.org https://discord.com https://tumult.jackg.cc;"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://tumult.jackg.cc/api/update"
+      ]
     }
   },
   "bundle": {

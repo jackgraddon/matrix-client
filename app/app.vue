@@ -22,6 +22,15 @@
       <Toaster />
       <VerificationModal />
       <GlobalConfirmationDialog />
+
+      <!-- Failover Notice -->
+      <div
+        v-if="isFailover"
+        class="fixed bottom-4 right-4 z-50 flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-500 text-xs font-medium backdrop-blur-md shadow-lg pointer-events-none animate-in fade-in slide-in-from-bottom-2"
+      >
+        <UiIcon name="lucide:cloud-off" class="w-3.5 h-3.5" />
+        Offline Mode (Bundled Assets)
+      </div>
     </div>
   </GlobalContextMenu>
 </template>
@@ -32,11 +41,18 @@ import { Toaster } from '@/components/ui/sonner';
 const { $isTauri: isTauri } = useNuxtApp();
 const colorMode = useColorMode();
 
+const isFailover = ref(false);
+
 onMounted(async () => {
   console.log("[App] onMounted started. isTauri:", isTauri);
   const store = useMatrixStore();
 
   if (isTauri) {
+    // Check for failover flag from Rust
+    if ((window as any).__TUMULT_FAILOVER__) {
+      isFailover.value = true;
+    }
+
     const { getCurrentWindow } = await import('@tauri-apps/api/window');
     const appWindow = getCurrentWindow();
 

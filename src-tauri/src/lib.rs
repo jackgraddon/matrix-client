@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex};
 use tauri_plugin_shell::process::CommandChild;
 use tauri_plugin_shell::ShellExt;
 use tokio::sync::Notify;
+use tauri::Manager;
 
 mod game_scanner;
 
@@ -25,6 +26,7 @@ pub fn run() {
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_store::Builder::default().build())
         .manage(scanner_state.clone())
         .manage(RpcState {
@@ -38,15 +40,50 @@ pub fn run() {
             stop_rpc_server
         ])
         .setup(move |app| {
+            let window = app.get_webview_window("main").unwrap();
+
             // macOS/Windows decoration logic
             #[cfg(any(target_os = "windows", target_os = "linux"))]
             {
-                // Note: tauri::Manager is required for get_webview_window. 
-                // If this fails, add 'use tauri::Manager;' back to the top.
-                use tauri::Manager; 
-                let window = app.get_webview_window("main").unwrap();
                 window.set_decorations(false).unwrap();
                 window.set_shadow(true).unwrap();
+            }
+
+            let remote_url = "https://tumult.jackg.cc";
+            // Use option_env! to bake the value into the binary at build time.
+            let forced_offline = option_env!("BUILD_FOR_OFFLINE").is_some();
+            let mut use_remote = !forced_offline;
+
+            if use_remote {
+                log::info!("Checking connection to {}...", remote_url);
+                let client = reqwest::blocking::Client::builder()
+                    .timeout(Duration::from_secs(3))
+                    .build()
+                    .unwrap();
+
+                match client.head(remote_url).send() {
+                    Ok(res) if res.status().is_success() => {
+                        log::info!("Remote server is reachable.");
+                    }
+                    _ => {
+                        log::warn!("Remote server unreachable, falling back to local assets.");
+                        use_remote = false;
+                    }
+                }
+            }
+
+            if use_remote {
+                log::info!("Navigating to remote: {}", remote_url);
+                window.navigate(remote_url.parse().unwrap()).unwrap();
+            } else {
+                // If we are in failover mode, let the frontend know via an init script.
+                // This ensures it's available even if the page hasn't finished loading yet.
+                if !forced_offline {
+                    log::warn!("Failover mode: Injecting __TUMULT_FAILOVER__ flag.");
+                    window.on_page_load(|win, _payload| {
+                        let _ = win.eval("window.__TUMULT_FAILOVER__ = true;");
+                    });
+                }
             }
 
             if cfg!(debug_assertions) {
