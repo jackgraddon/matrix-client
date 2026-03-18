@@ -5,6 +5,11 @@
   "windows": [
     "main"
   ],
+  "remote": {
+    "urls": [
+      "https://tumult.jackg.cc"
+    ]
+  },
   "permissions": [
     "core:default",
     "core:event:default",
@@ -36,6 +41,7 @@
     "os:allow-hostname",
     "store:allow-load",
     "store:default",
-    "notification:default"
+    "notification:default",
+    "updater:default"
   ]
 }
