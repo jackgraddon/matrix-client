@@ -1,6 +1,11 @@
 /// <reference lib="webworker" />
+import { precacheAndRoute } from 'workbox-precaching';
 
 const sw = self;
+
+// This is the magic line that Nuxt PWA module needs to inject the asset manifest.
+// If it's missing, the PWA won't be considered "complete" for some browsers.
+precacheAndRoute(self.__WB_MANIFEST);
 
 sw.addEventListener('install', (event) => {
     console.log('Service Worker installing.');

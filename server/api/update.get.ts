@@ -1,11 +1,11 @@
 export default defineEventHandler(async (event) => {
   const query = getQuery(event);
   const target = query.target as string; // e.g. windows-x86_64, darwin-aarch64
-  const currentVersion = query.arch as string; // Wait, tauri sends version in 'current_version' or similar?
+  const currentVersion = query.arch as string; // Wait, tauri sends version in 'current_version' or similar? 
   // Actually Tauri 2 updater sends:
   // GET /api/update/windows-x86_64/0.1.0?arch=x86_64&target=windows-x86_64&version=0.1.0
   // Or whatever you configured in endpoints.
-
+  
   const version = query.version as string;
   const arch = query.arch as string;
 
@@ -14,7 +14,7 @@ export default defineEventHandler(async (event) => {
   try {
     // Fetch latest release from GitHub
     // Hardcoding the repo for now since it's the owner's repo
-    const repo = "jackg/tumult";
+    const repo = "jackg/tumult"; 
     const response = await $fetch<any>(`https://api.github.com/repos/${repo}/releases/latest`, {
       headers: {
         'User-Agent': 'Tumult-Updater'
@@ -87,7 +87,7 @@ export default defineEventHandler(async (event) => {
 async function fetchSignature(assets: any[], fileName: string): Promise<string> {
   const sigAsset = assets.find(a => a.name === `${fileName}.sig`);
   if (!sigAsset) return "";
-
+  
   try {
     const sigText = await $fetch<string>(sigAsset.browser_download_url);
     return sigText.trim();

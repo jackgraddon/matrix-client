@@ -149,7 +149,7 @@ export default defineNuxtConfig({
       enabled: false,
       suppressWarnings: true,
       navigateFallback: '/',
-      navigateFallbackAllowlist: [/^\/$/],
+      navigateFallbackAllowlist: [new RegExp('^\\/$')],
       type: 'module',
     },
   },

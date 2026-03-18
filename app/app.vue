@@ -24,8 +24,8 @@
       <GlobalConfirmationDialog />
 
       <!-- Failover Notice -->
-      <div
-        v-if="isFailover"
+      <div 
+        v-if="isFailover" 
         class="fixed bottom-4 right-4 z-50 flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-500 text-xs font-medium backdrop-blur-md shadow-lg pointer-events-none animate-in fade-in slide-in-from-bottom-2"
       >
         <UiIcon name="lucide:cloud-off" class="w-3.5 h-3.5" />
@@ -48,9 +48,12 @@ onMounted(async () => {
   const store = useMatrixStore();
 
   if (isTauri) {
-    // Check for failover flag from Rust
-    if ((window as any).__TUMULT_FAILOVER__) {
-      isFailover.value = true;
+    // Check for failover flag from Rust via Tauri command
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      isFailover.value = await invoke('is_failover');
+    } catch (e) {
+      console.warn("Failed to check failover status:", e);
     }
 
     const { getCurrentWindow } = await import('@tauri-apps/api/window');

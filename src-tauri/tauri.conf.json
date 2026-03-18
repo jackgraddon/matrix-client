@@ -35,11 +35,14 @@
     "updater": {
       "endpoints": [
         "https://tumult.jackg.cc/api/update"
-      ]
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDkyNTE3RDE5Mjk3M0U1NDAKUldSQTVYTXBHWDFSa3FVWnRpK3habjZsdlZEc1VCMEE1emRTMjYwaTkxbzlnbFgzT29xa01JL0gK"
     }
   },
   "bundle": {
     "active": true,
+    "publisher": "cc.jackg.tumult",
+    "createUpdaterArtifacts": true,
     "externalBin": [
       "binaries/arrpc"
     ],

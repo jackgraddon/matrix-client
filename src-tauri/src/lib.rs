@@ -13,6 +13,10 @@ pub struct RpcState {
     pub child: Mutex<Option<CommandChild>>,
 }
 
+pub struct FailoverState {
+    pub is_failover: bool,
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let scanner_state = Arc::new(game_scanner::ScannerState {
@@ -37,7 +41,8 @@ pub fn run() {
             game_scanner::update_watch_list,
             start_oauth_server,
             start_rpc_server,
-            stop_rpc_server
+            stop_rpc_server,
+            is_failover
         ])
         .setup(move |app| {
             let window = app.get_webview_window("main").unwrap();
@@ -60,7 +65,7 @@ pub fn run() {
                     .timeout(Duration::from_secs(3))
                     .build()
                     .unwrap();
-
+                
                 match client.head(remote_url).send() {
                     Ok(res) if res.status().is_success() => {
                         log::info!("Remote server is reachable.");
@@ -72,18 +77,14 @@ pub fn run() {
                 }
             }
 
+            let is_failover_mode = !use_remote && !forced_offline;
+            app.manage(FailoverState { is_failover: is_failover_mode });
+
             if use_remote {
                 log::info!("Navigating to remote: {}", remote_url);
                 window.navigate(remote_url.parse().unwrap()).unwrap();
-            } else {
-                // If we are in failover mode, let the frontend know via an init script.
-                // This ensures it's available even if the page hasn't finished loading yet.
-                if !forced_offline {
-                    log::warn!("Failover mode: Injecting __TUMULT_FAILOVER__ flag.");
-                    window.on_page_load(|win, _payload| {
-                        let _ = win.eval("window.__TUMULT_FAILOVER__ = true;");
-                    });
-                }
+            } else if is_failover_mode {
+                log::warn!("Failover mode: Remote server unreachable, using local assets.");
             }
 
             if cfg!(debug_assertions) {
@@ -178,6 +179,11 @@ async fn start_rpc_server(
 
     *child_guard = Some(child);
     Ok(())
+}
+
+#[tauri::command]
+fn is_failover(state: tauri::State<'_, FailoverState>) -> bool {
+    state.is_failover
 }
 
 #[tauri::command]
