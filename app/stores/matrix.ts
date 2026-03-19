@@ -49,7 +49,7 @@ export interface UIState {
     type: 'room' | 'message' | 'global' | null;
     data: any;
   };
-      _contextMenuHandled: boolean;
+  _contextMenuHandled: boolean;
   confirmationDialog: {
     isOpen: boolean;
     title: string;
@@ -266,19 +266,19 @@ export const useMatrixStore = defineStore('matrix', {
       composerStates: {},
       uiOrder: { rootSpaces: [], categories: {}, rooms: {} },
       sidebarOpen: false,
-        contextMenu: {
-          type: null,
-          data: null,
-        },
-        _contextMenuHandled: false,
-        confirmationDialog: {
-          isOpen: false,
-          title: '',
-          description: '',
-          confirmLabel: 'Confirm',
-          cancelLabel: 'Cancel',
-          onConfirm: () => {},
-        },
+      contextMenu: {
+        type: null,
+        data: null,
+      },
+      _contextMenuHandled: false,
+      confirmationDialog: {
+        isOpen: false,
+        title: '',
+        description: '',
+        confirmLabel: 'Confirm',
+        cancelLabel: 'Cancel',
+        onConfirm: () => { },
+      },
     } as UIState,
   }),
 
@@ -643,20 +643,20 @@ export const useMatrixStore = defineStore('matrix', {
       if (isTauri) {
         const { listen } = await import('@tauri-apps/api/event');
         listen('game-activity', (event: any) => {
-           console.log('[MatrixStore] Game activity event from Rust:', event.payload);
-           const { name, exe, is_running } = event.payload;
-           if (is_running) {
-             this.activityDetails = {
-               name: name + (exe ? ` (via ${exe})` : ''),
-               is_running: true,
-               last_updated: Date.now()
-             };
-           } else {
-             if (this.activityDetails?.name === name) {
-               this.activityDetails = null;
-             }
-           }
-           this.refreshPresence();
+          console.log('[MatrixStore] Game activity event from Rust:', event.payload);
+          const { name, exe, is_running } = event.payload;
+          if (is_running) {
+            this.activityDetails = {
+              name: name + (exe ? ` (via ${exe})` : ''),
+              is_running: true,
+              last_updated: Date.now()
+            };
+          } else {
+            if (this.activityDetails?.name === name) {
+              this.activityDetails = null;
+            }
+          }
+          this.refreshPresence();
         });
       }
 
@@ -700,17 +700,17 @@ export const useMatrixStore = defineStore('matrix', {
           const { platform } = await import('@tauri-apps/plugin-os');
           const games = await this.fetchDetectableGames();
           const os = platform(); // macos, windows, linux
-          
+
           // Filter games for the current OS
           const filtered = games.map((g: any) => ({
-             id: g.id,
-             name: g.name,
-             executables: (g.executables || []).filter((e: any) => {
-                if (os === 'windows') return e.os === 'win32';
-                if (os === 'macos') return e.os === 'darwin';
-                if (os === 'linux') return e.os === 'linux';
-                return false;
-             })
+            id: g.id,
+            name: g.name,
+            executables: (g.executables || []).filter((e: any) => {
+              if (os === 'windows') return e.os === 'win32';
+              if (os === 'macos') return e.os === 'darwin';
+              if (os === 'linux') return e.os === 'linux';
+              return false;
+            })
           })).filter((g: any) => g.executables.length > 0);
 
           await invoke('update_watch_list', { games: filtered });
@@ -901,7 +901,7 @@ export const useMatrixStore = defineStore('matrix', {
     async goOffline() {
       if (this.client && this.isAuthenticated) {
         console.log('[MatrixStore] Sending offline flare...');
-        
+
         let status_msg = this.customStatus;
         if (!status_msg && this.activityDetails?.is_running) {
           const gameName = this._sanitizeActivityString(this.activityDetails.name);
@@ -932,15 +932,15 @@ export const useMatrixStore = defineStore('matrix', {
       if (!this.client || !this.isAuthenticated || !this.isClientReady) return;
 
       const presence = this.isIdle ? 'unavailable' : 'online';
-      
+
       let status_msg = this.customStatus;
       if (!status_msg && this.activityDetails?.is_running) {
         const gameName = this._sanitizeActivityString(this.activityDetails.name);
         if (gameName) {
-           status_msg = `Playing ${gameName}`;
+          status_msg = `Playing ${gameName}`;
         }
       }
-      
+
       if (!status_msg) status_msg = '';
 
       // Check if state has actually changed
@@ -1338,7 +1338,7 @@ export const useMatrixStore = defineStore('matrix', {
       idTokenClaims?: IdTokenClaims,
     ) {
       console.time('[MatrixStore] initClient (total)');
-      console.log("[MatrixStore] Initializing Matrix Client...", { userId, deviceId, hasAccessToken: !!accessToken });
+      console.log("[MatrixStore] Initializing Matrix client...", { userId, deviceId, hasAccessToken: !!accessToken });
       this.isRestoringSession = true;
 
       // Force restart client
@@ -1411,9 +1411,9 @@ export const useMatrixStore = defineStore('matrix', {
         tokenRefreshFunction,
         store: roomStore,
         verificationMethods: [
-          'm.sas.v1', 
-          'm.qr_code.show.v1', 
-          'm.qr_code.scan.v1', 
+          'm.sas.v1',
+          'm.qr_code.show.v1',
+          'm.qr_code.scan.v1',
           'm.reciprocate.v1'
         ],
         // CRITICAL: We DO NOT pass IndexedDBCryptoStore here as it conflicts with Rust crypto.
@@ -1424,7 +1424,7 @@ export const useMatrixStore = defineStore('matrix', {
           getSecretStorageKey: async ({ keys }: { keys: Record<string, any> }): Promise<[string, Uint8Array<ArrayBuffer>] | null> => {
             const keyIds = Object.keys(keys);
             console.log('[SecretStorage] getSecretStorageKey called for keys:', keyIds);
-            
+
             const firstKeyId = keyIds[0];
             if (!firstKeyId) return null;
 
@@ -1494,7 +1494,7 @@ export const useMatrixStore = defineStore('matrix', {
           const crypto = this.client.getCrypto();
           const isReady = await crypto?.isCrossSigningReady();
           console.log('[MatrixStore] Crypto cross-signing ready:', isReady);
-          
+
           if (isReady === false) {
             console.log('[MatrixStore] Cross-signing not ready, checking for local SSSS keys...');
             const hasSsssKey = await this.client.secretStorage.hasKey();
@@ -1708,7 +1708,7 @@ export const useMatrixStore = defineStore('matrix', {
             console.error("🚨 [MatrixStore] Fatal Crypto Store Desync (OTK Conflict) detected!");
             this.isCryptoDegraded = true;
             this.cryptoStatusMessage = "Encryption store desync. Security repair may be required.";
-            
+
             toast.error("Security Sync Error", {
               description: "A cryptographic desync was detected. Some messages may not be decryptable.",
               duration: 10000,
@@ -1783,9 +1783,9 @@ export const useMatrixStore = defineStore('matrix', {
     setupHierarchyListeners() {
       if (!this.client) return;
 
-      this.client.on(sdk.ClientEvent.Room, (room) => { 
+      this.client.on(sdk.ClientEvent.Room, (room) => {
         if (this.isClientReady) {
-          this.updateHierarchy(); 
+          this.updateHierarchy();
           if (room.getMyMembership() === 'invite') {
             this.showInviteNotification(room);
           }
@@ -1905,7 +1905,7 @@ export const useMatrixStore = defineStore('matrix', {
           // If we are currently running a game locally, we don't overwrite it with remote data
           // unless the remote data is also "running" and newer.
           if (!this.activityDetails?.is_running || remoteUpdated > localUpdated) {
-             this.remoteActivityDetails[userId] = content;
+            this.remoteActivityDetails[userId] = content;
           }
         } else {
           delete this.remoteActivityDetails[userId];
@@ -2097,9 +2097,9 @@ export const useMatrixStore = defineStore('matrix', {
         // this device is "ready to share" secrets with new verified devices.
         const crypto = this.client.getCrypto();
         if (crypto) {
-           await crypto.bootstrapCrossSigning({ setupNewCrossSigning: false }).catch(e => {
-             console.log('[SecretStorage] Background bootstrap (expected to fail if unverified):', e.message);
-           });
+          await crypto.bootstrapCrossSigning({ setupNewCrossSigning: false }).catch(e => {
+            console.log('[SecretStorage] Background bootstrap (expected to fail if unverified):', e.message);
+          });
         }
       } catch (e) {
         console.error('[SecretStorage] Failed to check setup:', e);
@@ -2151,7 +2151,7 @@ export const useMatrixStore = defineStore('matrix', {
         secretStorageKeys.set(keyId, keyArray! as Uint8Array<ArrayBuffer>);
         // Force persistence to localStorage so it survives page refresh
         persistSecretStorageKey(keyId, keyArray!);
-        
+
         // Also cache in the Pinia record for any other listeners
         this.secretStorageKeyCache[keyId] = keyArray! as Uint8Array<ArrayBuffer>;
 
@@ -2180,13 +2180,13 @@ export const useMatrixStore = defineStore('matrix', {
       this.isRequestingVerification = true;
 
       const crypto = this.client?.getCrypto();
-      if (!crypto) { 
-        console.error('Crypto not available'); 
+      if (!crypto) {
+        console.error('Crypto not available');
         toast.error('Encryption not ready', {
           description: 'The secure messaging stack is still initializing. Please wait a moment and try again.'
         });
         this.isRequestingVerification = false;
-        return; 
+        return;
       }
 
       const userId = this.client?.getUserId();
@@ -2253,7 +2253,7 @@ export const useMatrixStore = defineStore('matrix', {
       this.client.on("crypto.secrets.request" as any, async (request: any) => {
         const userId = request.userId;
         const deviceId = request.deviceId;
-        
+
         console.log(`[Gossip] Secret request received for ${request.name} from ${deviceId}`);
 
         try {
@@ -2280,29 +2280,29 @@ export const useMatrixStore = defineStore('matrix', {
 
       this.client.on("crypto.secrets.received" as any, async (name: string) => {
         console.log(`[Gossip] Successfully received and stored: ${name}`);
-        
+
         if (name === 'm.megolm_backup.v1') {
-           console.log('[Gossip] Megolm backup key received! Triggering automated restoration...');
-           // Load the key into crypto memory
-           await this.loadSessionBackupPrivateKeyFromSecretStorage();
-           // Restore the actual keys from server
-           await this.restoreKeysFromBackup();
-           // Retry decryption of any blocked messages
-           await this.retryDecryption();
-           
-           // Close the modal if we were in the restoration phase
-           this.isRestoringHistory = false;
-           this.cancelSecretStorageKey();
-           
-           // If we've successfully restored history, we can likely reset the whole verification UI
-           setTimeout(() => {
-             if (this.isVerificationCompleted && !this.isRestoringHistory) {
-                this._resetVerificationState();
-             }
-           }, 1000);
+          console.log('[Gossip] Megolm backup key received! Triggering automated restoration...');
+          // Load the key into crypto memory
+          await this.loadSessionBackupPrivateKeyFromSecretStorage();
+          // Restore the actual keys from server
+          await this.restoreKeysFromBackup();
+          // Retry decryption of any blocked messages
+          await this.retryDecryption();
+
+          // Close the modal if we were in the restoration phase
+          this.isRestoringHistory = false;
+          this.cancelSecretStorageKey();
+
+          // If we've successfully restored history, we can likely reset the whole verification UI
+          setTimeout(() => {
+            if (this.isVerificationCompleted && !this.isRestoringHistory) {
+              this._resetVerificationState();
+            }
+          }, 1000);
         } else if (name === 'm.cross_signing.master') {
-           await this.checkDeviceVerified();
-           this.cancelSecretStorageKey();
+          await this.checkDeviceVerified();
+          this.cancelSecretStorageKey();
         }
       });
     },
@@ -2392,13 +2392,13 @@ export const useMatrixStore = defineStore('matrix', {
             this.isVerificationCompleted = true;
             this.activeSas = null;
             this.isRestoringHistory = true; // Show "Syncing History..." spinner
-            
+
             // If we were prompting for a secret key, clear it since verification 
             // should provide the keys via gossip soon.
             this.cancelSecretStorageKey();
 
             await this.checkDeviceVerified();
-            
+
             // Proactively trigger gossip once trusted
             await this.requestSecretsFromOtherDevices();
 
@@ -2406,7 +2406,7 @@ export const useMatrixStore = defineStore('matrix', {
             setTimeout(async () => {
               // Final check: did secrets arrive?
               await this.restoreKeysFromBackup();
-              
+
               // Resolve any deferred requests if gossip provided the keys
               const satisfiedIndices: number[] = [];
               for (let i = 0; i < this.pendingSecretStorageRequests.length; i++) {
@@ -2425,16 +2425,16 @@ export const useMatrixStore = defineStore('matrix', {
 
               // If any requests remain, they likely need a manual security key.
               if (this.pendingSecretStorageRequests.length > 0) {
-                 console.log('[SecretStorage] Gossip did not provide keys, showing manual prompt.');
-                 const nextReq = this.pendingSecretStorageRequests.shift();
-                 if (nextReq) {
-                   this.secretStoragePrompt = nextReq;
-                   this.verificationModalOpen = true;
-                 }
+                console.log('[SecretStorage] Gossip did not provide keys, showing manual prompt.');
+                const nextReq = this.pendingSecretStorageRequests.shift();
+                if (nextReq) {
+                  this.secretStoragePrompt = nextReq;
+                  this.verificationModalOpen = true;
+                }
               }
 
               await this.retryDecryption();
-              
+
               // If we are fully decrypted now, we can probably close the modal
               if (!this.secretStoragePrompt) {
                 setTimeout(() => this._resetVerificationState(), 1000);
@@ -2477,7 +2477,7 @@ export const useMatrixStore = defineStore('matrix', {
         this.isSasTimeout = false;
 
         // Defensive Guard: Validate negotiation before showing UI
-        const method = (verifier as any).getChosenSasMethod?.() || 'm.sas.v1'; 
+        const method = (verifier as any).getChosenSasMethod?.() || 'm.sas.v1';
         if (method !== 'm.sas.v1') {
           console.warn(`[Verification] Negotiation failed: unexpected method ${method}`);
           this.isCryptoDegraded = true;
@@ -2552,14 +2552,14 @@ export const useMatrixStore = defineStore('matrix', {
 
     async reciprocateQrCode(scannedData: string) {
       if (!this.activeVerificationRequest) return;
-      
+
       console.log('[QRVerification] Reciprocating QR code...');
       try {
         // Matrix QR data as defined in MSC1543 is a byte array 
         // encoded in base64, usually prefixed with 'matrix-qrcode/'
         const parts = scannedData.split('/');
         const base64 = parts[parts.length - 1];
-        
+
         // Convert base64 to Uint8ClampedArray
         const binaryString = atob(base64 || '');
         const uint8Array = new Uint8ClampedArray(binaryString.length);
@@ -2571,7 +2571,7 @@ export const useMatrixStore = defineStore('matrix', {
         // (request as any) because the interface might not have scanQRCode exported if the type definitions are lagging
         const verifier = await (this.activeVerificationRequest as any).scanQRCode(uint8Array);
         this._setupVerifierListeners(verifier);
-        
+
         console.log('[QRVerification] Reciprocal scan successful.');
       } catch (e) {
         console.error('[QRVerification] Failed to reciprocate QR code:', e);
@@ -2672,7 +2672,7 @@ export const useMatrixStore = defineStore('matrix', {
           rehydrate: true,
           onlyIfKeyCached: false,
         });
-        
+
         // After rehydration attempt, check if we need maintenance
         this.maintenanceDehydration();
       } catch (e) {
@@ -2707,7 +2707,7 @@ export const useMatrixStore = defineStore('matrix', {
      */
     async maintenanceDehydration() {
       if (!this.client || !this.isCrossSigningReady) return;
-      
+
       // Throttle to once every 24 hours + random jitter (0-4 hours)
       const lastRun = await getPref('matrix_crypto_dehydration_last_run', 0);
       const now = Date.now();
@@ -2980,15 +2980,15 @@ export const useMatrixStore = defineStore('matrix', {
 
     async requestSecretsFromOtherDevices() {
       if (!this.client) return;
-      
+
       console.log('[SecretGossiping] Checking for available secrets and initiating gossip if needed...');
-      
+
       try {
         // Trigger the gossip mechanism (broadcasts m.secret_storage.request)
         // checkOwnCrossSigningTrust audits the local state and requests missing secrets.
         if (typeof (this.client as any).checkOwnCrossSigningTrust === 'function') {
-           console.log('[SecretGossiping] Triggering checkOwnCrossSigningTrust...');
-           await (this.client as any).checkOwnCrossSigningTrust();
+          console.log('[SecretGossiping] Triggering checkOwnCrossSigningTrust...');
+          await (this.client as any).checkOwnCrossSigningTrust();
         }
 
         // With Rust crypto, we also try to pull the megolm backup key once we have 4S access.
@@ -3051,7 +3051,7 @@ export const useMatrixStore = defineStore('matrix', {
               }
             }
           }
-          
+
           // Also check the live timeline events directly as a fallback
           const liveEvents = timelineSet.getLiveTimeline().getEvents();
           for (const event of liveEvents) {
@@ -3079,7 +3079,7 @@ export const useMatrixStore = defineStore('matrix', {
       console.log("Logging out...");
 
       try {
-        // Stop the Matrix Client (Kill Sync & Crypto)
+        // Stop the Matrix client (Kill Sync & Crypto)
         if (this.client) {
           await this.client.stopClient();
           // Skip this.client.clearStores() as it can trigger legacy crypto errors in Rust-crypto mode
@@ -3137,7 +3137,7 @@ export const useMatrixStore = defineStore('matrix', {
 
     async performCryptoSanityCheck() {
       if (!this.client) return;
-      
+
       try {
         const crypto = this.client.getCrypto();
         if (!crypto) return;
@@ -3145,9 +3145,9 @@ export const useMatrixStore = defineStore('matrix', {
         // Query the server for the current device's OTK count
         // Note: Using the internal API as a sanity check.
         const res = await (this.client as any).getInternalHttpApi().authedRequest(
-          sdk.Method.Post, 
-          "/_matrix/client/v3/keys/upload", 
-          {}, 
+          sdk.Method.Post,
+          "/_matrix/client/v3/keys/upload",
+          {},
           {}
         );
 
@@ -3158,18 +3158,18 @@ export const useMatrixStore = defineStore('matrix', {
 
         // If the server has 0 OTKs, it's a strong sign of a desync or exhausted keys.
         if (signedCurveCount === 0) {
-           console.error("🚨 [CryptoSanity] FATAL: Server reports 0 One-Time Keys for this device!");
-           this.isCryptoDegraded = true;
-           this.cryptoStatusMessage = "Encryption keys exhausted. Security repair required.";
-           
-           toast.error("Encryption Warning", {
-             description: "Your security keys are out of sync. Click to repair.",
-             duration: 15000,
-             action: {
-               label: "Repair",
-               onClick: () => { this.openVerificationModal(); }
-             }
-           });
+          console.error("🚨 [CryptoSanity] FATAL: Server reports 0 One-Time Keys for this device!");
+          this.isCryptoDegraded = true;
+          this.cryptoStatusMessage = "Encryption keys exhausted. Security repair required.";
+
+          toast.error("Encryption Warning", {
+            description: "Your security keys are out of sync. Click to repair.",
+            duration: 15000,
+            action: {
+              label: "Repair",
+              onClick: () => { this.openVerificationModal(); }
+            }
+          });
         }
       } catch (e) {
         console.warn("[CryptoSanity] Check failed (non-fatal):", e);
@@ -3181,7 +3181,7 @@ export const useMatrixStore = defineStore('matrix', {
       const userId = this.client.getUserId();
       console.warn(`🚨 [MatrixStore] Starting manual crypto repair for ${userId}...`);
       this.loginStatus = 'Repairing encryption…';
-      
+
       try {
         // 1. Stop the current client
         this.client.stopClient();
@@ -3219,10 +3219,10 @@ export const useMatrixStore = defineStore('matrix', {
         const accessToken = await getSecret('matrix_access_token');
         const userId = await getPref('matrix_user_id');
         if (accessToken && userId) {
-           // This will effectively restart everything
-           window.location.reload(); 
+          // This will effectively restart everything
+          window.location.reload();
         } else {
-           this.logout();
+          this.logout();
         }
       } catch (e) {
         console.error("[MatrixStore] Crypto repair failed:", e);
@@ -3443,7 +3443,7 @@ export const useMatrixStore = defineStore('matrix', {
 
     async markSpaceAsRead(spaceId: string) {
       if (!this.client) return;
-      
+
       const queue = [spaceId];
       const visited = new Set<string>();
       const joinedRooms: string[] = [];
