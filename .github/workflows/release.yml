@@ -107,7 +107,7 @@ jobs:
               if (!fs.existsSync(updateDir)) fs.mkdirSync(updateDir, { recursive: true });
 
               // 1. Load existing data if it exists to prevent overwriting other platforms
-              let data = { version: '$VERSION', notes: 'Release $VERSION', pub_date: '$DATE', platforms: {} };
+              let data = { version: '$RAW_VERSION', notes: 'Release $VERSION', pub_date: '$DATE', platforms: {} };
               if (fs.existsSync(updateFile)) {
                 try {
                   const existing = JSON.parse(fs.readFileSync(updateFile, 'utf8'));
@@ -124,6 +124,12 @@ jobs:
                 url: 'https://github.com/${{ github.repository }}/releases/download/' + '$VERSION' + '/' + 
                      (platform.includes('darwin') ? 'Tumult.app.tar.gz' : 'Tumult_' + '$RAW_VERSION' + '_x64_en-US.msi')
               };
+
+              // For macOS, we can also add x86_64 pointing to the same universal/dmg if needed,
+              // but tauri usually handles it. Adding both for completeness if it is mac.
+              if ('${{ matrix.platform }}' === 'macos-latest') {
+                 data.platforms['darwin-x86_64'] = data.platforms['darwin-aarch64'];
+              }
 
               fs.writeFileSync(updateFile, JSON.stringify(data, null, 2));
               console.log('Updated ' + platform + ' in update.json');
