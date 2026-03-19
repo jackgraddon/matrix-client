@@ -54,20 +54,21 @@ jobs:
           "
 
       - name: Build and Release
-        uses: tauri-apps/tauri-action@v1
+        shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          RAW_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        with:
-          tagName: ${{ github.ref_name }}
-          releaseName: "App Release ${{ github.ref_name }}"
-          releaseBody: "Automated Windows and MacOS build."
-          releaseDraft: true
-          prerelease: true
-          beforeBuildCommand: "sync && sleep 15"
-          tauriScript: corepack yarn tauri
-          args: --verbose
+        run: |
+          # Reconstruct the Minisign key file format safely in the runner's temp directory
+          echo "untrusted comment: minisign private key: tumult" > "$RUNNER_TEMP/tauri.key"
+          echo "$RAW_KEY" >> "$RUNNER_TEMP/tauri.key"
+          
+          # Point Tauri to the physical file instead of the raw env string
+          export TAURI_SIGNING_PRIVATE_KEY="$RUNNER_TEMP/tauri.key"
+          
+          # Run the build
+          corepack yarn tauri build --verbose
 
       - name: Generate and Merge Update Metadata
         shell: bash
