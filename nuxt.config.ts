@@ -103,7 +103,6 @@ export default defineNuxtConfig({
     '@nuxt/image',
     '@nuxt/icon',
     '@nuxt/fonts',
-    '@nuxt/hints',
     '@nuxt/a11y',
     '@pinia/nuxt',
     'shadcn-nuxt',

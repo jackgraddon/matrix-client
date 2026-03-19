@@ -1822,15 +1822,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@html-validate/stylish@npm:^5.0.0":
-  version: 5.0.0
-  resolution: "@html-validate/stylish@npm:5.0.0"
-  dependencies:
-    kleur: "npm:^4.0.0"
-  checksum: 10c0/8bc4130733fe760f52f45de8bcd2e2992129d953b6a0f2225f54890cc5825f0eb548db9f8a4cfe39ae4589ecf3a358c539ac47ac5665b61963039f83ad2956f4
-  languageName: node
-  linkType: hard
-
 "@iconify/collections@npm:^1.0.641":
   version: 1.0.662
   resolution: "@iconify/collections@npm:1.0.662"
@@ -2404,7 +2395,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@nuxt/devtools-kit@npm:3.2.4, @nuxt/devtools-kit@npm:^3.1.1, @nuxt/devtools-kit@npm:^3.2.1, @nuxt/devtools-kit@npm:^3.2.3":
+"@nuxt/devtools-kit@npm:3.2.4, @nuxt/devtools-kit@npm:^3.1.1, @nuxt/devtools-kit@npm:^3.2.1":
   version: 3.2.4
   resolution: "@nuxt/devtools-kit@npm:3.2.4"
   dependencies:
@@ -2585,32 +2576,6 @@ __metadata:
     unplugin: "npm:^2.3.11"
     unstorage: "npm:^1.17.4"
   checksum: 10c0/31d431c51a805561bf6c19cf6e9ed7b6f44ee7504656f007003985f54b07891dac0d7e8bf4ec483aa13516186e99a8052a17dd102aac52a51f043a0c3fd9269a
-  languageName: node
-  linkType: hard
-
-"@nuxt/hints@npm:^1.0.0-alpha.6":
-  version: 1.0.0
-  resolution: "@nuxt/hints@npm:1.0.0"
-  dependencies:
-    "@nuxt/devtools-kit": "npm:^3.2.3"
-    "@nuxt/kit": "npm:^4.3.1"
-    consola: "npm:^3.4.2"
-    defu: "npm:^6.1.4"
-    devalue: "npm:^5.6.3"
-    h3: "npm:^1.15.6"
-    html-validate: "npm:^10.11.1"
-    knitwork: "npm:^1.3.0"
-    magic-string: "npm:^0.30.21"
-    nitropack: "npm:^2.13.1"
-    oxc-parser: "npm:^0.117.0"
-    prettier: "npm:^3.8.1"
-    sirv: "npm:^3.0.2"
-    unplugin: "npm:^3.0.0"
-    unstorage: "npm:^1.17.4"
-    valibot: "npm:^1.2.0"
-    vite-plugin-vue-tracer: "npm:^1.2.0"
-    web-vitals: "npm:^5.1.0"
-  checksum: 10c0/f535ba74adf985ce5ffffef681b6d3fcba0157215f0cb2eec89f003c66d3fdf5eeb36f746871c02cb5a9ae6b25600f4cd28e3c1141c504f1cbae57fd374bdc51
   languageName: node
   linkType: hard
 
@@ -4026,17 +3991,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@sidvind/better-ajv-errors@npm:4.0.1":
-  version: 4.0.1
-  resolution: "@sidvind/better-ajv-errors@npm:4.0.1"
-  dependencies:
-    kleur: "npm:^4.1.0"
-  peerDependencies:
-    ajv: ^7.0.0 || ^8.0.0
-  checksum: 10c0/aac325ec6e5beb19998214b99bcfc71db91696fef7ccebfbf20acfa916165bcc5b5680edcf30184523869d3bd3776aa7320545ad5ef18eeb66d8740402518713
-  languageName: node
-  linkType: hard
-
 "@sindresorhus/base62@npm:^1.0.0":
   version: 1.0.0
   resolution: "@sindresorhus/base62@npm:1.0.0"
@@ -5394,7 +5348,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"ajv@npm:^8.0.0, ajv@npm:^8.6.0":
+"ajv@npm:^8.6.0":
   version: 8.18.0
   resolution: "ajv@npm:8.18.0"
   dependencies:
@@ -8311,38 +8265,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"html-validate@npm:^10.11.1":
-  version: 10.11.2
-  resolution: "html-validate@npm:10.11.2"
-  dependencies:
-    "@html-validate/stylish": "npm:^5.0.0"
-    "@sidvind/better-ajv-errors": "npm:4.0.1"
-    ajv: "npm:^8.0.0"
-    glob: "npm:^13.0.0"
-    kleur: "npm:^4.1.0"
-    minimist: "npm:^1.2.0"
-    prompts: "npm:^2.0.0"
-    semver: "npm:^7.0.0"
-  peerDependencies:
-    jest: ^28.1.3 || ^29.0.3 || ^30.0.0
-    jest-diff: ^28.1.3 || ^29.0.3 || ^30.0.0
-    jest-snapshot: ^28.1.3 || ^29.0.3 || ^30.0.0
-    vitest: ^1.0.0 || ^2.0.0 || ^3.0.0 || ^4.0.1
-  peerDependenciesMeta:
-    jest:
-      optional: true
-    jest-diff:
-      optional: true
-    jest-snapshot:
-      optional: true
-    vitest:
-      optional: true
-  bin:
-    html-validate: bin/html-validate.mjs
-  checksum: 10c0/35236ebd4789c667f79270531fab5e310b6ed7e0b3c1fbccb86a867b42fc1acd4fc84334a0cc9e6095bcb83175416cbe3c4589766dfe4d56f8bb55012d6455fa
-  languageName: node
-  linkType: hard
-
 "http-cache-semantics@npm:^4.1.1":
   version: 4.2.0
   resolution: "http-cache-semantics@npm:4.2.0"
@@ -9138,14 +9060,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"kleur@npm:^3.0.3":
-  version: 3.0.3
-  resolution: "kleur@npm:3.0.3"
-  checksum: 10c0/cd3a0b8878e7d6d3799e54340efe3591ca787d9f95f109f28129bdd2915e37807bf8918bb295ab86afb8c82196beec5a1adcaf29042ce3f2bd932b038fe3aa4b
-  languageName: node
-  linkType: hard
-
-"kleur@npm:^4.0.0, kleur@npm:^4.1.0, kleur@npm:^4.1.5":
+"kleur@npm:^4.1.5":
   version: 4.1.5
   resolution: "kleur@npm:4.1.5"
   checksum: 10c0/e9de6cb49657b6fa70ba2d1448fd3d691a5c4370d8f7bbf1c2f64c24d461270f2117e1b0afe8cb3114f13bbd8e51de158c2a224953960331904e636a5e4c0f2a
@@ -9714,7 +9629,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"minimist@npm:^1.2.0, minimist@npm:^1.2.5, minimist@npm:^1.2.6":
+"minimist@npm:^1.2.5, minimist@npm:^1.2.6":
   version: 1.2.8
   resolution: "minimist@npm:1.2.8"
   checksum: 10c0/19d3fcdca050087b84c2029841a093691a91259a47def2f18222f41e7645a0b7c44ef4b40e88a1e58a40c84d2ef0ee6047c55594d298146d0eb3f6b737c20ce6
@@ -11205,15 +11120,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"prettier@npm:^3.8.1":
-  version: 3.8.1
-  resolution: "prettier@npm:3.8.1"
-  bin:
-    prettier: bin/prettier.cjs
-  checksum: 10c0/33169b594009e48f570471271be7eac7cdcf88a209eed39ac3b8d6d78984039bfa9132f82b7e6ba3b06711f3bfe0222a62a1bfb87c43f50c25a83df1b78a2c42
-  languageName: node
-  linkType: hard
-
 "pretty-bytes@npm:^5.3.0":
   version: 5.6.0
   resolution: "pretty-bytes@npm:5.6.0"
@@ -11253,16 +11159,6 @@ __metadata:
   version: 0.11.10
   resolution: "process@npm:0.11.10"
   checksum: 10c0/40c3ce4b7e6d4b8c3355479df77aeed46f81b279818ccdc500124e6a5ab882c0cc81ff7ea16384873a95a74c4570b01b120f287abbdd4c877931460eca6084b3
-  languageName: node
-  linkType: hard
-
-"prompts@npm:^2.0.0":
-  version: 2.4.2
-  resolution: "prompts@npm:2.4.2"
-  dependencies:
-    kleur: "npm:^3.0.3"
-    sisteransi: "npm:^1.0.5"
-  checksum: 10c0/16f1ac2977b19fe2cf53f8411cc98db7a3c8b115c479b2ca5c82b5527cd937aa405fa04f9a5960abeb9daef53191b53b4d13e35c1f5d50e8718c76917c5f1ea4
   languageName: node
   linkType: hard
 
@@ -11897,7 +11793,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"semver@npm:^7.0.0, semver@npm:^7.3.5, semver@npm:^7.5.3, semver@npm:^7.6.3, semver@npm:^7.7.2, semver@npm:^7.7.3, semver@npm:^7.7.4":
+"semver@npm:^7.3.5, semver@npm:^7.5.3, semver@npm:^7.6.3, semver@npm:^7.7.2, semver@npm:^7.7.3, semver@npm:^7.7.4":
   version: 7.7.4
   resolution: "semver@npm:7.7.4"
   bin:
@@ -12848,7 +12744,6 @@ __metadata:
     "@nuxt/devtools": "npm:^3.1.1"
     "@nuxt/eslint": "npm:^1.13.0"
     "@nuxt/fonts": "npm:^0.13.0"
-    "@nuxt/hints": "npm:^1.0.0-alpha.6"
     "@nuxt/icon": "npm:^2.2.1"
     "@nuxt/image": "npm:^2.0.0"
     "@nuxtjs/color-mode": "npm:^4.0.0"
@@ -13504,18 +13399,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"valibot@npm:^1.2.0":
-  version: 1.3.1
-  resolution: "valibot@npm:1.3.1"
-  peerDependencies:
-    typescript: ">=5"
-  peerDependenciesMeta:
-    typescript:
-      optional: true
-  checksum: 10c0/e20a4097fa726f57530da1e64558af47ddd2303129c77978fe93c522c66cf4c79540ea3af864523589283ea25e347c3d65b8044fa4913376208dde576b9f6382
-  languageName: node
-  linkType: hard
-
 "vite-dev-rpc@npm:^1.1.0":
   version: 1.1.0
   resolution: "vite-dev-rpc@npm:1.1.0"
@@ -13658,7 +13541,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"vite-plugin-vue-tracer@npm:^1.2.0, vite-plugin-vue-tracer@npm:^1.3.0":
+"vite-plugin-vue-tracer@npm:^1.3.0":
   version: 1.3.0
   resolution: "vite-plugin-vue-tracer@npm:1.3.0"
   dependencies:
@@ -13914,13 +13797,6 @@ __metadata:
   bin:
     web-push: src/cli.js
   checksum: 10c0/d6a90dfe12f938396d0bff4e211a73347c3d584591768f6e62d006b5426710b033bae196a39cf28114f14dc0443a714c24ada1528ec8f11dfa5cb92153643c96
-  languageName: node
-  linkType: hard
-
-"web-vitals@npm:^5.1.0":
-  version: 5.1.0
-  resolution: "web-vitals@npm:5.1.0"
-  checksum: 10c0/1af22ddbe2836ba880fcb492cfba24c3349f4760ebb5e92f38324ea67bca3c4dbb9c86f1a32af4795b6115cdaf98b90000cf3a7402bffef6e8c503f0d1b2e706
   languageName: node
   linkType: hard
 
