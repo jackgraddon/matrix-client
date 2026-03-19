@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Tumult",
-  "version": "0.0.3032",
+  "version": "0.3.18-2",
   "identifier": "cc.jackg.tumult",
   "build": {
     "frontendDist": "../.output/public",
