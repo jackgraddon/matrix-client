@@ -56,15 +56,16 @@ jobs:
       - name: Build and Release
         shell: bash
         env:
+          # Map all secrets to temporary environment variables
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RAW_SIGNING_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          NUXT_PUBLIC_MATRIX_BASE_URL: 'matrix.jackg.cc'
+          # Add any others here (e.g., APPLE_CERTIFICATE, APPLE_PASSWORD, etc.)
         run: |
-          echo "untrusted comment: minisign private key: tumult" > "$RUNNER_TEMP/tauri.key"
-
-          echo "$RAW_SIGNING_KEY" | tr -d '[:space:]' >> "$RUNNER_TEMP/tauri.key"
-
-          export TAURI_SIGNING_PRIVATE_KEY="$RUNNER_TEMP/tauri.key"
+          echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD=$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" > .env
+          echo "TAURI_SIGNING_PRIVATE_KEY=$TAURI_SIGNING_PRIVATE_KEY" >> .env
+          echo "NUXT_PUBLIC_MATRIX_BASE_URL=$NUXT_PUBLIC_MATRIX_BASE_URL" >> .env
 
           corepack yarn tauri build --verbose
 
