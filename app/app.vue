@@ -41,6 +41,7 @@
 
 <script setup lang="ts">
 import { Toaster } from '@/components/ui/sonner';
+import { toast } from 'vue-sonner';
 
 const { $isTauri: isTauri } = useNuxtApp();
 const colorMode = useColorMode();
@@ -50,6 +51,26 @@ const isFailover = ref(false);
 onMounted(async () => {
   console.log("[App] onMounted started. isTauri:", isTauri);
   const store = useMatrixStore();
+
+  // PWA Update Handling
+  if (import.meta.client && 'serviceWorker' in navigator) {
+    const { useRegisterSW } = await import('virtual:pwa-register/vue');
+    const { updateServiceWorker } = useRegisterSW({
+      onNeedRefresh() {
+        toast('A new version is available', {
+          description: 'Click update to reload the app.',
+          action: {
+            label: 'Update',
+            onClick: () => updateServiceWorker(true),
+          },
+          duration: Infinity,
+        });
+      },
+      onOfflineReady() {
+        toast.success('App ready for offline use');
+      },
+    });
+  }
 
   if (isTauri) {
     // Check for failover flag from Rust via Tauri command

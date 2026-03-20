@@ -17,6 +17,58 @@ sw.addEventListener('activate', (event) => {
     event.waitUntil(sw.clients.claim());
 });
 
+// --- Media Proxy (Authenticated Streaming) ---
+
+const MEDIA_PROXY_PATH = '/_media_proxy/';
+
+sw.addEventListener('fetch', (event) => {
+    const url = new URL(event.request.url);
+
+    // Match /_media_proxy/ with or without trailing slash
+    if (url.pathname === MEDIA_PROXY_PATH || url.pathname === MEDIA_PROXY_PATH.slice(0, -1)) {
+        event.respondWith(handleMediaProxy(event.request));
+    }
+});
+
+async function handleMediaProxy(request) {
+    const url = new URL(request.url);
+    const encodedData = url.searchParams.get('data');
+    
+    if (!encodedData) {
+        return new Response('Missing data parameter', { status: 400 });
+    }
+
+    try {
+        // Data is passed as a base64 encoded JSON string in the URL.
+        // atob might fail if the user used a URL-safe variant (unlikely here but good to handle).
+        const jsonStr = atob(encodedData.replace(/-/g, '+').replace(/_/g, '/'));
+        const decoded = JSON.parse(jsonStr);
+        const { mediaUrl, accessToken } = decoded;
+
+        if (!mediaUrl || !accessToken) {
+            return new Response('Missing mediaUrl or accessToken', { status: 400 });
+        }
+
+        // Forward original headers (Range, etc.)
+        const headers = new Headers(request.headers);
+        headers.set('Authorization', `Bearer ${accessToken}`);
+
+        // We fetch and return the response. 
+        // If the browser sends a Range header, we MUST return the partial response.
+        // Most modern fetch implementations in Service Workers pass 206s correctly.
+        const response = await fetch(mediaUrl, {
+            headers,
+            credentials: 'omit',
+        });
+
+        // Ensure we preserve the status for Range requests (206)
+        return response;
+    } catch (err) {
+        console.error('[Service Worker] Media proxy error:', err);
+        return new Response('Internal Proxy Error: ' + err.message, { status: 500 });
+    }
+}
+
 // Helper to extract a readable summary of the message
 function getMessageSummary(content) {
     if (!content) return 'New message';
