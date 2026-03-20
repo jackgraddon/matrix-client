@@ -6,6 +6,8 @@
 	<string>We need access to your camera so you friends can see you!</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>We need access to your micrphone so your friends can hear you talk!</string>
+	<key>CFBundleIconFile</key>
+	<string>App</string>
 	<key>CFBundleIconName</key>
 	<string>App</string>
 </dict>
