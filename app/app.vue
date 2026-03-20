@@ -32,7 +32,7 @@
         v-if="isFailover" 
         class="fixed bottom-4 right-4 z-50 flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-500 text-xs font-medium backdrop-blur-md shadow-lg pointer-events-none animate-in fade-in slide-in-from-bottom-2"
       >
-        <UiIcon name="lucide:cloud-off" class="w-3.5 h-3.5" />
+        <Icon name="lucide:cloud-off" class="w-3.5 h-3.5" />
         Offline Mode (Bundled Assets)
       </div>
     </div>
@@ -46,6 +46,12 @@ const { $isTauri: isTauri } = useNuxtApp();
 const colorMode = useColorMode();
 
 const isFailover = ref(false);
+
+onBeforeUnmount(() => {
+  window.removeEventListener('mousemove', resetIdleTimer);
+  window.removeEventListener('keydown', resetIdleTimer);
+  clearTimeout(idleTimer);
+});
 
 onMounted(async () => {
   console.log("[App] onMounted started. isTauri:", isTauri);
@@ -118,29 +124,6 @@ onMounted(async () => {
   window.addEventListener('mousemove', resetIdleTimer);
   window.addEventListener('keydown', resetIdleTimer);
   resetIdleTimer(); // Initial start
-
-  // Debug: Looping console log for active user presence
-  // let debugInterval: ReturnType<typeof setInterval>;
-  // if (process.dev) {
-  //   debugInterval = setInterval(() => {
-  //     if (store.client && store.isAuthenticated && store.user) {
-  //       const user = store.client.getUser(store.user.userId);
-  //       console.log('[Presence Debug] Status:', {
-  //         presence: user?.presence || 'unknown',
-  //         status_msg: user?.presenceStatusMsg || '',
-  //         isIdle: store.isIdle,
-  //         activity: store.activityDetails?.name || 'none'
-  //       });
-  //     }
-  //   }, 10000); // Every 10 seconds
-  // }
-
-  onBeforeUnmount(() => {
-    window.removeEventListener('mousemove', resetIdleTimer);
-    window.removeEventListener('keydown', resetIdleTimer);
-    clearTimeout(idleTimer);
-    // if (debugInterval) clearInterval(debugInterval);
-  });
 });
 </script>
 

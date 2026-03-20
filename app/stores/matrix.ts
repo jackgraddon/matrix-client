@@ -134,13 +134,13 @@ function generateNonce(): string {
 // Outside your Pinia store, create a memory cache
 const secretStorageKeys = new Map<string, Uint8Array<ArrayBuffer>>();
 
-// Helper to persist keys to localStorage (encoded as Base64)
+// Helper to persist keys to localStorage (encoded as Hex for reliability)
 function persistSecretStorageKey(keyId: string, privateKey: Uint8Array) {
   if (typeof window === 'undefined') return;
   try {
-    const base64 = btoa(String.fromCharCode(...privateKey));
-    localStorage.setItem(`matrix_ssss_key_${keyId}`, base64);
-    console.log(`[SecretStorage] Persisted key ${keyId} to localStorage`);
+    const hex = Array.from(privateKey).map(b => b.toString(16).padStart(2, '0')).join('');
+    localStorage.setItem(`matrix_ssss_key_hex_${keyId}`, hex);
+    console.log(`[SecretStorage] Persisted key ${keyId} to localStorage (hex)`);
   } catch (err) {
     console.warn('[SecretStorage] Failed to persist key:', err);
   }
@@ -152,17 +152,33 @@ function loadPersistedSecretStorageKeys() {
   try {
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
-      if (key?.startsWith('matrix_ssss_key_')) {
+
+      // Support both old base64 and new hex formats for transition
+      if (key?.startsWith('matrix_ssss_key_hex_')) {
+        const keyId = key.replace('matrix_ssss_key_hex_', '');
+        const hex = localStorage.getItem(key);
+        if (hex) {
+          const bytes = new Uint8Array(hex.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
+          secretStorageKeys.set(keyId, bytes as Uint8Array<ArrayBuffer>);
+          console.log(`[SecretStorage] Loaded persisted key ${keyId} (from hex)`);
+        }
+      } else if (key?.startsWith('matrix_ssss_key_')) {
         const keyId = key.replace('matrix_ssss_key_', '');
         const base64 = localStorage.getItem(key);
         if (base64) {
-          const binaryString = atob(base64);
-          const bytes = new Uint8Array(binaryString.length);
-          for (let j = 0; j < binaryString.length; j++) {
-            bytes[j] = binaryString.charCodeAt(j);
+          try {
+            const binaryString = atob(base64);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let j = 0; j < binaryString.length; j++) {
+              bytes[j] = binaryString.charCodeAt(j);
+            }
+            secretStorageKeys.set(keyId, bytes as Uint8Array<ArrayBuffer>);
+            console.log(`[SecretStorage] Loaded persisted key ${keyId} (from legacy base64)`);
+            // Migrate to hex
+            persistSecretStorageKey(keyId, bytes);
+          } catch (e) {
+            console.warn(`[SecretStorage] Failed to decode legacy key ${keyId}`);
           }
-          secretStorageKeys.set(keyId, bytes as Uint8Array<ArrayBuffer>);
-          console.log(`[SecretStorage] Loaded persisted key ${keyId}`);
         }
       }
     }
@@ -1436,13 +1452,39 @@ export const useMatrixStore = defineStore('matrix', {
 
             const cachedKeyId = keyIds.find(id => secretStorageKeys.has(id));
             if (cachedKeyId) {
+              console.log('[SecretStorage] Using cached key:', cachedKeyId);
               return [cachedKeyId, secretStorageKeys.get(cachedKeyId)!] as [string, Uint8Array<ArrayBuffer>];
             }
 
-            // If a device verification is active, wait for it instead of prompting immediately.
-            // This prioritizes interactive verification (Emoji/QR) and gossip over backup keys.
-            if (this.activeVerificationRequest || this.isRequestingVerification) {
-              console.log('[SecretStorage] Verification in progress, deferring secret storage prompt...');
+            // DEDUPLICATION: If we already have a prompt or a pending request for any of these keys,
+            // return a new promise that resolves when the existing one does.
+            const existingPending = this.pendingSecretStorageRequests.find(r => keyIds.includes(r.keyId));
+            if (existingPending) {
+              console.log('[SecretStorage] Found existing pending request, attaching listener...');
+              return new Promise<[string, Uint8Array<ArrayBuffer>] | null>((resolve, reject) => {
+                const _origResolve = existingPending.promise.resolve;
+                existingPending.promise.resolve = (val) => {
+                  _origResolve(val);
+                  resolve(val);
+                };
+              });
+            }
+
+            if (this.secretStoragePrompt && keyIds.includes(this.secretStoragePrompt.keyId)) {
+              console.log('[SecretStorage] Prompt already visible for this key, attaching listener...');
+              return new Promise<[string, Uint8Array<ArrayBuffer>] | null>((resolve, reject) => {
+                const _origResolve = this.secretStoragePrompt!.promise.resolve;
+                this.secretStoragePrompt!.promise.resolve = (val) => {
+                  _origResolve(val);
+                  resolve(val);
+                };
+              });
+            }
+
+            // DEFERRAL: If we are still in the initial sync or a verification is active,
+            // wait for gossip/verification instead of prompting immediately.
+            if (this.activeVerificationRequest || this.isRequestingVerification || !this.isFullySynced) {
+              console.log(`[SecretStorage] ${!this.isFullySynced ? 'Initial sync' : 'Verification'} in progress, deferring secret storage prompt...`);
               return new Promise<[string, Uint8Array<ArrayBuffer>] | null>((resolve, reject) => {
                 this.pendingSecretStorageRequests.push({
                   promise: { resolve, reject: (err?: any) => reject(err) },
@@ -3166,7 +3208,10 @@ export const useMatrixStore = defineStore('matrix', {
 
         // Query the server for the current device's OTK count
         // Note: Using the internal API as a sanity check.
-        const res = await (this.client as any).getInternalHttpApi().authedRequest(
+        const http = (this.client as any).http || (this.client as any).getInternalHttpApi?.();
+        if (!http) return;
+
+        const res = await http.authedRequest(
           sdk.Method.Post,
           "/_matrix/client/v3/keys/upload",
           {},
