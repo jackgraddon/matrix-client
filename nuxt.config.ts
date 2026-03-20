@@ -155,7 +155,7 @@ export default defineNuxtConfig({
       installPrompt: true,
     },
     devOptions: {
-      enabled: false,
+      enabled: true,
       suppressWarnings: true,
       navigateFallback: '/',
       navigateFallbackAllowlist: [new RegExp('^\\/$')],

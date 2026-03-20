@@ -32,6 +32,7 @@
         :autoplay="isGif || props.info?.['fi.mau.autoplay']"
         :loop="isGif || props.info?.['fi.mau.loop']"
         :muted="isGif || props.info?.['fi.mau.no_audio']"
+        @error="handleVideoError"
         playsinline
         class="w-full max-h-[400px] object-contain"
         preload="metadata"
@@ -175,6 +176,11 @@ onUnmounted(() => {
 });
 
 // --- 5. Loading Logic ---
+
+// We check if the SW is actually controlling the page before using the proxy.
+// If it's not, the proxy URL will 404.
+const isSWActive = computed(() => !!(import.meta.client && navigator.serviceWorker?.controller));
+
 const loadMedia = async () => {
   if (!isInlineMedia.value || !store.client) return;
 
@@ -184,18 +190,23 @@ const loadMedia = async () => {
       // For images, useAuthenticatedMedia (standardUrl) handles the thumbnailing
       // For video/audio, we use the Service Worker proxy for authenticated streaming
       if (!isImage.value) {
-        const mxcParts = props.mxcUrl.replace('mxc://', '').split('/');
-        const serverName = mxcParts[0];
-        const mediaId = mxcParts[1];
-        const matrixMediaUrl = `${store.client.baseUrl}/_matrix/client/v1/media/download/${serverName}/${mediaId}`;
-        const accessToken = store.client.getAccessToken();
+        if (isSWActive.value) {
+          const mxcParts = props.mxcUrl.replace('mxc://', '').split('/');
+          const serverName = mxcParts[0];
+          const mediaId = mxcParts[1];
+          const matrixMediaUrl = `${store.client.baseUrl}/_matrix/client/v1/media/download/${serverName}/${mediaId}`;
+          const accessToken = store.client.getAccessToken();
 
-        const proxyData = btoa(JSON.stringify({
-          mediaUrl: matrixMediaUrl,
-          accessToken
-        }));
+          const proxyData = btoa(JSON.stringify({
+            mediaUrl: matrixMediaUrl,
+            accessToken
+          }));
 
-        internalMediaUrl.value = `/_media_proxy/?data=${encodeURIComponent(proxyData)}`;
+          internalMediaUrl.value = `/_media_proxy/?data=${encodeURIComponent(proxyData)}`;
+        } else {
+          // If SW is not active yet, fall back to full download (blob)
+          await loadMediaViaBlob();
+        }
       }
     } else {
       // Direct web URL (https://...) - use as-is
@@ -206,27 +217,51 @@ const loadMedia = async () => {
 
   // SLOW PATH: Encrypted (Decryption required)
   if (props.encryptedFile && props.encryptedFile.url) {
-    if (internalMediaUrl.value) {
-      URL.revokeObjectURL(internalMediaUrl.value);
-      internalMediaUrl.value = null;
-    }
+    await loadMediaViaBlob();
+  }
+};
 
-    isMediaLoading.value = true;
-    try {
+const loadMediaViaBlob = async () => {
+  if (internalMediaUrl.value) {
+    URL.revokeObjectURL(internalMediaUrl.value);
+    internalMediaUrl.value = null;
+  }
+
+  isMediaLoading.value = true;
+  try {
+    let blob: Blob;
+
+    if (props.encryptedFile && props.encryptedFile.url) {
       const mxc = props.encryptedFile.url;
       const response = await fetchAuthenticatedDownload(store.client, mxc);
       const arrayBuffer = await response.arrayBuffer();
       const decryptedBuffer = await decryptAttachment(arrayBuffer, props.encryptedFile);
       
       const mimetype = props.encryptedFile.mimetype || props.mimetype || 'application/octet-stream';
-      const blob = new Blob([decryptedBuffer], { type: mimetype });
-      
-      internalMediaUrl.value = URL.createObjectURL(blob);
-    } catch (err) {
-      console.error('Failed to decrypt inline media:', err);
-    } finally {
-      isMediaLoading.value = false;
+      blob = new Blob([decryptedBuffer], { type: mimetype });
+    } else if (props.mxcUrl) {
+      const response = await fetchAuthenticatedDownload(store.client, props.mxcUrl);
+      blob = await response.blob();
+    } else {
+      return;
     }
+
+    internalMediaUrl.value = URL.createObjectURL(blob);
+  } catch (err) {
+    console.error('Failed to load media via blob fallback:', err);
+  } finally {
+    isMediaLoading.value = false;
+  }
+};
+
+const handleVideoError = async (e: Event) => {
+  const video = e.target as HTMLVideoElement;
+  if (!video.src) return;
+
+  // If the proxy URL failed, and we're not already using a blob, try falling back to blob.
+  if (video.src.includes('/_media_proxy/') && !internalMediaUrl.value?.startsWith('blob:')) {
+    console.warn('[ChatFile] Video proxy failed, falling back to blob...', video.error);
+    await loadMediaViaBlob();
   }
 };
 

@@ -245,7 +245,7 @@
                    :intrinsic-height="msg.imageHeight"
                    :msgtype="msg.msgtype"
                    :mimetype="msg.mimetype"
-                   :info="msg.rawEvent?.getContent()?.info"
+                   :info="msg.info"
                    class="max-w-[400px]"
                  />
                  <div 
@@ -286,7 +286,7 @@
                     :alt="msg.body"
                     :msgtype="msg.msgtype"
                     :mimetype="msg.mimetype"
-                    :info="msg.rawEvent?.getContent()?.info"
+                    :info="msg.info"
                   />
               </div>
 
@@ -741,6 +741,7 @@ interface ChatMessage {
   isFile?: boolean;
   msgtype?: string;
   mimetype?: string;
+  info?: any;
   isCallEvent?: boolean;
   gameId?: string;
   gameType?: string;
@@ -1183,6 +1184,7 @@ function mapEvent(event: MatrixEvent): ChatMessage | null {
     isFile,
     msgtype: contentSafe.msgtype,
     mimetype: contentSafe.info?.mimetype,
+    info: contentSafe.info,
   };
 }
 

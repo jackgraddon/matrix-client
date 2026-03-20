@@ -24,7 +24,8 @@ const MEDIA_PROXY_PATH = '/_media_proxy/';
 sw.addEventListener('fetch', (event) => {
     const url = new URL(event.request.url);
 
-    if (url.pathname === MEDIA_PROXY_PATH) {
+    // Match /_media_proxy/ with or without trailing slash
+    if (url.pathname === MEDIA_PROXY_PATH || url.pathname === MEDIA_PROXY_PATH.slice(0, -1)) {
         event.respondWith(handleMediaProxy(event.request));
     }
 });
@@ -38,31 +39,33 @@ async function handleMediaProxy(request) {
     }
 
     try {
-        // Data is passed as a base64 encoded JSON string in the URL to avoid
-        // issues with special characters in the homeserver URL or token.
-        const decoded = JSON.parse(atob(encodedData));
+        // Data is passed as a base64 encoded JSON string in the URL.
+        // atob might fail if the user used a URL-safe variant (unlikely here but good to handle).
+        const jsonStr = atob(encodedData.replace(/-/g, '+').replace(/_/g, '/'));
+        const decoded = JSON.parse(jsonStr);
         const { mediaUrl, accessToken } = decoded;
 
         if (!mediaUrl || !accessToken) {
             return new Response('Missing mediaUrl or accessToken', { status: 400 });
         }
 
-        // Forward the original request headers (like 'Range' for video streaming)
+        // Forward original headers (Range, etc.)
         const headers = new Headers(request.headers);
         headers.set('Authorization', `Bearer ${accessToken}`);
 
+        // We fetch and return the response.
+        // If the browser sends a Range header, we MUST return the partial response.
+        // Most modern fetch implementations in Service Workers pass 206s correctly.
         const response = await fetch(mediaUrl, {
             headers,
-            credentials: 'omit', // Matrix tokens are handled via Authorization header
+            credentials: 'omit',
         });
 
-        // We return the response as-is. If the browser sent a Range header,
-        // the homeserver (if it supports it) will return 206 Partial Content,
-        // which the browser's <video> element needs for seeking.
+        // Ensure we preserve the status for Range requests (206)
         return response;
     } catch (err) {
         console.error('[Service Worker] Media proxy error:', err);
-        return new Response('Internal Proxy Error', { status: 500 });
+        return new Response('Internal Proxy Error: ' + err.message, { status: 500 });
     }
 }
 
