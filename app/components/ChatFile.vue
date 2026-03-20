@@ -7,8 +7,8 @@
         <Icon name="svg-spinners:ring-resize" class="h-6 w-6 text-primary" />
       </div>
       <img
-        v-if="imageUrl"
-        :src="imageUrl"
+        v-if="finalImageUrl"
+        :src="finalImageUrl"
         :alt="alt || 'Image'"
         class="max-w-full h-auto object-contain rounded-md"
         :width="displayWidth || undefined"
@@ -26,8 +26,8 @@
         <Icon name="svg-spinners:ring-resize" class="h-6 w-6 text-primary" />
       </div>
       <video 
-        v-if="imageUrl"
-        :src="imageUrl" 
+        v-if="finalImageUrl"
+        :src="finalImageUrl"
         :controls="!isGif"
         :autoplay="isGif || props.info?.['fi.mau.autoplay']"
         :loop="isGif || props.info?.['fi.mau.loop']"
@@ -48,7 +48,7 @@
       </div>
       <div class="flex flex-col gap-1">
         <span class="text-xs font-medium text-muted-foreground truncate px-1">{{ alt || 'Audio File' }}</span>
-        <audio v-if="imageUrl" :src="imageUrl" controls class="w-full h-10"></audio>
+        <audio v-if="finalImageUrl" :src="finalImageUrl" controls class="w-full h-10"></audio>
       </div>
     </div>
 
@@ -118,7 +118,7 @@ const isGif = computed(() => {
 });
 
 // --- 2. State & Hooks ---
-const mediaUrl = ref<string | null>(null);
+const internalMediaUrl = ref<string | null>(null);
 const isMediaLoading = ref(false);
 const isDownloading = ref(false);
 
@@ -138,9 +138,9 @@ const { imageUrl: standardUrl, isLoading: standardLoading } = useAuthenticatedMe
 );
 
 // Unified URL & Loading State
-const imageUrl = computed(() => {
+const finalImageUrl = computed(() => {
   if (isImage.value && standardUrl.value) return standardUrl.value;
-  return mediaUrl.value;
+  return internalMediaUrl.value;
 });
 
 const isLoading = computed(() => isMediaLoading.value || (isImage.value && standardLoading.value));
@@ -169,8 +169,8 @@ const placeholderStyle = computed(() => {
 
 // --- 4. Memory Management ---
 onUnmounted(() => {
-  if (mediaUrl.value && mediaUrl.value.startsWith('blob:')) {
-    URL.revokeObjectURL(mediaUrl.value);
+  if (internalMediaUrl.value && internalMediaUrl.value.startsWith('blob:')) {
+    URL.revokeObjectURL(internalMediaUrl.value);
   }
 });
 
@@ -195,20 +195,20 @@ const loadMedia = async () => {
           accessToken
         }));
 
-        mediaUrl.value = `/_media_proxy/?data=${encodeURIComponent(proxyData)}`;
+        internalMediaUrl.value = `/_media_proxy/?data=${encodeURIComponent(proxyData)}`;
       }
     } else {
       // Direct web URL (https://...) - use as-is
-      mediaUrl.value = props.mxcUrl;
+      internalMediaUrl.value = props.mxcUrl;
     }
     return;
   }
 
   // SLOW PATH: Encrypted (Decryption required)
   if (props.encryptedFile && props.encryptedFile.url) {
-    if (mediaUrl.value) {
-      URL.revokeObjectURL(mediaUrl.value);
-      mediaUrl.value = null;
+    if (internalMediaUrl.value) {
+      URL.revokeObjectURL(internalMediaUrl.value);
+      internalMediaUrl.value = null;
     }
 
     isMediaLoading.value = true;
@@ -221,7 +221,7 @@ const loadMedia = async () => {
       const mimetype = props.encryptedFile.mimetype || props.mimetype || 'application/octet-stream';
       const blob = new Blob([decryptedBuffer], { type: mimetype });
       
-      mediaUrl.value = URL.createObjectURL(blob);
+      internalMediaUrl.value = URL.createObjectURL(blob);
     } catch (err) {
       console.error('Failed to decrypt inline media:', err);
     } finally {
