@@ -101,7 +101,7 @@
                 <!-- Add Space / Explorer -->
                 <UiButton 
                     variant="secondary"
-                    class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 flex items-center justify-center shrink-0 hover:bg-neutral-300 dark:hover:bg-neutral-800" 
+                    class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 flex items-center justify-center shrink-0"
                     @click="store.openCreateSpaceModal()"
                     title="Create a space"
                 >

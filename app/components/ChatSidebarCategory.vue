@@ -55,7 +55,7 @@
                     <div 
                         v-if="isVoiceChannel(store.client?.getRoom(room.roomId))"
                         role="button"
-                        class="inline-flex items-center justify-start px-2 h-9 w-full rounded-md text-sm font-medium transition-colors cursor-pointer hover:bg-accent/50 group relative"
+                        class="inline-flex items-center justify-start px-2 h-9 w-full rounded-md text-sm font-medium transition-colors cursor-pointer hover:bg-muted/50 group relative"
                         :class="[(isLinkActive(`/chat/spaces/${activeSpaceId}/${room.roomId}`) || voiceStore.activeRoomId === room.roomId) ? 'bg-secondary text-secondary-foreground' : '']"
                         @contextmenu="store.openRoomContextMenu(room.roomId)"
                         @click="voiceStore.joinVoiceRoom(store.client!.getRoom(room.roomId)!)"
@@ -145,7 +145,7 @@
                         <div 
                             v-for="user in getVoiceParticipants(room.roomId)" 
                             :key="user.id" 
-                            class="flex items-center gap-2 px-1.5 py-0.5 rounded-sm hover:bg-accent/40 transition-colors cursor-default group/participant"
+                            class="flex items-center gap-2 px-1.5 py-0.5 rounded-sm hover:bg-muted/40 transition-colors cursor-default group/participant"
                         >
                             <MatrixAvatar 
                                 :mxc-url="user.avatarUrl" 
