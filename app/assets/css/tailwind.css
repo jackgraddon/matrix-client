@@ -42,6 +42,7 @@
 }
 
 :root {
+  color-scheme: light dark;
   --radius: 0.625rem;
   --background: oklch(1 0 0);
   --foreground: oklch(0.141 0.005 285.823);
@@ -125,6 +126,16 @@
   --status-offline: oklch(0.7 0 0);
 }
 
+/* Base Semantic Overrides to remove "neutral" color leaks */
+.dark, .dark * {
+  --background: oklch(0.1 0 0);
+  --sidebar: oklch(0.1 0 0);
+  --card: oklch(0.14 0 0);
+  --popover: oklch(0.14 0 0);
+  --secondary: oklch(0.18 0 0);
+  --muted: oklch(0.18 0 0);
+}
+
 .theme-forest {
   --primary: oklch(0.6 0.15 145);
   --accent: oklch(0.7 0.12 180);
@@ -137,6 +148,11 @@
 }
 
 .dark .theme-forest, .theme-forest.dark {
+    --background: oklch(0.12 0.01 145);
+    --sidebar: oklch(0.12 0.01 145);
+    --card: oklch(0.15 0.01 145);
+    --secondary: oklch(0.18 0.01 145);
+    --muted: oklch(0.18 0.01 145);
     --primary-foreground: oklch(0.12 0 0);
     --sidebar-primary-foreground: oklch(0.12 0 0);
     --secondary-foreground: oklch(0.985 0 0);
@@ -155,6 +171,11 @@
 }
 
 .dark .theme-sunset, .theme-sunset.dark {
+    --background: oklch(0.12 0.02 35);
+    --sidebar: oklch(0.12 0.02 35);
+    --card: oklch(0.15 0.02 35);
+    --secondary: oklch(0.18 0.02 35);
+    --muted: oklch(0.18 0.02 35);
     --primary-foreground: oklch(0.12 0 0);
     --sidebar-primary-foreground: oklch(0.12 0 0);
     --secondary-foreground: oklch(0.985 0 0);
@@ -173,6 +194,11 @@
 }
 
 .dark .theme-midnight, .theme-midnight.dark {
+    --background: oklch(0.12 0.02 250);
+    --sidebar: oklch(0.12 0.02 250);
+    --card: oklch(0.15 0.02 250);
+    --secondary: oklch(0.18 0.02 250);
+    --muted: oklch(0.18 0.02 250);
     --primary-foreground: oklch(0.12 0 0);
     --sidebar-primary-foreground: oklch(0.12 0 0);
     --secondary-foreground: oklch(0.985 0 0);
@@ -191,6 +217,11 @@
 }
 
 .dark .theme-lava, .theme-lava.dark {
+    --background: oklch(0.12 0.03 25);
+    --sidebar: oklch(0.12 0.03 25);
+    --card: oklch(0.15 0.03 25);
+    --secondary: oklch(0.18 0.03 25);
+    --muted: oklch(0.18 0.03 25);
     --primary-foreground: oklch(0.12 0 0);
     --sidebar-primary-foreground: oklch(0.12 0 0);
     --secondary-foreground: oklch(0.985 0 0);
@@ -209,6 +240,11 @@
 }
 
 .dark .theme-crimson, .theme-crimson.dark {
+    --background: oklch(0.12 0.03 2);
+    --sidebar: oklch(0.12 0.03 2);
+    --card: oklch(0.15 0.03 2);
+    --secondary: oklch(0.18 0.03 2);
+    --muted: oklch(0.18 0.03 2);
     --primary-foreground: oklch(0.12 0 0);
     --sidebar-primary-foreground: oklch(0.12 0 0);
     --secondary-foreground: oklch(0.985 0 0);
