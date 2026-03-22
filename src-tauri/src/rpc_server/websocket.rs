@@ -1,15 +1,26 @@
-use std::sync::Arc;
-use tokio::net::TcpListener;
-use tokio_tungstenite::accept_hdr_async;
-use tokio_tungstenite::tungstenite::protocol::Message;
-use tokio_tungstenite::tungstenite::handshake::server::{Request, Response};
-use futures_util::{StreamExt, SinkExt};
+use axum::{
+    extract::{ws::{Message, WebSocket, WebSocketUpgrade}, Query, State},
+    response::{IntoResponse, Response},
+    routing::get,
+    Router,
+};
+use tower_http::cors::{Any, CorsLayer};
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tauri::{AppHandle, Emitter};
 use log::{info, error, debug};
 use tokio_util::sync::CancellationToken;
-use std::sync::Mutex;
+use std::sync::Arc;
+use futures_util::{StreamExt, SinkExt};
 use super::types::{RpcMessage, RpcResponse};
+
+#[derive(Clone)]
+struct AppState {
+    app: AppHandle,
+    user_id: String,
+    user_name: String,
+    avatar: Option<String>,
+}
 
 pub async fn start_websocket_server(
     app: AppHandle,
@@ -18,45 +29,39 @@ pub async fn start_websocket_server(
     user_name: String,
     avatar: Option<String>,
 ) {
+    let state = AppState {
+        app,
+        user_id,
+        user_name,
+        avatar,
+    };
+
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods(Any)
+        .allow_headers(Any);
+
+    let app_router = Router::new()
+        .route("/", get(handler))
+        .layer(cors)
+        .with_state(state);
+
     for port in 6463..=6472 {
         let addr = format!("127.0.0.1:{}", port);
-        match TcpListener::bind(&addr).await {
+        match tokio::net::TcpListener::bind(&addr).await {
             Ok(listener) => {
-                info!("[rpc-ws] Listening on {}", addr);
-                let app_handle = app.clone();
+                info!("[rpc-ws] Listening on http/ws://{}", addr);
                 let cancel_handle = cancel_token.clone();
-                let user_id_c = user_id.clone();
-                let user_name_c = user_name.clone();
-                let avatar_c = avatar.clone();
+                let router = app_router.clone();
 
                 tokio::spawn(async move {
-                    loop {
-                        tokio::select! {
-                            _ = cancel_handle.cancelled() => {
-                                info!("[rpc-ws] WebSocket server stopping...");
-                                break;
-                            }
-                            result = listener.accept() => {
-                                match result {
-                                    Ok((stream, addr)) => {
-                                        debug!("[rpc-ws] New TCP connection from {}", addr);
-                                        let app = app_handle.clone();
-                                        let cancel = cancel_handle.clone();
-                                        let uid = user_id_c.clone();
-                                        let uname = user_name_c.clone();
-                                        let av = avatar_c.clone();
-                                        tokio::spawn(async move {
-                                            handle_ws_connection(stream, app, cancel, uid, uname, av).await;
-                                        });
-                                    }
-                                    Err(e) => {
-                                        error!("[rpc-ws] Error: {}", e);
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    axum::serve(listener, router)
+                        .with_graceful_shutdown(async move {
+                            cancel_handle.cancelled().await;
+                            info!("[rpc-ws] Axum server on port {} stopping...", port);
+                        })
+                        .await
+                        .unwrap();
                 });
                 return;
             }
@@ -65,122 +70,86 @@ pub async fn start_websocket_server(
     }
 }
 
-async fn handle_ws_connection(
-    stream: tokio::net::TcpStream,
-    app: AppHandle,
-    cancel_token: CancellationToken,
-    user_id: String,
-    user_name: String,
-    avatar: Option<String>,
-) {
-    let client_id = Arc::new(Mutex::new(String::new()));
-    let client_id_capture = client_id.clone();
+async fn handler(
+    ws: Option<WebSocketUpgrade>,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+    State(state): State<AppState>,
+) -> impl IntoResponse {
+    if let Some(ws) = ws {
+        let client_id = params.get("client_id").cloned().unwrap_or_default();
+        ws.on_upgrade(move |socket| handle_socket(socket, state, client_id))
+    } else {
+        // Standard HTTP request
+        axum::response::Json(json!({
+            "code": 404,
+            "message": "Not Found"
+        })).into_response()
+    }
+}
 
-    // Use accept_hdr_async to capture the client_id from the query parameters
-    let callback = move |req: &Request, response: Response| {
-        let uri = req.uri();
-        debug!("[rpc-ws] Handshake request URI: {}", uri);
-        if let Some(query) = uri.query() {
-            for pair in query.split('&') {
-                let mut parts = pair.split('=');
-                if let (Some("client_id"), Some(val)) = (parts.next(), parts.next()) {
-                    let mut cid = client_id_capture.lock().unwrap();
-                    *cid = val.to_string();
-                }
-            }
+async fn handle_socket(mut socket: WebSocket, state: AppState, client_id: String) {
+    info!("[rpc-ws] New connection (client_id: {})", client_id);
+
+    // Immediately send the READY event
+    let ready_data = json!({
+        "v": 1,
+        "config": {
+            "cdn_host": "cdn.discordapp.com",
+            "api_endpoint": "//discord.com/api",
+            "environment": "production"
+        },
+        "user": {
+            "id": state.user_id,
+            "username": state.user_name,
+            "discriminator": "0",
+            "global_name": state.user_name,
+            "avatar": state.avatar,
+            "avatar_decoration_data": null,
+            "bot": false,
+            "flags": 0,
+            "premium_type": 0,
         }
-        Ok(response)
-    };
+    });
+    let ready = RpcResponse::new("DISPATCH", Some(ready_data), Some("READY".to_string()), None);
 
-    match accept_hdr_async(stream, callback).await {
-        Ok(mut ws_stream) => {
-            let cid = client_id.lock().unwrap().clone();
-            info!("[rpc-ws] New connection (client_id: {})", cid);
+    if let Err(e) = socket.send(Message::Text(serde_json::to_string(&ready).unwrap().into())).await {
+        error!("[rpc-ws] Failed to send READY: {}", e);
+        return;
+    }
 
-            // Immediately send the READY event as arRPC does
-            let ready_data = json!({
-                "v": 1,
-                "config": {
-                    "cdn_host": "cdn.discordapp.com",
-                    "api_endpoint": "//discord.com/api",
-                    "environment": "production"
-                },
-                "user": {
-                    "id": user_id,
-                    "username": user_name,
-                    "discriminator": "0",
-                    "global_name": user_name,
-                    "avatar": avatar,
-                    "avatar_decoration_data": null,
-                    "bot": false,
-                    "flags": 0,
-                    "premium_type": 0,
-                }
-            });
-            let ready = RpcResponse::new("DISPATCH", Some(ready_data), Some("READY".to_string()), None);
+    while let Some(Ok(msg)) = socket.next().await {
+        match msg {
+            Message::Text(text) => {
+                debug!("[rpc-ws] Received message: {}", text);
+                if let Ok(msg) = serde_json::from_str::<RpcMessage>(&text) {
+                    match msg.cmd.as_str() {
+                        "SET_ACTIVITY" => {
+                            let args = msg.args.clone().unwrap_or(json!({}));
 
-            if let Err(e) = ws_stream.send(Message::Text(ready.to_string().into())).await {
-                error!("[rpc-ws] Failed to send READY: {}", e);
-                return;
-            }
+                            let _ = state.app.emit("arrpc-activity", json!({
+                                "activity": args["activity"],
+                                "pid": args["pid"],
+                                "socketId": format!("ws-{}", client_id)
+                            }));
 
-            loop {
-                tokio::select! {
-                    _ = cancel_token.cancelled() => {
-                        break;
-                    }
-                    msg = ws_stream.next() => {
-                        match msg {
-                            Some(Ok(Message::Text(text))) => {
-                                debug!("[rpc-ws] Received message: {}", text);
-                                if let Ok(msg) = serde_json::from_str::<RpcMessage>(&text) {
-                                    match msg.cmd.as_str() {
-                                        "SET_ACTIVITY" => {
-                                            let args = msg.args.clone().unwrap_or(json!({}));
-
-                                            let _ = app.emit("arrpc-activity", json!({
-                                                "activity": args["activity"],
-                                                "pid": args["pid"],
-                                                "socketId": format!("ws-{}", cid)
-                                            }));
-
-                                            let response = json!({
-                                                "application_id": cid,
-                                                "name": "",
-                                                "type": 0,
-                                                "activity": args["activity"]
-                                            });
-                                            let frame = RpcResponse::new("SET_ACTIVITY", Some(response), None, msg.nonce);
-                                            let _ = ws_stream.send(Message::Text(frame.to_string().into())).await;
-                                        }
-                                        _ => {
-                                            // Acknowledge other commands with an empty result to avoid hanging
-                                            let frame = RpcResponse::new(&msg.cmd, Some(json!({})), None, msg.nonce);
-                                            let _ = ws_stream.send(Message::Text(frame.to_string().into())).await;
-                                        }
-                                    }
-                                }
-                            }
-                            Some(Ok(Message::Close(_))) => break,
-                            Some(Err(e)) => {
-                                error!("[rpc-ws] WebSocket error: {}", e);
-                                break;
-                            }
-                            None => break,
-                            _ => {}
+                            let response = json!({
+                                "application_id": client_id,
+                                "name": "",
+                                "type": 0,
+                                "activity": args["activity"]
+                            });
+                            let frame = RpcResponse::new("SET_ACTIVITY", Some(response), None, msg.nonce);
+                            let _ = socket.send(Message::Text(serde_json::to_string(&frame).unwrap().into())).await;
+                        }
+                        _ => {
+                            let frame = RpcResponse::new(&msg.cmd, Some(json!({})), None, msg.nonce);
+                            let _ = socket.send(Message::Text(serde_json::to_string(&frame).unwrap().into())).await;
                         }
                     }
                 }
             }
+            Message::Close(_) => break,
+            _ => {}
         }
-        Err(e) => {
-            error!("[rpc-ws] Handshake failed: {}", e);
-        }
-    }
-}
-
-impl ToString for RpcResponse {
-    fn to_string(&self) -> String {
-        serde_json::to_string(self).unwrap_or_default()
     }
 }
