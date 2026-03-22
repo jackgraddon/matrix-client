@@ -17,9 +17,9 @@ pub struct WsSocketTransport {
 
 #[async_trait]
 impl RpcTransport for WsSocketTransport {
-    async fn send(&self, msg: Value) -> Result<(), Box<dyn std::error::Error>> {
-        let json_str = serde_json::to_string(&msg)?;
-        self.tx.send(Message::Text(json_str.into())).await?;
+    async fn send(&self, msg: Value) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let json_str = serde_json::to_string(&msg).map_err(|e| e.to_string())?;
+        self.tx.send(Message::Text(json_str.into())).await.map_err(|e| e.to_string())?;
         Ok(())
     }
 
@@ -43,13 +43,13 @@ impl RpcTransport for WsSocketTransport {
         self.context.metadata.lock().unwrap().get(key).cloned()
     }
 
-    async fn close(&self) -> Result<(), Box<dyn std::error::Error>> {
+    async fn close(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let _ = self.tx.send(Message::Close(None)).await;
         Ok(())
     }
 }
 
-pub async fn run_ws_server(server: Arc<RpcServer>) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn run_ws_server(server: Arc<RpcServer>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut listener = None;
 
     for p in 6463..=6472 {
@@ -67,7 +67,7 @@ pub async fn run_ws_server(server: Arc<RpcServer>) -> Result<(), Box<dyn std::er
         }
     }
 
-    let listener = listener.ok_or("Failed to bind any WebSocket port (6463-6472)")?;
+    let listener = listener.ok_or_else(|| "Failed to bind any WebSocket port (6463-6472)".to_string())?;
 
     loop {
         match listener.accept().await {
@@ -85,7 +85,7 @@ pub async fn run_ws_server(server: Arc<RpcServer>) -> Result<(), Box<dyn std::er
 }
 
 async fn handle_ws_connection(server: Arc<RpcServer>, stream: TcpStream) {
-    let client_id = Arc::new(tokio::sync::Mutex::new(String::new()));
+    let client_id = Arc::new(std::sync::Mutex::new(String::new()));
     let client_id_capture = client_id.clone();
 
     let callback = move |req: &Request, response: Response| {
@@ -132,7 +132,7 @@ async fn handle_ws_connection(server: Arc<RpcServer>, stream: TcpStream) {
             let (mut ws_tx, mut ws_rx) = ws_stream.split();
             let (tx, mut rx) = mpsc::channel::<Message>(100);
 
-            let initial_client_id = client_id.lock().await.clone();
+            let initial_client_id = client_id.lock().unwrap().clone();
             let context = Arc::new(SocketContext::new(socket_id.clone(), initial_client_id));
             let transport = Arc::new(WsSocketTransport {
                 context,

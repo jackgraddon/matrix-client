@@ -4,13 +4,13 @@ use std::sync::Mutex;
 
 #[async_trait]
 pub trait RpcTransport: Send + Sync {
-    async fn send(&self, msg: Value) -> Result<(), Box<dyn std::error::Error>>;
+    async fn send(&self, msg: Value) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
     fn socket_id(&self) -> String;
     fn client_id(&self) -> String;
     fn set_client_id(&self, client_id: String);
     fn set_metadata(&self, key: &str, value: Value);
     fn get_metadata(&self, key: &str) -> Option<Value>;
-    async fn close(&self) -> Result<(), Box<dyn std::error::Error>>;
+    async fn close(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
 }
 
 pub struct SocketContext {

@@ -37,8 +37,8 @@ pub struct IpcSocketTransport {
 
 #[async_trait]
 impl RpcTransport for IpcSocketTransport {
-    async fn send(&self, msg: Value) -> Result<(), Box<dyn std::error::Error>> {
-        self.tx.send((IpcOpcode::Frame, msg)).await?;
+    async fn send(&self, msg: Value) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        self.tx.send((IpcOpcode::Frame, msg)).await.map_err(|e| e.to_string())?;
         Ok(())
     }
 
@@ -62,13 +62,13 @@ impl RpcTransport for IpcSocketTransport {
         self.context.metadata.lock().unwrap().get(key).cloned()
     }
 
-    async fn close(&self) -> Result<(), Box<dyn std::error::Error>> {
+    async fn close(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let _ = self.tx.send((IpcOpcode::Close, json!({}))).await;
         Ok(())
     }
 }
 
-pub async fn run_ipc_server(server: Arc<RpcServer>) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn run_ipc_server(server: Arc<RpcServer>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let name_prefix = if cfg!(windows) {
         r"\\.\pipe\discord-ipc-"
     } else {
@@ -101,7 +101,7 @@ pub async fn run_ipc_server(server: Arc<RpcServer>) -> Result<(), Box<dyn std::e
         }
     }
 
-    let listener = listener.ok_or("Failed to bind any IPC socket (0-9)")?;
+    let listener = listener.ok_or_else(|| "Failed to bind any IPC socket (0-9)".to_string())?;
     log::info!("[rpc-ipc] Listening for connections...");
 
     loop {
@@ -121,7 +121,7 @@ pub async fn run_ipc_server(server: Arc<RpcServer>) -> Result<(), Box<dyn std::e
 
 async fn handle_ipc_connection(server: Arc<RpcServer>, socket: LocalSocketStream) {
     let socket_id = uuid::Uuid::new_v4().to_string();
-    let (mut reader, mut writer) = socket.into_split();
+    let (mut reader, writer) = socket.into_split();
 
     let (tx, mut rx) = mpsc::channel::<(IpcOpcode, Value)>(100);
 
@@ -202,24 +202,24 @@ fn encode_ipc(opcode: IpcOpcode, data: &Value) -> Vec<u8> {
     buf
 }
 
-async fn decode_ipc<R: AsyncReadExt + Unpin>(reader: &mut R) -> Result<(IpcOpcode, Value), Box<dyn std::error::Error>> {
+async fn decode_ipc<R: AsyncReadExt + Unpin>(reader: &mut R) -> Result<(IpcOpcode, Value), Box<dyn std::error::Error + Send + Sync>> {
     use byteorder::{LittleEndian, ReadBytesExt};
     let mut header = [0u8; 8];
-    reader.read_exact(&mut header).await?;
+    reader.read_exact(&mut header).await.map_err(|e| e.to_string())?;
 
     let mut header_cursor = std::io::Cursor::new(&header);
-    let opcode_u32 = ReadBytesExt::read_u32::<LittleEndian>(&mut header_cursor)?;
-    let data_size = ReadBytesExt::read_u32::<LittleEndian>(&mut header_cursor)? as usize;
+    let opcode_u32 = ReadBytesExt::read_u32::<LittleEndian>(&mut header_cursor).map_err(|e| e.to_string())?;
+    let data_size = ReadBytesExt::read_u32::<LittleEndian>(&mut header_cursor).map_err(|e| e.to_string())? as usize;
 
-    let opcode = IpcOpcode::from_u32(opcode_u32).ok_or("Invalid opcode")?;
+    let opcode = IpcOpcode::from_u32(opcode_u32).ok_or_else(|| "Invalid opcode".to_string())?;
 
     if data_size > 10_000_000 {
         return Err("IPC payload too large".into());
     }
 
     let mut payload = vec![0u8; data_size];
-    reader.read_exact(&mut payload).await?;
+    reader.read_exact(&mut payload).await.map_err(|e| e.to_string())?;
 
-    let data: Value = serde_json::from_slice(&payload)?;
+    let data: Value = serde_json::from_slice(&payload).map_err(|e| e.to_string())?;
     Ok((opcode, data))
 }
