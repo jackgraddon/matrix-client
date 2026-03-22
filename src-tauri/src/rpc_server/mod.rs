@@ -11,8 +11,8 @@ pub mod ws;
 #[derive(Clone, Debug)]
 pub enum RpcEvent {
     Activity(Value),
-    Connection(String), // socket_id
-    Disconnection(String), // socket_id
+    Connection(String),
+    Disconnection(String),
 }
 
 pub struct RpcServer {
