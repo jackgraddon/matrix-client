@@ -10,6 +10,7 @@ use tauri::{AppHandle, Emitter};
 use log::{info, error, debug};
 use tokio_util::sync::CancellationToken;
 use futures_util::StreamExt;
+use std::collections::HashMap;
 use super::types::{RpcMessage, RpcResponse};
 
 #[derive(Clone)]
@@ -70,17 +71,16 @@ pub async fn start_websocket_server(
 }
 
 async fn handler(
-    Query(params): Query<std::collections::HashMap<String, String>>,
+    Query(params): Query<HashMap<String, String>>,
     State(state): State<AppState>,
     ws: Result<WebSocketUpgrade, WebSocketUpgradeRejection>,
 ) -> Response {
     match ws {
         Ok(ws) => {
-            let client_id = params.get("client_id").cloned().unwrap_or_default();
-            ws.on_upgrade(move |socket| handle_socket(socket, state, client_id)).into_response()
+            ws.on_upgrade(move |socket| handle_socket(socket, state, params)).into_response()
         }
         Err(_) => {
-            // Not a WebSocket upgrade request, return a 404
+            // Standard HTTP request
             axum::response::Json(json!({
                 "code": 404,
                 "message": "Not Found"
@@ -89,10 +89,26 @@ async fn handler(
     }
 }
 
-async fn handle_socket(mut socket: WebSocket, state: AppState, client_id: String) {
-    info!("[rpc-ws] New connection (client_id: {})", client_id);
+async fn handle_socket(mut socket: WebSocket, state: AppState, query: HashMap<String, String>) {
+    // 1. Wait for the INITIAL Handshake message from the client
+    let client_id = match socket.recv().await {
+        Some(Ok(Message::Text(text))) => {
+            if let Ok(handshake) = serde_json::from_str::<serde_json::Value>(&text) {
+                handshake["args"]["client_id"]
+                    .as_str()
+                    .map(|s| s.to_string())
+                    .or_else(|| query.get("client_id").cloned())
+                    .unwrap_or_else(|| "0".to_string())
+            } else {
+                "0".to_string()
+            }
+        }
+        _ => return, // Drop connection if no handshake received
+    };
 
-    // Immediately send the READY event
+    info!("[rpc-ws] Handshake received for client: {}", client_id);
+
+    // 2. NOW send the READY event
     let ready_data = json!({
         "v": 1,
         "config": {
@@ -103,22 +119,19 @@ async fn handle_socket(mut socket: WebSocket, state: AppState, client_id: String
         "user": {
             "id": state.user_id,
             "username": state.user_name,
-            "discriminator": "0",
-            "global_name": state.user_name,
             "avatar": state.avatar,
-            "avatar_decoration_data": null,
-            "bot": false,
-            "flags": 0,
-            "premium_type": 0,
+            "discriminator": "0",
+            "public_flags": 0
         }
     });
     let ready = RpcResponse::new("DISPATCH", Some(ready_data), Some("READY".to_string()), None);
 
-    if let Err(e) = socket.send(Message::Text(serde_json::to_string(&ready).unwrap().into())).await {
+    if let Err(e) = socket.send(Message::Text(ready.to_string().into())).await {
         error!("[rpc-ws] Failed to send READY: {}", e);
         return;
     }
 
+    // 3. Main Message Loop
     while let Some(Ok(msg)) = socket.next().await {
         match msg {
             Message::Text(text) => {
@@ -141,11 +154,11 @@ async fn handle_socket(mut socket: WebSocket, state: AppState, client_id: String
                                 "activity": args["activity"]
                             });
                             let frame = RpcResponse::new("SET_ACTIVITY", Some(response), None, msg.nonce);
-                            let _ = socket.send(Message::Text(serde_json::to_string(&frame).unwrap().into())).await;
+                            let _ = socket.send(Message::Text(frame.to_string().into())).await;
                         }
                         _ => {
                             let frame = RpcResponse::new(&msg.cmd, Some(json!({})), None, msg.nonce);
-                            let _ = socket.send(Message::Text(serde_json::to_string(&frame).unwrap().into())).await;
+                            let _ = socket.send(Message::Text(frame.to_string().into())).await;
                         }
                     }
                 }
