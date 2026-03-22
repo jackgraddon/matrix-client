@@ -3,7 +3,7 @@ use std::time::Duration;
 use tokio::sync::Notify;
 
 use serde::{Deserialize, Serialize};
-use sysinfo::{System, ProcessRefreshKind, RefreshKind};
+use sysinfo::{System, ProcessRefreshKind, RefreshKind, UpdateKind, ProcessesToUpdate};
 use tauri::{AppHandle, Emitter};
 
 /// A single executable entry from the detectable games list.
@@ -61,9 +61,9 @@ pub fn update_watch_list(state: tauri::State<'_, Arc<ScannerState>>, games: Vec<
 /// Starts the background game scanner loop.
 pub fn start(app: AppHandle, state: Arc<ScannerState>) {
     tauri::async_runtime::spawn(async move {
-        // sysinfo 0.30+ uses explicit builder pattern
+        // sysinfo 0.30+ uses explicit builder pattern and UpdateKind enum
         let mut sys = System::new_with_specifics(
-            RefreshKind::nothing().with_processes(ProcessRefreshKind::nothing().with_cmd(true))
+            RefreshKind::nothing().with_processes(ProcessRefreshKind::nothing().with_cmd(UpdateKind::Always))
         );
 
         loop {
@@ -79,7 +79,7 @@ pub fn start(app: AppHandle, state: Arc<ScannerState>) {
             }
 
             // targeted refresh for process command lines
-            sys.refresh_processes_specifics(ProcessRefreshKind::nothing().with_cmd(true), true);
+            sys.refresh_processes_specifics(ProcessesToUpdate::All, true, ProcessRefreshKind::nothing().with_cmd(UpdateKind::Always));
 
             let watch_list = state.watch_list.lock().unwrap().clone();
             let previous_game = state.current_game.lock().unwrap().clone();
