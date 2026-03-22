@@ -120,6 +120,7 @@ export default defineNuxtConfig({
     strategies: 'injectManifest',
     filename: 'sw.js',
     registerType: 'prompt',
+    injectRegister: 'script',
     manifest: {
       name: 'Tumult',
       short_name: 'Tumult',

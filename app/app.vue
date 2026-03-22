@@ -6,7 +6,7 @@
     <CustomTitlebar v-if="isTauri" />
     <component :is="'style'" v-if="store.ui.customCss" v-html="store.ui.customCss" />
     <div 
-      class="h-screen w-screen transition-colors overflow-hidden bg-background"
+      class="h-screen w-screen transition-colors overflow-hidden bg-background text-foreground"
       :class="[
         { 'pt-[30px]': isTauri, 'pt-2': !isTauri },
         store.ui.themePreset !== 'default' ? 'theme-' + store.ui.themePreset : ''

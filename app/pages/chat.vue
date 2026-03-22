@@ -10,7 +10,7 @@
             ]"
         >
             <!-- Servers Sidebar (Guild Bar) -->
-            <aside class="rounded-lg ml-2 mb-2 flex flex-col items-center p-2 gap-2 shrink-0 overflow-y-auto overflow-x-hidden">
+            <aside class="rounded-lg ml-2 mb-2 flex flex-col items-center p-2 gap-2 shrink-0 overflow-y-auto overflow-x-hidden bg-background">
                 <!-- Home Button -->
                 <UiButton 
                     class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 flex items-center justify-center shrink-0 relative group" 
@@ -115,7 +115,7 @@
 
         <!-- Main Content -->
         <main 
-            class="flex-1 flex-col min-w-0 min-h-0 p-2 pt-0 transition-transform duration-300 ease-in-out z-20 bg-background"
+            class="flex-1 flex-col min-w-0 min-h-0 p-2 pt-0 transition-transform duration-300 ease-in-out z-20"
             :class="[
                 store.ui.sidebarOpen ? 'translate-x-full md:translate-x-0' : (store.ui.memberListVisible ? '-translate-x-full md:translate-x-0' : 'translate-x-0')
             ]"

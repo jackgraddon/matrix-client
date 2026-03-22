@@ -96,9 +96,10 @@ jobs:
           PLATFORM='${{ matrix.platform }}'
           
           # Attempt to commit and push with a retry loop to handle Mac/Win race conditions
-          for i in {1..5}; do
+          for i in {1..10}; do
             # 1. Pull with rebase to ensure we have the latest update.json from the other platform
-            git pull --rebase origin main
+            git fetch origin main
+            git rebase origin/main || (git rebase --abort && git pull --rebase origin main)
             
             # 2. Generate/Merge the update.json content
             node -e "
@@ -164,9 +165,10 @@ jobs:
               fi
             else
               echo "Nothing to commit for $PLATFORM (possibly already updated)"
-              break
+              # Check if push is needed even if no new commit (maybe rebase brought in changes)
+              git push origin HEAD:main && break || true
             fi
 
-            echo "Conflict detected or push failed, retrying in a few seconds... ($i/5)"
-            sleep $(( (RANDOM % 10) + 5 ))
+            echo "Conflict detected or push failed, retrying in a few seconds... ($i/10)"
+            sleep $(( (RANDOM % 15) + 10 ))
           done
