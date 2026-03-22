@@ -1,4 +1,3 @@
-use std::ffi::OsStr;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::Notify;
@@ -62,8 +61,9 @@ pub fn update_watch_list(state: tauri::State<'_, Arc<ScannerState>>, games: Vec<
 /// Starts the background game scanner loop.
 pub fn start(app: AppHandle, state: Arc<ScannerState>) {
     tauri::async_runtime::spawn(async move {
+        // sysinfo 0.30+ uses explicit builder pattern
         let mut sys = System::new_with_specifics(
-            RefreshKind::new().with_processes(ProcessRefreshKind::new().with_cmd(true))
+            RefreshKind::nothing().with_processes(ProcessRefreshKind::nothing().with_cmd(true))
         );
 
         loop {
@@ -78,8 +78,8 @@ pub fn start(app: AppHandle, state: Arc<ScannerState>) {
                 continue;
             }
 
-            // If enabled, proceed with scan
-            sys.refresh_processes_with_spec(ProcessRefreshKind::new().with_cmd(true), true);
+            // targeted refresh for process command lines
+            sys.refresh_processes_specifics(ProcessRefreshKind::nothing().with_cmd(true), true);
 
             let watch_list = state.watch_list.lock().unwrap().clone();
             let previous_game = state.current_game.lock().unwrap().clone();
@@ -87,36 +87,39 @@ pub fn start(app: AppHandle, state: Arc<ScannerState>) {
             let mut detected_name: Option<String> = None;
             let mut detected_exe: Option<String> = None;
 
-            // Check each game in the watch list
-            for game in &watch_list {
-                for exe in &game.executables {
-                    // Normalize executable name: handle paths by taking only the filename
-                    let exe_path = std::path::Path::new(&exe.name);
-                    let exe_filename = exe_path.file_name().unwrap_or_else(|| OsStr::new(&exe.name));
-                    let exe_filename_str = exe_filename.to_string_lossy().to_string();
-                    
-                    // Match by name
-                    for process in sys.processes_by_name(exe_filename) {
-                        // If arguments are required, check command line
-                        if let Some(ref required_args) = exe.arguments {
-                            let cmd = process.cmd().join(" ");
-                            if !cmd.contains(required_args) {
-                                continue;
+            // Iterate through all processes
+            for (_pid, process) in sys.processes() {
+                let exe_path = process.exe()
+                    .map(|p| p.to_string_lossy().to_lowercase())
+                    .unwrap_or_default();
+
+                // Convert OsStr command line to standard String for matching
+                let cmd_args: Vec<String> = process.cmd()
+                    .iter()
+                    .map(|s| s.to_string_lossy().to_string())
+                    .collect();
+                let full_command_line = cmd_args.join(" ");
+
+                for game in &watch_list {
+                    for exe in &game.executables {
+                        // Check if the executable path/name matches (case-insensitive)
+                        if exe_path.ends_with(&exe.name.to_lowercase()) {
+
+                            // If detectable entry requires specific arguments, check concatenated command line
+                            if let Some(ref required_args) = exe.arguments {
+                                if !full_command_line.contains(required_args) {
+                                    continue; // Name matched but arguments didn't
+                                }
                             }
+
+                            detected_name = Some(game.name.clone());
+                            detected_exe = Some(exe.name.clone());
+                            break;
                         }
-
-                        detected_name = Some(game.name.clone());
-                        detected_exe = Some(exe_filename_str.clone());
-                        break;
                     }
-
-                    if detected_name.is_some() {
-                        break;
-                    }
+                    if detected_name.is_some() { break; }
                 }
-                if detected_name.is_some() {
-                    break;
-                }
+                if detected_name.is_some() { break; }
             }
 
             // Only emit on state changes
