@@ -82,13 +82,24 @@ async fn handle_ws_connection(server: Arc<RpcServer>, mut stream: TcpStream) {
     let mut buf = [0u8; 4];
     if let Ok(n) = stream.peek(&mut buf).await {
         if n >= 3 && &buf[..3] == b"GET" {
-            // It's a plain HTTP GET request, handle it for the test script
+                // Read enough to get the method and path (simplified)
+            let mut drain = [0u8; 1024];
+            let _ = tokio::io::AsyncReadExt::read(&mut stream, &mut drain).await;
+                let request_text = String::from_utf8_lossy(&drain);
+
+                // Simple check for Origin header in the drained request
+                let mut origin = "*";
+                if request_text.contains("Origin: https://discord.com") { origin = "https://discord.com"; }
+                else if request_text.contains("Origin: https://ptb.discord.com") { origin = "https://ptb.discord.com"; }
+                else if request_text.contains("Origin: https://canary.discord.com") { origin = "https://canary.discord.com"; }
+
             let mut response = "HTTP/1.1 200 OK\r\n".to_string();
             response.push_str("Content-Type: application/json\r\n");
-            response.push_str("Access-Control-Allow-Origin: *\r\n");
+            response.push_str(&format!("Access-Control-Allow-Origin: {}\r\n", origin));
             response.push_str("Connection: close\r\n\r\n");
             response.push_str("{\"arRPC\": true}");
             let _ = stream.write_all(response.as_bytes()).await;
+            let _ = stream.flush().await;
             return;
         }
     }
@@ -144,7 +155,8 @@ async fn handle_ws_connection(server: Arc<RpcServer>, mut stream: TcpStream) {
             log::warn!("[rpc-ws] Rejected connection: missing or invalid v=1 parameter");
             return Err(Response::builder()
                 .status(400)
-                .body(None)
+                .header("Content-Type", "application/json")
+                .body(Some("{\"code\":4000,\"message\":\"INVALID_VERSION\"}".to_string()))
                 .unwrap());
         }
 
