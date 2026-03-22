@@ -1,17 +1,15 @@
 use axum::{
     extract::{ws::{Message, WebSocket, WebSocketUpgrade}, Query, State},
-    response::{IntoResponse, Response},
+    response::IntoResponse,
     routing::get,
     Router,
 };
 use tower_http::cors::{Any, CorsLayer};
-use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tauri::{AppHandle, Emitter};
 use log::{info, error, debug};
 use tokio_util::sync::CancellationToken;
-use std::sync::Arc;
-use futures_util::{StreamExt, SinkExt};
+use futures_util::StreamExt;
 use super::types::{RpcMessage, RpcResponse};
 
 #[derive(Clone)]
@@ -55,13 +53,14 @@ pub async fn start_websocket_server(
                 let router = app_router.clone();
 
                 tokio::spawn(async move {
-                    axum::serve(listener, router)
+                    if let Err(e) = axum::serve(listener, router)
                         .with_graceful_shutdown(async move {
                             cancel_handle.cancelled().await;
                             info!("[rpc-ws] Axum server on port {} stopping...", port);
                         })
-                        .await
-                        .unwrap();
+                        .await {
+                            error!("[rpc-ws] Server error on port {}: {}", port, e);
+                        }
                 });
                 return;
             }
@@ -71,9 +70,9 @@ pub async fn start_websocket_server(
 }
 
 async fn handler(
-    ws: Option<WebSocketUpgrade>,
     Query(params): Query<std::collections::HashMap<String, String>>,
     State(state): State<AppState>,
+    ws: Option<WebSocketUpgrade>,
 ) -> impl IntoResponse {
     if let Some(ws) = ws {
         let client_id = params.get("client_id").cloned().unwrap_or_default();
@@ -151,5 +150,11 @@ async fn handle_socket(mut socket: WebSocket, state: AppState, client_id: String
             Message::Close(_) => break,
             _ => {}
         }
+    }
+}
+
+impl ToString for RpcResponse {
+    fn to_string(&self) -> String {
+        serde_json::to_string(self).unwrap_or_default()
     }
 }

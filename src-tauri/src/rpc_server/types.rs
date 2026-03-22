@@ -1,11 +1,13 @@
 use serde::{Deserialize, Serialize};
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RpcHandshake {
     pub v: i32,
     pub client_id: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RpcMessage {
     pub cmd: String,
@@ -14,6 +16,7 @@ pub struct RpcMessage {
     pub evt: Option<String>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RpcResponse {
     pub cmd: String,
@@ -22,6 +25,7 @@ pub struct RpcResponse {
     pub nonce: Option<String>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActivityUpdate {
     pub activity: Option<serde_json::Value>,
