@@ -1,5 +1,5 @@
 use axum::{
-    extract::{ws::{Message, WebSocket, WebSocketUpgrade}, Query, State},
+    extract::{ws::{Message, WebSocket, WebSocketUpgrade}, Query, State, rejection::WebSocketUpgradeRejection},
     response::IntoResponse,
     routing::get,
     Router,
@@ -72,17 +72,20 @@ pub async fn start_websocket_server(
 async fn handler(
     Query(params): Query<std::collections::HashMap<String, String>>,
     State(state): State<AppState>,
-    ws: Option<WebSocketUpgrade>,
+    ws: Result<WebSocketUpgrade, WebSocketUpgradeRejection>,
 ) -> impl IntoResponse {
-    if let Some(ws) = ws {
-        let client_id = params.get("client_id").cloned().unwrap_or_default();
-        ws.on_upgrade(move |socket| handle_socket(socket, state, client_id))
-    } else {
-        // Standard HTTP request
-        axum::response::Json(json!({
-            "code": 404,
-            "message": "Not Found"
-        })).into_response()
+    match ws {
+        Ok(ws) => {
+            let client_id = params.get("client_id").cloned().unwrap_or_default();
+            ws.on_upgrade(move |socket| handle_socket(socket, state, client_id))
+        }
+        Err(_) => {
+            // Not a WebSocket upgrade request, return a 404
+            axum::response::Json(json!({
+                "code": 404,
+                "message": "Not Found"
+            })).into_response()
+        }
     }
 }
 
