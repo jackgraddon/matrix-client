@@ -8,15 +8,12 @@ pub trait RpcTransport: Send + Sync {
     fn socket_id(&self) -> String;
     fn client_id(&self) -> String;
     fn set_client_id(&self, client_id: String);
-    fn set_metadata(&self, key: &str, value: Value);
-    fn get_metadata(&self, key: &str) -> Option<Value>;
     async fn close(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
 }
 
 pub struct SocketContext {
     pub socket_id: String,
     pub client_id: Mutex<String>,
-    pub metadata: Mutex<std::collections::HashMap<String, Value>>,
 }
 
 impl SocketContext {
@@ -24,7 +21,6 @@ impl SocketContext {
         Self {
             socket_id,
             client_id: Mutex::new(client_id),
-            metadata: Mutex::new(std::collections::HashMap::new()),
         }
     }
 }

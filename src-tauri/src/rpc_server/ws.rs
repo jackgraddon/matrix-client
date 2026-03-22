@@ -35,14 +35,6 @@ impl RpcTransport for WsSocketTransport {
         *self.context.client_id.lock().unwrap() = client_id;
     }
 
-    fn set_metadata(&self, key: &str, value: Value) {
-        self.context.metadata.lock().unwrap().insert(key.to_string(), value);
-    }
-
-    fn get_metadata(&self, key: &str) -> Option<Value> {
-        self.context.metadata.lock().unwrap().get(key).cloned()
-    }
-
     async fn close(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let _ = self.tx.send(Message::Close(None)).await;
         Ok(())
@@ -112,15 +104,32 @@ async fn handle_ws_connection(server: Arc<RpcServer>, stream: TcpStream) {
         }
 
         // Extract client_id from query params: ?v=1&client_id=...
+        let mut version_ok = false;
         if let Some(query) = req.uri().query() {
             for pair in query.split('&') {
                 let mut parts = pair.splitn(2, '=');
                 if let (Some(key), Some(val)) = (parts.next(), parts.next()) {
-                    if key == "client_id" {
-                        *client_id_capture.lock().unwrap() = val.to_string();
+                    match key {
+                        "client_id" => {
+                            *client_id_capture.lock().unwrap() = val.to_string();
+                        }
+                        "v" => {
+                            if val == "1" {
+                                version_ok = true;
+                            }
+                        }
+                        _ => {}
                     }
                 }
             }
+        }
+
+        if !version_ok {
+            log::warn!("[rpc-ws] Rejected connection: missing or invalid v=1 parameter");
+            return Err(Response::builder()
+                .status(400)
+                .body(None)
+                .unwrap());
         }
 
         Ok(response)

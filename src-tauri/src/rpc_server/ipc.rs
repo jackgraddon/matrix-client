@@ -54,14 +54,6 @@ impl RpcTransport for IpcSocketTransport {
         *self.context.client_id.lock().unwrap() = client_id;
     }
 
-    fn set_metadata(&self, key: &str, value: Value) {
-        self.context.metadata.lock().unwrap().insert(key.to_string(), value);
-    }
-
-    fn get_metadata(&self, key: &str) -> Option<Value> {
-        self.context.metadata.lock().unwrap().get(key).cloned()
-    }
-
     async fn close(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let _ = self.tx.send((IpcOpcode::Close, json!({}))).await;
         Ok(())

@@ -168,7 +168,12 @@ async fn start_rpc_server(
                         RpcEvent::Activity(payload) => {
                             let _ = app_handle.emit("arrpc-activity", payload);
                         }
-                        _ => {}
+                        RpcEvent::Connection(id) => {
+                            log::info!("[rpc] Client connected: {}", id);
+                        }
+                        RpcEvent::Disconnection(id) => {
+                            log::info!("[rpc] Client disconnected: {}", id);
+                        }
                     }
                 }
                 _ = token.cancelled() => {
