@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tauri::{AppHandle, Emitter};
-use log::{info, error};
+use log::{info, error, debug};
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
 
@@ -132,7 +132,6 @@ async fn handle_ipc_connection(
     avatar: Option<String>,
 ) {
     info!("[rpc-ipc] New connection");
-    let mut buffer = [0u8; 4096];
     let mut client_id = String::new();
 
     loop {
@@ -140,51 +139,45 @@ async fn handle_ipc_connection(
             _ = cancel_token.cancelled() => {
                 break;
             }
-            read_res = stream.read(&mut buffer) => {
+            read_res = read_ipc_frame(&mut stream) => {
                 match read_res {
-                    Ok(0) => break,
-                    Ok(n) => {
-                        if n < 8 { continue; }
-                        let opcode = u32::from_le_bytes(buffer[0..4].try_into().unwrap());
-                        let length = u32::from_le_bytes(buffer[4..8].try_into().unwrap()) as usize;
+                    Ok(Some((opcode, data))) => {
+                        debug!("[rpc-ipc] Received frame: opcode={}, data={:?}", opcode, data);
+                        if opcode == 0 { // HANDSHAKE
+                            client_id = data["client_id"].as_str().unwrap_or("").to_string();
+                            info!("[rpc-ipc] Handshake from client_id: {}", client_id);
 
-                        if n < 8 + length { continue; }
-                        let data = &buffer[8..8+length];
-
-                        if let Ok(value) = serde_json::from_slice::<serde_json::Value>(data) {
-                            let cmd = value["cmd"].as_str().unwrap_or("");
-
-                            if opcode == 0 { // HANDSHAKE
-                                client_id = value["client_id"].as_str().unwrap_or("").to_string();
-                                info!("[rpc-ipc] Handshake from client_id: {}", client_id);
-
-                                let response = json!({
-                                    "cmd": "DISPATCH",
-                                    "data": {
-                                        "v": 1,
-                                        "config": {
-                                            "cdn_host": "cdn.discordapp.com",
-                                            "api_endpoint": "//discord.com/api",
-                                            "environment": "production"
-                                        },
-                                        "user": {
-                                            "id": user_id,
-                                            "username": user_name,
-                                            "discriminator": "0",
-                                            "global_name": user_name,
-                                            "avatar": avatar,
-                                            "bot": false,
-                                            "flags": 0,
-                                            "premium_type": 0,
-                                        }
+                            let response = json!({
+                                "cmd": "DISPATCH",
+                                "data": {
+                                    "v": 1,
+                                    "config": {
+                                        "cdn_host": "cdn.discordapp.com",
+                                        "api_endpoint": "//discord.com/api",
+                                        "environment": "production"
                                     },
-                                    "evt": "READY",
-                                    "nonce": null
-                                });
-                                send_ipc_frame(&mut stream, 1, response).await;
-                            } else if cmd == "SET_ACTIVITY" {
-                                let args = value["args"].clone();
-                                let nonce = value["nonce"].as_str();
+                                    "user": {
+                                        "id": user_id,
+                                        "username": user_name,
+                                        "discriminator": "0",
+                                        "global_name": user_name,
+                                        "avatar": avatar,
+                                        "avatar_decoration_data": null,
+                                        "bot": false,
+                                        "flags": 0,
+                                        "premium_type": 0,
+                                    }
+                                },
+                                "evt": "READY",
+                                "nonce": null
+                            });
+                            send_ipc_frame(&mut stream, 1, response).await;
+                        } else if opcode == 1 { // FRAME
+                            let cmd = data["cmd"].as_str().unwrap_or("");
+                            let nonce = data["nonce"].as_str();
+
+                            if cmd == "SET_ACTIVITY" {
+                                let args = data["args"].clone();
 
                                 let _ = app.emit("arrpc-activity", json!({
                                     "activity": args["activity"],
@@ -194,14 +187,23 @@ async fn handle_ipc_connection(
 
                                 let response = json!({
                                     "cmd": "SET_ACTIVITY",
-                                    "data": args["activity"],
+                                    "data": {
+                                        "application_id": client_id,
+                                        "name": "",
+                                        "type": 0,
+                                        "activity": args["activity"]
+                                    },
                                     "evt": null,
                                     "nonce": nonce
                                 });
                                 send_ipc_frame(&mut stream, 1, response).await;
                             }
+                        } else if opcode == 3 { // PING
+                            debug!("[rpc-ipc] Received PING, sending PONG");
+                            send_ipc_frame(&mut stream, 4, data).await;
                         }
                     }
+                    Ok(None) => break,
                     Err(e) => {
                         error!("[rpc-ipc] Error: {}", e);
                         break;
@@ -210,6 +212,21 @@ async fn handle_ipc_connection(
             }
         }
     }
+}
+
+async fn read_ipc_frame(stream: &mut IpcStream) -> Result<Option<(u32, serde_json::Value)>, Box<dyn std::error::Error + Send + Sync>> {
+    let mut header = [0u8; 8];
+    if stream.read_exact(&mut header).await.is_err() {
+        return Ok(None);
+    }
+    let opcode = u32::from_le_bytes(header[0..4].try_into().unwrap());
+    let length = u32::from_le_bytes(header[4..8].try_into().unwrap()) as usize;
+
+    let mut body = vec![0u8; length];
+    stream.read_exact(&mut body).await?;
+
+    let value = serde_json::from_slice(&body)?;
+    Ok(Some((opcode, value)))
 }
 
 async fn send_ipc_frame(stream: &mut IpcStream, opcode: u32, data: serde_json::Value) {

@@ -112,6 +112,7 @@ async fn handle_ws_connection(
                         "discriminator": "0",
                         "global_name": user_name,
                         "avatar": avatar,
+                        "avatar_decoration_data": null,
                         "bot": false,
                         "flags": 0,
                         "premium_type": 0,
@@ -150,7 +151,12 @@ async fn handle_ws_connection(
 
                                         let response = json!({
                                             "cmd": "SET_ACTIVITY",
-                                            "data": args["activity"],
+                                            "data": {
+                                                "application_id": cid,
+                                                "name": "",
+                                                "type": 0,
+                                                "activity": args["activity"]
+                                            },
                                             "evt": null,
                                             "nonce": nonce
                                         });
