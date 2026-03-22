@@ -145,7 +145,15 @@ async fn handle_ipc_connection(
                         debug!("[rpc-ipc] Received frame: opcode={}, body={}", opcode, String::from_utf8_lossy(&body));
                         if opcode == 0 { // HANDSHAKE
                             if let Ok(handshake) = serde_json::from_slice::<serde_json::Value>(&body) {
+                                let v = handshake["v"].as_i64().unwrap_or(0);
                                 client_id = handshake["client_id"].as_str().unwrap_or("0").to_string();
+
+                                if v != 1 {
+                                    let error = json!({ "code": 4004, "message": "Invalid Version" });
+                                    send_ipc_raw_frame(&mut stream, 2, error.to_string().into_bytes()).await;
+                                    break;
+                                }
+
                                 info!("[rpc-ipc] Handshake from client_id: {}", client_id);
 
                                 let response_data = json!({
@@ -160,7 +168,7 @@ async fn handle_ipc_connection(
                                         "username": user_name,
                                         "discriminator": "0",
                                         "global_name": user_name,
-                                        "avatar": avatar,
+                                        "avatar": avatar.clone().unwrap_or_default(),
                                         "avatar_decoration_data": null,
                                         "bot": false,
                                         "flags": 0,
@@ -183,13 +191,11 @@ async fn handle_ipc_connection(
                                             "socketId": format!("ipc-{}", client_id)
                                         }));
 
-                                        // BUILD THE CORRECT RESPONSE: Flatten the activity fields
                                         let mut response_data = json!({
                                             "application_id": client_id,
                                             "name": "",
                                             "type": 0
                                         });
-
                                         if let Some(act_obj) = activity.as_object() {
                                             for (k, v) in act_obj {
                                                 response_data[k] = v.clone();
@@ -200,7 +206,6 @@ async fn handle_ipc_connection(
                                         send_ipc_frame(&mut stream, 1, response).await;
                                     }
                                     _ => {
-                                        // Acknowledge other commands with an empty result to avoid hanging
                                         let response = RpcResponse::new(&msg.cmd, Some(json!({})), None, msg.nonce);
                                         send_ipc_frame(&mut stream, 1, response).await;
                                     }
@@ -209,6 +214,8 @@ async fn handle_ipc_connection(
                         } else if opcode == 3 { // PING
                             debug!("[rpc-ipc] Received PING, sending PONG");
                             send_ipc_raw_frame(&mut stream, 4, body).await;
+                        } else if opcode == 2 { // CLOSE
+                            break;
                         }
                     }
                     Ok(None) => break,

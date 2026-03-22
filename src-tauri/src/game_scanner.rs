@@ -4,7 +4,7 @@ use std::time::Duration;
 use tokio::sync::Notify;
 
 use serde::{Deserialize, Serialize};
-use sysinfo::System;
+use sysinfo::{System, ProcessRefreshKind, RefreshKind};
 use tauri::{AppHandle, Emitter};
 
 /// A single executable entry from the detectable games list.
@@ -12,6 +12,7 @@ use tauri::{AppHandle, Emitter};
 pub struct GameExecutable {
     pub os: String,
     pub name: String,
+    pub arguments: Option<String>,
 }
 
 /// A detectable game entry sent from the frontend (sourced from Discord's API).
@@ -53,9 +54,6 @@ pub fn set_scanner_enabled(state: tauri::State<'_, Arc<ScannerState>>, enabled: 
 #[tauri::command]
 pub fn update_watch_list(state: tauri::State<'_, Arc<ScannerState>>, games: Vec<DetectableGame>) {
     let count = games.len();
-    for game in &games {
-        let _exe_names: Vec<&str> = game.executables.iter().map(|e| e.name.as_str()).collect();
-    }
     let mut list = state.watch_list.lock().unwrap();
     *list = games;
     log::info!("[game_scanner] Watch list updated with {} games", count);
@@ -64,7 +62,9 @@ pub fn update_watch_list(state: tauri::State<'_, Arc<ScannerState>>, games: Vec<
 /// Starts the background game scanner loop.
 pub fn start(app: AppHandle, state: Arc<ScannerState>) {
     tauri::async_runtime::spawn(async move {
-        let mut sys = System::new();
+        let mut sys = System::new_with_specifics(
+            RefreshKind::new().with_processes(ProcessRefreshKind::new().with_cmd(true))
+        );
 
         loop {
             // Check enabled state first
@@ -79,7 +79,7 @@ pub fn start(app: AppHandle, state: Arc<ScannerState>) {
             }
 
             // If enabled, proceed with scan
-            sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
+            sys.refresh_processes_with_spec(ProcessRefreshKind::new().with_cmd(true), true);
 
             let watch_list = state.watch_list.lock().unwrap().clone();
             let previous_game = state.current_game.lock().unwrap().clone();
@@ -93,12 +93,24 @@ pub fn start(app: AppHandle, state: Arc<ScannerState>) {
                     // Normalize executable name: handle paths by taking only the filename
                     let exe_path = std::path::Path::new(&exe.name);
                     let exe_filename = exe_path.file_name().unwrap_or_else(|| OsStr::new(&exe.name));
+                    let exe_filename_str = exe_filename.to_string_lossy().to_string();
                     
-                    let found = sys.processes_by_name(exe_filename).next().is_some();
+                    // Match by name
+                    for process in sys.processes_by_name(exe_filename) {
+                        // If arguments are required, check command line
+                        if let Some(ref required_args) = exe.arguments {
+                            let cmd = process.cmd().join(" ");
+                            if !cmd.contains(required_args) {
+                                continue;
+                            }
+                        }
 
-                    if found {
                         detected_name = Some(game.name.clone());
-                        detected_exe = Some(exe_filename.to_string_lossy().to_string());
+                        detected_exe = Some(exe_filename_str.clone());
+                        break;
+                    }
+
+                    if detected_name.is_some() {
                         break;
                     }
                 }

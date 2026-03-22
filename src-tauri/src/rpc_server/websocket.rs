@@ -3,11 +3,12 @@ use axum::{
     response::IntoResponse,
     routing::get,
     Router,
+    http::HeaderMap,
 };
 use tower_http::cors::{Any, CorsLayer};
 use serde_json::json;
 use tauri::{AppHandle, Emitter};
-use log::{info, error, debug};
+use log::{info, error, debug, warn};
 use tokio_util::sync::CancellationToken;
 use futures_util::StreamExt;
 use std::collections::HashMap;
@@ -71,17 +72,29 @@ pub async fn start_websocket_server(
 }
 
 async fn handler(
+    headers: HeaderMap,
     Query(params): Query<HashMap<String, String>>,
     State(state): State<AppState>,
     ws: Result<WebSocketUpgrade, WebSocketUpgradeRejection>,
 ) -> Response {
+    // Strict Origin Validation
+    if let Some(origin) = headers.get("origin") {
+        let origin_str = origin.to_str().unwrap_or("");
+        if !origin_str.is_empty() &&
+           !origin_str.ends_with("discord.com") &&
+           !origin_str.starts_with("http://localhost") &&
+           !origin_str.starts_with("https://localhost") {
+            warn!("[rpc-ws] Disallowed origin: {}", origin_str);
+            return axum::response::Json(json!({ "code": 4001, "message": "Invalid Origin" })).into_response();
+        }
+    }
+
     match ws {
         Ok(ws) => {
             let client_id = params.get("client_id").cloned().unwrap_or_else(|| "0".to_string());
             ws.on_upgrade(move |socket| handle_socket(socket, state, client_id)).into_response()
         }
         Err(_) => {
-            // Standard HTTP request
             axum::response::Json(json!({
                 "code": 404,
                 "message": "Not Found"
@@ -91,7 +104,7 @@ async fn handler(
 }
 
 async fn handle_socket(mut socket: WebSocket, state: AppState, client_id: String) {
-    // 1. IMMEDIATELY send the READY event to avoid deadlock
+    // 1. IMMEDIATELY send the READY event
     let ready_data = json!({
         "v": 1,
         "config": {
@@ -104,7 +117,8 @@ async fn handle_socket(mut socket: WebSocket, state: AppState, client_id: String
             "username": state.user_name,
             "discriminator": "0",
             "global_name": state.user_name,
-            "avatar": state.avatar,
+            "avatar": state.avatar.clone().unwrap_or_default(),
+            "avatar_decoration_data": null,
             "bot": false,
             "flags": 0,
             "premium_type": 0,
@@ -116,7 +130,7 @@ async fn handle_socket(mut socket: WebSocket, state: AppState, client_id: String
         error!("[rpc-ws] Failed to send READY: {}", e);
         return;
     }
-    info!("[rpc-ws] Connection established for {}", client_id);
+    info!("[rpc-ws] Connection established for client_id: {}", client_id);
 
     // 2. Main Message Loop
     while let Some(Ok(msg)) = socket.next().await {
@@ -152,7 +166,6 @@ async fn handle_socket(mut socket: WebSocket, state: AppState, client_id: String
                             let _ = socket.send(Message::Text(serde_json::to_string(&frame).unwrap().into())).await;
                         }
                         _ => {
-                            // Acknowledge other commands with an empty result to avoid hanging
                             let frame = RpcResponse::new(&msg.cmd, Some(json!({})), None, msg.nonce);
                             let _ = socket.send(Message::Text(serde_json::to_string(&frame).unwrap().into())).await;
                         }
