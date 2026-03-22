@@ -24,10 +24,13 @@ log = "0.4"
 tauri = { version = "2.10.0", features = ["macos-private-api", "devtools"] }
 tauri-plugin-log = "2"
 sysinfo = "0.38"
-tokio = { version = "1", features = ["macros", "sync", "time", "rt"] }
+tokio = { version = "1", features = ["macros", "sync", "time", "rt", "net", "io-util", "io-std"] }
 tauri-plugin-shell = "2.3.5"
 tauri-plugin-os = "2"
 tauri-plugin-store = "2"
 tauri-plugin-notification = "2.3.3"
 tauri-plugin-updater = "2"
 reqwest = { version = "0.12", features = ["blocking"] }
+tokio-tungstenite = "0.29.0"
+futures-util = "0.3.32"
+tokio-util = { version = "0.7.18", features = ["rt"] }

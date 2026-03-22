@@ -2,15 +2,16 @@ use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::time::Duration;
 use std::sync::{Arc, Mutex};
-use tauri_plugin_shell::process::CommandChild;
-use tauri_plugin_shell::ShellExt;
 use tokio::sync::Notify;
 use tauri::Manager;
 
 mod game_scanner;
+mod rpc_server;
+
+use tokio_util::sync::CancellationToken;
 
 pub struct RpcState {
-    pub child: Mutex<Option<CommandChild>>,
+    pub cancel_token: Mutex<Option<CancellationToken>>,
 }
 
 pub struct FailoverState {
@@ -34,7 +35,7 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::default().build())
         .manage(scanner_state.clone())
         .manage(RpcState {
-            child: Mutex::new(None),
+            cancel_token: Mutex::new(None),
         })
         .invoke_handler(tauri::generate_handler![
             game_scanner::set_scanner_enabled,
@@ -113,83 +114,25 @@ async fn start_rpc_server(
     avatar: Option<String>,
     no_rpc: bool,
 ) -> Result<(), String> {
-    let mut child_guard = state.child.lock().unwrap();
-
-    if let Some(child) = child_guard.take() {
-        log::info!("[rpc] Killing existing sidecar instance...");
-        let _ = child.kill();
+    let mut token_guard = state.cancel_token.lock().unwrap();
+    if let Some(token) = token_guard.take() {
+        log::info!("[rpc] Stopping existing RPC server...");
+        token.cancel();
     }
 
-    let mut sidecar = app
-        .shell()
-        .sidecar("arrpc")
-        .map_err(|e| format!("Failed to create sidecar: {}", e))?;
-
-    sidecar = sidecar.env("ARRPC_USER_ID", user_id);
-    sidecar = sidecar.env("ARRPC_USER_NAME", user_name);
-    sidecar = sidecar.env("ARRPC_BRIDGE_PORT", "13337");
-
-    // Logic: 
-    // Basic: Scans only (User says: "Advanced hooks into games that supports Discord RPC")
-    // Advanced: Scans + RPC Hooks
-    // So if Basic, we should probably DISABLE the RPC listeners but keep scanning.
-    // However, arRPC's --no-process-scanning DISABLES scanning.
-    // Let's re-read the user's requirement.
-    // "Basic scans for running processes... Advanced hooks into games that supports Discord RPC"
-    // So:
-    // Basic = process scanning = YES, RPC = NO
-    // Advanced = process scanning = YES, RPC = YES
+    // Basic mode: No RPC server, just process scanning (handled by game_scanner)
     if no_rpc {
-        // This is for 'basic' level. We want to DISABLE the RPC interface 
-        // but arRPC doesn't have a simple flag for that.
-        // Usually arRPC is used for the RPC interface.
-        // If we want ONLY scanning, we might need to modify arRPC or find another way.
-        // For now, I will use a custom env var that we can use if we ever modify arRPC,
-        // but I will follow the user's spirit.
-        sidecar = sidecar.env("ARRPC_NO_RPC_SERVER", "true");
+        log::info!("[rpc] RPC server disabled (Basic mode)");
+        return Ok(());
     }
 
-    if let Some(avatar_hash) = avatar {
-        sidecar = sidecar.env("ARRPC_USER_AVATAR", avatar_hash);
-    }
+    // Advanced mode: Start the Rust RPC server
+    log::info!("[rpc] Starting Rust RPC server (Advanced mode)...");
+    let cancel_token = CancellationToken::new();
+    let rpc_server = rpc_server::RpcServer::new(app, cancel_token.clone(), user_id, user_name, avatar);
+    rpc_server.start().await;
 
-    log::info!("[rpc] Spawning arRPC sidecar...");
-
-    let (mut rx, child) = sidecar
-        .spawn()
-        .map_err(|e| format!("Failed to spawn sidecar: {}", e))?;
-
-    let sidecar_app = app.clone();
-    tauri::async_runtime::spawn(async move {
-        use tauri_plugin_shell::process::CommandEvent;
-        use tauri::Emitter;
-        while let Some(event) = rx.recv().await {
-            match event {
-                CommandEvent::Stdout(line) => {
-                    let text = String::from_utf8_lossy(&line);
-                    let trimmed = text.trim();
-                    log::info!("[rpc-sidecar] {}", trimmed);
-
-                    // Bridge JSON messages to the frontend
-                    if trimmed.starts_with("JSON_BRIDGE_MSG:") {
-                        let json = &trimmed["JSON_BRIDGE_MSG:".len()..];
-                        if let Ok(value) = serde_json::from_str::<serde_json::Value>(json) {
-                            let _ = sidecar_app.emit("arrpc-activity", value);
-                        }
-                    }
-                }
-                CommandEvent::Stderr(line) => {
-                    log::error!("[rpc-sidecar] {}", String::from_utf8_lossy(&line).trim());
-                }
-                CommandEvent::Terminated(payload) => {
-                    log::warn!("[rpc-sidecar] Process terminated: {:?}", payload);
-                }
-                _ => {}
-            }
-        }
-    });
-
-    *child_guard = Some(child);
+    *token_guard = Some(cancel_token);
     Ok(())
 }
 
@@ -200,10 +143,10 @@ fn is_failover(state: tauri::State<'_, FailoverState>) -> bool {
 
 #[tauri::command]
 async fn stop_rpc_server(state: tauri::State<'_, RpcState>) -> Result<(), String> {
-    let mut child_guard = state.child.lock().unwrap();
-    if let Some(child) = child_guard.take() {
-        log::info!("[rpc] Stopping arRPC sidecar...");
-        child.kill().map_err(|e| e.to_string())?;
+    let mut token_guard = state.cancel_token.lock().unwrap();
+    if let Some(token) = token_guard.take() {
+        log::info!("[rpc] Stopping Rust RPC server...");
+        token.cancel();
     }
     Ok(())
 }
