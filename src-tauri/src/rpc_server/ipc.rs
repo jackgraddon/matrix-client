@@ -3,7 +3,7 @@ use interprocess::local_socket::tokio::{LocalSocketListener, LocalSocketStream};
 use serde_json::{json, Value};
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::mpsc;
 use crate::rpc_server::transport::{RpcTransport, SocketContext};
 use crate::rpc_server::RpcServer;
 
@@ -78,7 +78,7 @@ pub async fn run_ipc_server(server: Arc<RpcServer>) -> Result<(), Box<dyn std::e
     #[cfg(not(windows))]
     let xdg_runtime_dir = std::env::var("XDG_RUNTIME_DIR").ok();
 
-    let mut listener = None;
+    let mut listener: Option<LocalSocketListener> = None;
     for i in 0..10 {
         let name = format!("{}{}", name_prefix, i);
 
@@ -135,6 +135,7 @@ async fn handle_ipc_connection(server: Arc<RpcServer>, socket: LocalSocketStream
 
     let t_writer = transport.clone();
     let writer_task = tokio::spawn(async move {
+        let mut writer = writer;
         while let Some((opcode, msg)) = rx.recv().await {
             let encoded = encode_ipc(opcode, &msg);
             if let Err(e) = writer.write_all(&encoded).await {
@@ -194,8 +195,9 @@ fn encode_ipc(opcode: IpcOpcode, data: &Value) -> Vec<u8> {
     let data_size = json_bytes.len() as u32;
 
     let mut buf = Vec::with_capacity(8 + json_bytes.len());
-    buf.write_u32::<LittleEndian>(opcode as u32).unwrap();
-    buf.write_u32::<LittleEndian>(data_size).unwrap();
+    let mut buf_cursor = std::io::Cursor::new(&mut buf);
+    WriteBytesExt::write_u32::<LittleEndian>(&mut buf_cursor, opcode as u32).unwrap();
+    WriteBytesExt::write_u32::<LittleEndian>(&mut buf_cursor, data_size).unwrap();
     buf.extend_from_slice(json_bytes);
     buf
 }
@@ -206,8 +208,8 @@ async fn decode_ipc<R: AsyncReadExt + Unpin>(reader: &mut R) -> Result<(IpcOpcod
     reader.read_exact(&mut header).await?;
 
     let mut header_cursor = std::io::Cursor::new(&header);
-    let opcode_u32 = header_cursor.read_u32::<LittleEndian>()?;
-    let data_size = header_cursor.read_u32::<LittleEndian>()? as usize;
+    let opcode_u32 = ReadBytesExt::read_u32::<LittleEndian>(&mut header_cursor)?;
+    let data_size = ReadBytesExt::read_u32::<LittleEndian>(&mut header_cursor)? as usize;
 
     let opcode = IpcOpcode::from_u32(opcode_u32).ok_or("Invalid opcode")?;
 

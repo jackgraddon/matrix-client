@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use futures_util::{SinkExt, StreamExt};
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
@@ -50,7 +50,6 @@ impl RpcTransport for WsSocketTransport {
 }
 
 pub async fn run_ws_server(server: Arc<RpcServer>) -> Result<(), Box<dyn std::error::Error>> {
-    let mut port = 6463;
     let mut listener = None;
 
     for p in 6463..=6472 {
@@ -59,7 +58,6 @@ pub async fn run_ws_server(server: Arc<RpcServer>) -> Result<(), Box<dyn std::er
             Ok(l) => {
                 log::info!("[rpc-ws] Listening on {}", addr);
                 listener = Some(l);
-                port = p;
                 break;
             }
             Err(_) => {
