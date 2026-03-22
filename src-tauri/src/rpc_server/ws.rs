@@ -28,19 +28,19 @@ impl RpcTransport for WsSocketTransport {
     }
 
     fn client_id(&self) -> String {
-        self.context.client_id.blocking_lock().clone()
+        self.context.client_id.lock().unwrap().clone()
     }
 
     fn set_client_id(&self, client_id: String) {
-        *self.context.client_id.blocking_lock() = client_id;
+        *self.context.client_id.lock().unwrap() = client_id;
     }
 
     fn set_metadata(&self, key: &str, value: Value) {
-        self.context.metadata.blocking_lock().insert(key.to_string(), value);
+        self.context.metadata.lock().unwrap().insert(key.to_string(), value);
     }
 
     fn get_metadata(&self, key: &str) -> Option<Value> {
-        self.context.metadata.blocking_lock().get(key).cloned()
+        self.context.metadata.lock().unwrap().get(key).cloned()
     }
 
     async fn close(&self) -> Result<(), Box<dyn std::error::Error>> {
@@ -99,7 +99,10 @@ async fn handle_ws_connection(server: Arc<RpcServer>, stream: TcpStream) {
 
         // arRPC strictly checks the Origin header if present.
         if let Some(origin) = origin {
-            if !origins.iter().any(|&o| origin.starts_with(o)) {
+            let is_valid = origins.iter().any(|&o| {
+                origin == o || origin.starts_with(&(o.to_string() + "/"))
+            });
+            if !is_valid {
                 log::warn!("[rpc-ws] Rejected connection from invalid origin: {:?}", origin);
                 return Err(Response::builder()
                     .status(403)
@@ -114,7 +117,7 @@ async fn handle_ws_connection(server: Arc<RpcServer>, stream: TcpStream) {
                 let mut parts = pair.splitn(2, '=');
                 if let (Some(key), Some(val)) = (parts.next(), parts.next()) {
                     if key == "client_id" {
-                        *client_id_capture.blocking_lock() = val.to_string();
+                        *client_id_capture.lock().unwrap() = val.to_string();
                     }
                 }
             }

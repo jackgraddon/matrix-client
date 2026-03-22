@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use serde_json::Value;
-use tokio::sync::Mutex;
+use std::sync::Mutex;
 
 #[async_trait]
 pub trait RpcTransport: Send + Sync {

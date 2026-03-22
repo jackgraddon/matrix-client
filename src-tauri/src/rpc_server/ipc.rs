@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use interprocess::local_socket::tokio::{LocalSocketListener, LocalSocketStream};
 use serde_json::{json, Value};
 use std::sync::Arc;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use futures_util::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::mpsc;
 use crate::rpc_server::transport::{RpcTransport, SocketContext};
 use crate::rpc_server::RpcServer;
@@ -47,19 +47,19 @@ impl RpcTransport for IpcSocketTransport {
     }
 
     fn client_id(&self) -> String {
-        self.context.client_id.blocking_lock().clone()
+        self.context.client_id.lock().unwrap().clone()
     }
 
     fn set_client_id(&self, client_id: String) {
-        *self.context.client_id.blocking_lock() = client_id;
+        *self.context.client_id.lock().unwrap() = client_id;
     }
 
     fn set_metadata(&self, key: &str, value: Value) {
-        self.context.metadata.blocking_lock().insert(key.to_string(), value);
+        self.context.metadata.lock().unwrap().insert(key.to_string(), value);
     }
 
     fn get_metadata(&self, key: &str) -> Option<Value> {
-        self.context.metadata.blocking_lock().get(key).cloned()
+        self.context.metadata.lock().unwrap().get(key).cloned()
     }
 
     async fn close(&self) -> Result<(), Box<dyn std::error::Error>> {
