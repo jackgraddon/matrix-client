@@ -115,7 +115,7 @@ async fn start_rpc_server(
 ) -> Result<(), String> {
     let mut child_guard = state.child.lock().unwrap();
 
-    if let Some(mut child) = child_guard.take() {
+    if let Some(child) = child_guard.take() {
         log::info!("[rpc] Killing existing sidecar instance...");
         let _ = child.kill();
         std::thread::sleep(std::time::Duration::from_millis(200));
@@ -161,7 +161,7 @@ async fn start_rpc_server(
         .map_err(|e| format!("Failed to create sidecar: {}", e))?;
 
     // sidecar = sidecar.env_clear(); // Removed to allow inheriting TMPDIR and other essential variables
-    sidecar = sidecar.env("ARRPC_USER_ID", user_id);
+    sidecar = sidecar.env("ARRPC_USER_ID", &user_id);
     sidecar = sidecar.env("ARRPC_USER_NAME", user_name);
     sidecar = sidecar.env("ARRPC_BRIDGE_PORT", "13337");
 
@@ -178,6 +178,7 @@ async fn start_rpc_server(
     log::info!("[rpc] Sidecar process ID: {:?}", child.pid());
 
     let sidecar_app = app.clone();
+    *child_guard = Some(child);
     tauri::async_runtime::spawn(async move {
         use tauri_plugin_shell::process::CommandEvent;
         use tauri::Emitter;
@@ -208,7 +209,6 @@ async fn start_rpc_server(
         }
     });
 
-    *child_guard = Some(child);
     Ok(())
 }
 

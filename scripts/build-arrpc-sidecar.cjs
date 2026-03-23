@@ -82,39 +82,16 @@ const polyfillSuffix = `
 `;
 
 // Inject diagnostic logging into the bundled code by replacing key sections
+// We use a more flexible regex that handles different quote types and variations in spacing
 code = code.replace(
-  /const SOCKET_PATH = platform === "win32" \? "\\\\\\\\\\\\\\\\\\?\\\\pipe\\\\discord-ipc" : join\(env.XDG_RUNTIME_DIR \|\| env.TMPDIR \|\| env.TMP \|\| env.TEMP \|\| "\/tmp", "discord-ipc"\);/g,
+  /const SOCKET_PATH = (platform|process\.platform) === ["']win32["'] \? [^;]+;/g,
   '$&; logMsg("arRPC > ipc", "socket path:", SOCKET_PATH);'
 );
 
-// Fallback for different esbuild output variations
-if (!code.includes('socket path:')) {
-  code = code.replace(
-    /const SOCKET_PATH = [^;]+discord-ipc[^;]+;/g,
-    '$&; logMsg("arRPC > ipc", "socket path:", SOCKET_PATH);'
-  );
-}
-
 code = code.replace(
-  /if \(await socketIsAvailable\(socket\)\) \{[\s\S]*?return path;/g,
-  `if (await socketIsAvailable(socket)) {
-    if (process.platform !== 'win32') {
-      try {
-        fs.unlinkSync(path);
-        logMsg('arRPC > ipc', 'cleaned up old socket file:', path);
-      } catch (e) { }
-    }
-    return path;
-  }`
+  /if\s*\(\s*await\s*socketIsAvailable\s*\(\s*socket\s*\)\s*\)\s*\{/g,
+  \`$& if (process.platform !== 'win32') { try { fs.unlinkSync(path); logMsg('arRPC > ipc', 'cleaned up old socket file:', path); } catch (e) { } }\`
 );
-
-// Another attempt at injecting the socket cleanup if the first regex failed due to minification/formatting
-if (!code.includes('cleaned up old socket file:')) {
-    code = code.replace(
-        /if\s*\(await\s*socketIsAvailable\(socket\)\)\s*\{/g,
-        \`$& if (process.platform !== 'win32') { try { fs.unlinkSync(path); logMsg('arRPC > ipc', 'cleaned up old socket file:', path); } catch (e) { } }\`
-    );
-}
 
 // Redirect all logs to stderr and the log file, ensuring newlines are preserved
 code = code.replace(/console\.log\(/g, 'logMsg("arRPC", ');
