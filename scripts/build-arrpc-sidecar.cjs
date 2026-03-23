@@ -10,82 +10,93 @@ const distDir = path.join(arrpcDir, 'dist');
 if (!fs.existsSync(binariesDir)) fs.mkdirSync(binariesDir, { recursive: true });
 if (!fs.existsSync(distDir)) fs.mkdirSync(distDir, { recursive: true });
 
-console.log('--- Building arRPC Sidecar ---');
+console.log('--- Building arRPC Sidecar (Node 25 Final) ---');
 
-// 1. Determine target info
-// Priority: TAURI_ENV_TARGET_TRIPLE (set by Tauri) > host triple from rustc
-let rustTriple = process.env.TAURI_ENV_TARGET_TRIPLE;
-
-if (!rustTriple) {
-  try {
-    rustTriple = execSync('rustc -Vv').toString().split('\n').find(l => l.startsWith('host:')).split(' ')[1].trim();
-    console.log(`Note: TAURI_ENV_TARGET_TRIPLE not set, falling back to host triple: ${rustTriple}`);
-  } catch (e) {
-    console.error('Failed to determine target triple via rustc');
-    process.exit(1);
-  }
-}
-
-console.log(`Building for target triple: ${rustTriple}`);
+// Determine Target Triple
+let rustTriple = process.env.TAURI_ENV_TARGET_TRIPLE ||
+  execSync('rustc -Vv').toString().split('\n').find(l => l.startsWith('host:')).split(' ')[1].trim();
 
 const isWindows = rustTriple.includes('windows');
+const isMac = rustTriple.includes('apple') || rustTriple.includes('darwin');
 const binaryName = `arrpc-${rustTriple}${isWindows ? '.exe' : ''}`;
 const outputPath = path.join(binariesDir, binaryName);
 
-// 2. Bundle with esbuild
+// Bundle with esbuild
 console.log('Step 1: Bundling code...');
-execSync(`npx esbuild src/index.js --bundle --platform=node --format=cjs --outfile=${path.join(distDir, 'index.cjs')} --define:import.meta.url='"file:///snapshot/index.cjs"'`, {
+const bundlePath = path.join(distDir, 'index.cjs');
+
+execSync(`npx esbuild src/index.js --bundle --platform=node --format=cjs --outfile="${bundlePath}" --define:import.meta.url="__import_meta_url"`, {
   cwd: arrpcDir,
   stdio: 'inherit'
 });
 
-// 3. THE FIX: The `fs.readFileSync` Interceptor
-console.log('Step 2: Injecting fs interceptor...');
-// Read the JSON as a raw string
-const rawJsonString = fs.readFileSync(path.join(arrpcDir, 'src', 'process', 'detectable.json'), 'utf8');
-// Convert it into a 100% syntactically safe JavaScript string literal
-const safeJsString = JSON.stringify(rawJsonString);
+// Manual Asset Injection (Bypasses E2BIG)
+console.log('Step 2: Injecting assets and polyfills...');
+const detectableData = fs.readFileSync(path.join(arrpcDir, 'src', 'process', 'detectable.json'), 'utf8');
+let originalBundle = fs.readFileSync(bundlePath, 'utf8');
 
-let bundleContent = fs.readFileSync(path.join(distDir, 'index.cjs'), 'utf8');
+originalBundle = originalBundle.replace(/^#!.*\n/, '');
 
-// NEW: Strip out the shebang so it doesn't cause a syntax error when pushed down
-bundleContent = bundleContent.replace(/^#!.*\n/, '');
-
-// We place this at the very top of the compiled file to intercept the read request
 const polyfill = `
-const _fs = require('fs');
-const _originalRead = _fs.readFileSync;
-_fs.readFileSync = function() {
-  if (typeof arguments[0] === 'string' && arguments[0].includes('detectable.json')) {
-    return ${safeJsString};
-  }
-  return _originalRead.apply(this, arguments);
+const fs = require('fs');
+const _origRead = fs.readFileSync;
+const _detectable = ${JSON.stringify(detectableData)};
+fs.readFileSync = function(p, opts) {
+  if (typeof p === 'string' && p.includes('detectable.json')) return _detectable;
+  return _origRead.apply(this, arguments);
 };
-`;
+const __import_meta_url = require('url').pathToFileURL(__filename).href;
+\n`;
 
-// Prepend polyfill to bundle
-fs.writeFileSync(path.join(distDir, 'index.cjs'), polyfill + bundleContent);
+fs.writeFileSync(bundlePath, polyfill + originalBundle);
 
-// 4. Create minimal package.json
-fs.writeFileSync(path.join(distDir, 'package.json'), JSON.stringify({ name: "arrpc", bin: "index.cjs" }));
+// Create SEA Blob
+console.log('Step 3: Generating Node SEA Blob...');
+const seaConfigPath = path.join(distDir, 'sea-config.json');
+fs.writeFileSync(seaConfigPath, JSON.stringify({
+  main: bundlePath,
+  output: path.join(distDir, 'sea-prep.blob'),
+  disableExperimentalSEAWarning: true
+}, null, 2));
 
-// 5. Wrap with pkg
-console.log('Step 3: Wrapping into binary...');
+execSync(`node --experimental-sea-config "${seaConfigPath}"`, { stdio: 'inherit' });
 
-// Map Rust triple to pkg target
-let pkgPlatform = 'linux';
-if (rustTriple.includes('windows')) pkgPlatform = 'win';
-else if (rustTriple.includes('apple') || rustTriple.includes('darwin')) pkgPlatform = 'macos';
+// Finalize Binary
+console.log('Step 4: Preparing base binary...');
+fs.copyFileSync(process.execPath, outputPath);
 
-let pkgArch = 'x64';
-if (rustTriple.startsWith('aarch64') || rustTriple.includes('arm64')) pkgArch = 'arm64';
+if (isMac) {
+  console.log('... Removing existing signatures');
+  // We MUST remove signatures before postjecting
+  try { execSync(`codesign --remove-signature "${outputPath}"`); } catch (e) { }
 
-const pkgTarget = `node18-${pkgPlatform}-${pkgArch}`;
-console.log(`Using pkg target: ${pkgTarget}`);
+  const lipoInfo = execSync(`lipo -info "${outputPath}"`).toString();
+  if (lipoInfo.includes('Architectures in the fat file')) {
+    const arch = rustTriple.startsWith('aarch64') ? 'arm64' : 'x86_64';
+    execSync(`lipo "${outputPath}" -thin ${arch} -output "${outputPath}"`);
+  }
+}
 
-execSync(`npx pkg . --targets ${pkgTarget} --output ${outputPath} --public`, {
-  cwd: distDir,
-  stdio: 'inherit'
-});
+console.log('Step 5: Injecting blob...');
+let postjectCmd = `npx postject "${outputPath}" NODE_SEA_BLOB "${path.join(distDir, 'sea-prep.blob')}" --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2`;
+if (isMac) postjectCmd += ' --macho-segment-name NODE_SEA';
 
-console.log(`Success! Binary ready at ${outputPath}`);
+execSync(postjectCmd, { stdio: 'inherit' });
+
+if (isMac) {
+  console.log('... Re-signing binary for local execution');
+  // Ad-hoc sign so macOS allows it to run
+  execSync(`codesign -s - "${outputPath}"`);
+}
+
+console.log('Step 5: Injecting blob...');
+let postjectCmd = `npx postject "${outputPath}" NODE_SEA_BLOB "${path.join(distDir, 'sea-prep.blob')}" --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2`;
+if (isMac) postjectCmd += ' --macho-segment-name NODE_SEA';
+
+execSync(postjectCmd, { stdio: 'inherit' });
+
+if (isMac) {
+  execSync(`codesign -s - "${outputPath}"`);
+}
+
+console.log(`\nSuccess! Sidecar built: ${binaryName}`);

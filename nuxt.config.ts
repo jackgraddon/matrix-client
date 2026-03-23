@@ -69,8 +69,39 @@ export default defineNuxtConfig({
       }
     },
     optimizeDeps: {
+      // Keep your existing exclude for the WASM crypto
       exclude: ['@matrix-org/matrix-sdk-crypto-wasm'],
-      include: ['@matrix-org/matrix-sdk-crypto-wasm'],
+      include: [
+        '@matrix-org/matrix-sdk-crypto-wasm',
+        '@vue/devtools-core',
+        '@vue/devtools-kit',
+        'workbox-window',
+        'workbox-precaching',
+        '@tauri-apps/api/event',
+        '@tauri-apps/plugin-store',
+        'vue-sonner',
+        '@tauri-apps/api/core',
+        '@tauri-apps/api/window',
+        'matrix-js-sdk',
+        'matrix-js-sdk/lib/crypto-api/CryptoEvent',
+        'matrix-js-sdk/lib/crypto-api/verification',
+        'matrix-js-sdk/lib/crypto-api/key-passphrase',
+        'matrix-js-sdk/lib/crypto-api/recovery-key',
+        'matrix-js-sdk/lib/matrixrtc/MatrixRTCSessionManager',
+        'matrix-js-sdk/lib/matrixrtc/MatrixRTCSession',
+        '@vueuse/core',
+        '@tauri-apps/plugin-os',
+        '@tauri-apps/plugin-shell',
+        'qrcode',
+        'jsqr',
+        'lucide-vue-next',
+        'vue3-emoji-picker',
+        'class-variance-authority',
+        'reka-ui',
+        'livekit-client',
+        'clsx',
+        'tailwind-merge'
+      ],
       entries: [
         './app/app.vue',
         './app/pages/**/*.vue'
@@ -83,6 +114,7 @@ export default defineNuxtConfig({
     },
     build: {},
   },
+
   nitro: {
     experimental: {
       wasm: true,
