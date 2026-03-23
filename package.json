@@ -3,10 +3,9 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "build:sidecar": "node scripts/build-arrpc-sidecar.cjs",
-    "build": "yarn build:sidecar && nuxt build",
-    "dev": "yarn build:sidecar & nuxt dev",
-    "generate": "yarn build:sidecar && nuxt generate",
+    "build": "nuxt build",
+    "dev": "nuxt dev",
+    "generate": "nuxt generate",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
     "tauri": "dotenv -e .env -- tauri"
@@ -58,7 +57,6 @@
     "@types/web-push": "^3",
     "@vite-pwa/nuxt": "^1.1.1",
     "dotenv-cli": "^11.0.0",
-    "postject": "^1.0.0-alpha.6",
     "tailwindcss": "^4.1.18",
     "tw-animate-css": "^1.4.0",
     "typescript": "^5.9.3",

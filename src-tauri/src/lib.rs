@@ -8,9 +8,11 @@ use tokio::sync::Notify;
 use tauri::Manager;
 
 mod game_scanner;
+mod rpc_server;
 
 pub struct RpcState {
-    pub child: Mutex<Option<CommandChild>>,
+    pub cancel_token: tokio::sync::Mutex<Option<tokio_util::sync::CancellationToken>>,
+    pub server: Arc<rpc_server::RpcServer>,
 }
 
 pub struct FailoverState {
@@ -34,7 +36,8 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::default().build())
         .manage(scanner_state.clone())
         .manage(RpcState {
-            child: Mutex::new(None),
+            cancel_token: tokio::sync::Mutex::new(None),
+            server: Arc::new(rpc_server::RpcServer::new()),
         })
         .invoke_handler(tauri::generate_handler![
             game_scanner::set_scanner_enabled,
@@ -113,101 +116,29 @@ async fn start_rpc_server(
     avatar: Option<String>,
     no_rpc: bool,
 ) -> Result<(), String> {
-    let mut child_guard = state.child.lock().unwrap();
+    let mut cancel_guard = state.cancel_token.lock().await;
 
-    if let Some(child) = child_guard.take() {
-        log::info!("[rpc] Killing existing sidecar instance...");
-        let _ = child.kill();
-        std::thread::sleep(std::time::Duration::from_millis(200));
+    if let Some(token) = cancel_guard.take() {
+        log::info!("[rpc] Stopping existing native RPC server...");
+        token.cancel();
+        // Give a tiny bit of time for tasks to clean up
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     }
 
     if no_rpc {
-        // If Basic, we should probably DISABLE the RPC sidecar entirely
-        // to save resources and prevent port conflicts.
-        log::info!("[rpc] RPC sidecar disabled for basic mode.");
+        log::info!("[rpc] RPC disabled for basic mode.");
         return Ok(());
     }
 
-    #[cfg(target_os = "macos")]
-    {
-        let _ = std::process::Command::new("killall")
-            .arg("arrpc")
-            .output();
-    }
+    log::info!("[rpc] Starting native RPC server for user_id={}...", user_id);
+    let identity = rpc_server::RpcIdentity {
+        user_id,
+        user_name,
+        avatar,
+    };
 
-    #[cfg(target_os = "windows")]
-    {
-        let _ = std::process::Command::new("taskkill")
-            .arg("/F")
-            .arg("/IM")
-            .arg("arrpc.exe")
-            .output();
-    }
-
-    // Check if ports are already in use
-    use std::net::TcpStream;
-    for port in &[13337, 6463] {
-        if TcpStream::connect_timeout(
-            &format!("127.0.0.1:{}", port).parse().unwrap(),
-            std::time::Duration::from_millis(100),
-        ).is_ok() {
-            log::warn!("[rpc] Port {} is already in use. arRPC might fail to start.", port);
-        }
-    }
-
-    let mut sidecar = app
-        .shell()
-        .sidecar("arrpc")
-        .map_err(|e| format!("Failed to create sidecar: {}", e))?;
-
-    // sidecar = sidecar.env_clear(); // Removed to allow inheriting TMPDIR and other essential variables
-    sidecar = sidecar.env("ARRPC_USER_ID", &user_id);
-    sidecar = sidecar.env("ARRPC_USER_NAME", user_name);
-    sidecar = sidecar.env("ARRPC_BRIDGE_PORT", "13337");
-
-    if let Some(avatar_hash) = avatar {
-        sidecar = sidecar.env("ARRPC_USER_AVATAR", avatar_hash);
-    }
-
-    log::info!("[rpc] Spawning arRPC sidecar with user_id={}...", user_id);
-
-    let (mut rx, child) = sidecar
-        .spawn()
-        .map_err(|e| format!("Failed to spawn sidecar: {}", e))?;
-
-    log::info!("[rpc] Sidecar process ID: {:?}", child.pid());
-
-    let sidecar_app = app.clone();
-    *child_guard = Some(child);
-    tauri::async_runtime::spawn(async move {
-        use tauri_plugin_shell::process::CommandEvent;
-        use tauri::Emitter;
-        while let Some(event) = rx.recv().await {
-            log::info!("[rpc-sidecar] Raw event: {:?}", event);
-            match event {
-                CommandEvent::Stdout(line) => {
-                    let text = String::from_utf8_lossy(&line);
-                    let trimmed = text.trim();
-                    log::info!("[rpc-sidecar] STDOUT: {}", trimmed);
-
-                    // Bridge JSON messages to the frontend
-                    if trimmed.starts_with("JSON_BRIDGE_MSG:") {
-                        let json = &trimmed["JSON_BRIDGE_MSG:".len()..];
-                        if let Ok(value) = serde_json::from_str::<serde_json::Value>(json) {
-                            let _ = sidecar_app.emit("arrpc-activity", value);
-                        }
-                    }
-                }
-                CommandEvent::Stderr(line) => {
-                    log::error!("[rpc-sidecar] STDERR: {}", String::from_utf8_lossy(&line).trim());
-                }
-                CommandEvent::Terminated(payload) => {
-                    log::warn!("[rpc-sidecar] Process terminated: {:?}", payload);
-                }
-                _ => {}
-            }
-        }
-    });
+    let token = rpc_server::start_native_rpc_server(app, state.server.clone(), identity).await?;
+    *cancel_guard = Some(token);
 
     Ok(())
 }
@@ -219,10 +150,10 @@ fn is_failover(state: tauri::State<'_, FailoverState>) -> bool {
 
 #[tauri::command]
 async fn stop_rpc_server(state: tauri::State<'_, RpcState>) -> Result<(), String> {
-    let mut child_guard = state.child.lock().unwrap();
-    if let Some(child) = child_guard.take() {
-        log::info!("[rpc] Stopping arRPC sidecar...");
-        child.kill().map_err(|e| e.to_string())?;
+    let mut cancel_guard = state.cancel_token.lock().await;
+    if let Some(token) = cancel_guard.take() {
+        log::info!("[rpc] Stopping native RPC server...");
+        token.cancel();
     }
     Ok(())
 }

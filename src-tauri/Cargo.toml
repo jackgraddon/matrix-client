@@ -24,7 +24,14 @@ log = "0.4"
 tauri = { version = "2.10.0", features = ["macos-private-api", "devtools"] }
 tauri-plugin-log = "2"
 sysinfo = "0.38"
-tokio = { version = "1", features = ["macros", "sync", "time", "rt"] }
+tokio = { version = "1", features = ["full", "sync"] }
+tokio-tungstenite = "0.21"
+interprocess = { version = "2.2.0", features = ["tokio_support"] }
+byteorder = "1.5.0"
+uuid = { version = "1.7.0", features = ["v4"] }
+futures-util = "0.3.30"
+tokio-util = { version = "0.7.10", features = ["codec"] }
+async-trait = "0.1.77"
 tauri-plugin-shell = "2.3.5"
 tauri-plugin-os = "2"
 tauri-plugin-store = "2"
