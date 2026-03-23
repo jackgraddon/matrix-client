@@ -90,7 +90,7 @@ code = code.replace(
 
 code = code.replace(
   /if\s*\(\s*await\s*socketIsAvailable\s*\(\s*socket\s*\)\s*\)\s*\{/g,
-  \`$& if (process.platform !== 'win32') { try { fs.unlinkSync(path); logMsg('arRPC > ipc', 'cleaned up old socket file:', path); } catch (e) { } }\`
+  `$& if (process.platform !== 'win32') { try { fs.unlinkSync(path); logMsg('arRPC > ipc', 'cleaned up old socket file:', path); } catch (e) { } }`
 );
 
 // Redirect all logs to stderr and the log file, ensuring newlines are preserved
