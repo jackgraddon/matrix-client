@@ -26,7 +26,7 @@ tauri-plugin-log = "2"
 sysinfo = "0.38"
 tokio = { version = "1", features = ["full", "sync"] }
 tokio-tungstenite = "0.21"
-interprocess = { version = "2.2.0", features = ["tokio_support"] }
+interprocess = { version = "2.2.0", features = ["tokio"] }
 byteorder = "1.5.0"
 uuid = { version = "1.7.0", features = ["v4"] }
 futures-util = "0.3.30"
