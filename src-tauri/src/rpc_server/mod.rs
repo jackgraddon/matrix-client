@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 use tokio::sync::broadcast;
 use serde_json::Value;
 use tokio_util::sync::CancellationToken;
@@ -66,7 +66,7 @@ impl SocketContext {
     }
 }
 
-pub async fn start_native_rpc_server(app: tauri::AppHandle, server: Arc<RpcServer>, identity: RpcIdentity) -> Result<CancellationToken, String> {
+pub async fn start_native_rpc_server(app: tauri::AppHandle, server: std::sync::Arc<RpcServer>, identity: RpcIdentity) -> Result<CancellationToken, String> {
     let cancel_token = CancellationToken::new();
     let token_clone = cancel_token.clone();
     let relay_token = cancel_token.clone();

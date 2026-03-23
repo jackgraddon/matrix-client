@@ -15,22 +15,38 @@ pub async fn start_ipc_server(
     identity: RpcIdentity,
     cancel_token: CancellationToken
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    #[cfg(windows)]
-    let name = r"\\.\pipe\discord-ipc-0".to_local_socket_name()?;
+    let mut listener = None;
+    let mut socket_name = None;
 
-    #[cfg(unix)]
-    let name = {
-        let tmp = env::var("TMPDIR").or_else(|_| env::var("TMP")).or_else(|_| env::var("TEMP")).unwrap_or_else(|_| "/tmp".to_string());
-        let socket_path = PathBuf::from(tmp).join("discord-ipc-0");
-        if socket_path.exists() {
-            let _ = std::fs::remove_file(&socket_path);
+    for i in 0..10 {
+        let name = get_socket_name(i)?;
+        #[cfg(unix)]
+        {
+            // On Unix, we check if the socket is already in use by trying to connect to it.
+            // If it's not, we can safely remove it and bind our own.
+            if let Ok(path) = name.to_str() {
+                if std::path::Path::new(path).exists() {
+                    if tokio::net::UnixStream::connect(path).await.is_err() {
+                        let _ = std::fs::remove_file(path);
+                    } else {
+                        continue; // Socket is in use
+                    }
+                }
+            }
         }
-        socket_path.to_local_socket_name()?
-    };
 
-    log::info!("[rpc-native-ipc] Starting IPC server at {:?}", name);
+        match LocalSocketListener::bind(name.clone()) {
+            Ok(l) => {
+                listener = Some(l);
+                socket_name = Some(name);
+                break;
+            }
+            Err(_) => continue,
+        }
+    }
 
-    let listener = LocalSocketListener::bind(name)?;
+    let listener = listener.ok_or("Could not bind to any IPC socket (0-9)")?;
+    log::info!("[rpc-native-ipc] Starting IPC server at {:?}", socket_name);
 
     loop {
         tokio::select! {
@@ -57,6 +73,17 @@ pub async fn start_ipc_server(
                 });
             }
         }
+    }
+}
+
+fn get_socket_name(i: u32) -> Result<interprocess::local_socket::LocalSocketName<'static>, Box<dyn std::error::Error + Send + Sync>> {
+    #[cfg(windows)]
+    return Ok(format!(r"\\.\pipe\discord-ipc-{}", i).to_local_socket_name()?);
+
+    #[cfg(unix)]
+    {
+        let tmp = env::var("TMPDIR").or_else(|_| env::var("TMP")).or_else(|_| env::var("TEMP")).unwrap_or_else(|_| "/tmp".to_string());
+        return Ok(PathBuf::from(tmp).join(format!("discord-ipc-{}", i)).to_local_socket_name()?);
     }
 }
 

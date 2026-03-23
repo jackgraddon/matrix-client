@@ -62,17 +62,14 @@ async fn handle_ws_client(
     let callback = |req: &Request, response: Response| -> Result<Response, ErrorResponse> {
         let origin = req.headers().get("Origin").and_then(|v| v.to_str().ok()).unwrap_or("");
 
-        // Origin validation: Allow exact match or subdomain of discord.com
         let is_discord = origin == "https://discord.com" || origin.ends_with(".discord.com");
-        let is_tumult = origin == "https://tumult.jackg.cc" || origin.contains("localhost") || origin.is_empty();
+        let is_tumult = origin == "https://tumult.jackg.cc" || origin == "http://localhost:3000" || origin.is_empty();
 
         if is_discord || is_tumult {
              Ok(response)
         } else {
              log::warn!("[rpc-native-ws] Blocked connection from untrusted origin: {}", origin);
-             // Instead of failing the handshake, we allow it for compatibility but log it.
-             // Some older apps might not send origins correctly.
-             Ok(response)
+             Err(ErrorResponse::new(Some("Forbidden".to_string())))
         }
     };
 

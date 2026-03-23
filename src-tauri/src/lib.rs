@@ -1,7 +1,7 @@
 use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::time::Duration;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use tauri_plugin_shell::process::CommandChild;
 use tauri_plugin_shell::ShellExt;
 use tokio::sync::Notify;
@@ -12,7 +12,7 @@ mod rpc_server;
 
 pub struct RpcState {
     pub cancel_token: tokio::sync::Mutex<Option<tokio_util::sync::CancellationToken>>,
-    pub server: Arc<rpc_server::RpcServer>,
+    pub server: std::sync::Arc<rpc_server::RpcServer>,
 }
 
 pub struct FailoverState {
@@ -37,7 +37,7 @@ pub fn run() {
         .manage(scanner_state.clone())
         .manage(RpcState {
             cancel_token: tokio::sync::Mutex::new(None),
-            server: Arc::new(rpc_server::RpcServer::new()),
+            server: std::sync::Arc::new(rpc_server::RpcServer::new()),
         })
         .invoke_handler(tauri::generate_handler![
             game_scanner::set_scanner_enabled,
