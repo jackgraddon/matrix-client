@@ -3550,13 +3550,14 @@ export const useMatrixStore = defineStore('matrix', {
       }
     },
 
-    async joinRoom(roomIdOrAlias: string): Promise<any> {
+    async joinRoom(roomIdOrAlias: string, viaServers?: string[]): Promise<any> {
       if (!this.client) throw new Error("Matrix client not initialized.");
-      console.log(`[MatrixStore] Joining room ${roomIdOrAlias}...`);
+      console.log(`[MatrixStore] Joining room ${roomIdOrAlias} (via: ${viaServers?.join(', ') || 'none'})...`);
 
       try {
-        const result = await this.client.joinRoom(roomIdOrAlias);
+        const result = await this.client.joinRoom(roomIdOrAlias, { viaServers });
         console.log(`[MatrixStore] Joined room ${result.roomId}`);
+        this.hierarchyTrigger++;
         return result;
       } catch (err: any) {
         console.error("[MatrixStore] Failed to join room:", err);
@@ -3628,7 +3629,14 @@ export const useMatrixStore = defineStore('matrix', {
         const myMember = room?.getMember(myUserId!);
         const isDirect = myMember?.events.member?.getContent().is_direct;
 
-        await this.client.joinRoom(roomId);
+        // Extract via servers from the inviter's homeserver
+        const inviterId = room?.getDMInviter();
+        const viaServers: string[] = [];
+        if (inviterId && inviterId.includes(':')) {
+          viaServers.push(inviterId.split(':')[1]);
+        }
+
+        await this.joinRoom(roomId, viaServers);
 
         if (isDirect) {
           await this.markRoomAsDirect(roomId);

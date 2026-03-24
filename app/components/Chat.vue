@@ -770,6 +770,7 @@ const TYPING_TIMEOUT = 5000;
 
 // Computed
 const room = ref<Room | null>(null);
+const myMembership = ref<string | null>(null);
 const timelineContainer = ref<HTMLElement | null>(null);
 const timelineWindow = ref<TimelineWindow | null>(null);
 const decryptionListenerIds = new Set<string>(); // Track events with registered decryption listeners
@@ -840,8 +841,8 @@ const otherUserId = computed(() => {
   return members.find(m => m.userId !== myUserId)?.userId;
 });
 
-const isJoined = computed(() => room.value?.getMyMembership() === 'join');
-const isInvited = computed(() => room.value?.getMyMembership() === 'invite');
+const isJoined = computed(() => myMembership.value === 'join');
+const isInvited = computed(() => myMembership.value === 'invite');
 
 const inviterName = computed(() => {
   if (!room.value || !isInvited.value) return null;
@@ -1321,6 +1322,18 @@ function onReceiptEvent(event: MatrixEvent, triggeredRoom: Room) {
   }
 }
 
+function onMyMembership(triggeredRoom: Room, membership: string) {
+  if (room.value && triggeredRoom.roomId === room.value.roomId) {
+    console.log(`[Chat] Membership changed to ${membership} for ${triggeredRoom.roomId}`);
+    myMembership.value = membership;
+
+    // If we just joined, re-init the room to load history/members
+    if (membership === 'join') {
+      initRoom();
+    }
+  }
+}
+
 function scrollToEvent(eventId: string) {
     if (!timelineContainer.value) return;
     
@@ -1573,10 +1586,10 @@ async function initRoom() {
   // Found room, clean up temp listener
   store.client.removeListener(ClientEvent.Room, onRoomAdded);
   room.value = r;
+  myMembership.value = r.getMyMembership();
 
   // If invited, we don't need to load history or members
-  if (r.getMyMembership() === 'invite') {
-    room.value = r;
+  if (myMembership.value === 'invite') {
     messages.value = [];
     isLoadingHistory.value = false;
     return;
@@ -1703,11 +1716,13 @@ watch(roomId, () => {
 function setupListener() {
   store.client?.on(RoomEvent.Timeline, onTimelineEvent);
   store.client?.on(RoomEvent.Receipt, onReceiptEvent);
+  store.client?.on(RoomEvent.MyMembership, onMyMembership);
 }
 
 function teardownListener() {
   store.client?.removeListener(RoomEvent.Timeline, onTimelineEvent);
   store.client?.removeListener(RoomEvent.Receipt, onReceiptEvent);
+  store.client?.removeListener(RoomEvent.MyMembership, onMyMembership);
 }
 
 // Handle late client init (e.g. page refresh)
