@@ -13,6 +13,7 @@ export default defineNuxtConfig({
       title: 'Tumult',
       link: [
         { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
+        { rel: 'icon', type: 'image/png', sizes: '32x32', href: '/pwa-32x32.png' },
         { rel: 'apple-touch-icon', href: '/pwa-192x192.png' }
       ]
     }
@@ -189,7 +190,7 @@ export default defineNuxtConfig({
       maximumFileSizeToCacheInBytes: 5000000,
     },
     injectManifest: {
-      swSrc: 'app/public/sw.js',
+      swSrc: 'public/sw.js',
       globPatterns: ['**/*.{js,css,html,png,svg,ico}'],
       maximumFileSizeToCacheInBytes: 5000000,
     },
