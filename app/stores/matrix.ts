@@ -240,8 +240,6 @@ export const useMatrixStore = defineStore('matrix', {
     assetCache: {} as Record<string, Record<string, string>>,
     gameDetectionLevel: 'off' as 'off' | 'basic' | 'advanced',
     detectableGames: [] as any[],
-    rpcSocket: null as WebSocket | null,
-    rpcRetryTimer: null as any | null,
 
     // Dehydration state
     isDehydrating: false,
@@ -694,6 +692,12 @@ export const useMatrixStore = defineStore('matrix', {
           }
           this.refreshPresence();
         });
+
+        // Listen for ADVANCED rsRPC events (handles both scanning and RPC)
+        listen('arrpc-activity', (event: any) => {
+          console.log('[MatrixStore] Received rsRPC activity from Rust:', event.payload);
+          this.handleRpcActivity(event.payload);
+        });
       }
 
       if (this.gameDetectionLevel !== 'off') {
@@ -798,7 +802,6 @@ export const useMatrixStore = defineStore('matrix', {
           bridgePort: 1337,
           noProcessScanning: false,
         });
-        this.connectRpcWebSocket();
       } catch (e) {
         console.error('[MatrixStore] Failed to start rsRPC server:', e);
       }
@@ -813,11 +816,6 @@ export const useMatrixStore = defineStore('matrix', {
         console.log('[MatrixStore] Stopping rsRPC sidecar...');
         await invoke('stop_rsrpc_server');
 
-        if (this.rpcSocket) {
-          this.rpcSocket.close();
-          this.rpcSocket = null;
-        }
-
         this.activityDetails = null;
         this.refreshPresence();
       } catch (e) {
@@ -825,47 +823,6 @@ export const useMatrixStore = defineStore('matrix', {
       }
     },
 
-    connectRpcWebSocket() {
-      if (this.rpcSocket) {
-        this.rpcSocket.onclose = null;
-        this.rpcSocket.close();
-      }
-      if (this.rpcRetryTimer) {
-        clearTimeout(this.rpcRetryTimer);
-        this.rpcRetryTimer = null;
-      }
-
-      const port = 1337;
-      console.log(`[MatrixStore] Connecting to rsRPC bridge on port ${port}...`);
-      const socket = new WebSocket(`ws://127.0.0.1:${port}`);
-
-      socket.onopen = () => {
-        console.log('[MatrixStore] Connected to rsRPC bridge');
-      };
-
-      socket.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          this.handleRpcActivity(data);
-        } catch (e) {
-          console.error('[MatrixStore] Failed to parse rsRPC message:', e);
-        }
-      };
-
-      socket.onclose = () => {
-        console.log('[MatrixStore] Disconnected from rsRPC bridge');
-        if (this.gameDetectionLevel === 'advanced') {
-          // Retry connection after a delay
-          this.rpcRetryTimer = setTimeout(() => this.connectRpcWebSocket(), 5000);
-        }
-      };
-
-      socket.onerror = (e) => {
-        console.error('[MatrixStore] rsRPC bridge error:', e);
-      };
-
-      this.rpcSocket = socket;
-    },
 
     async handleRpcActivity(data: any) {
       console.log('[MatrixStore] Processing rsRPC activity:', data);
