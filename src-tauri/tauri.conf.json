@@ -21,7 +21,7 @@
         "height": 800,
         "minHeight": 500,
         "resizable": true,
-        "decorations": false,
+        "decorations": true,
         "hiddenTitle": true,
         "titleBarStyle": "Overlay",
         "visible": true
