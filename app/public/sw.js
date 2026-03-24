@@ -53,7 +53,7 @@ async function handleMediaProxy(request) {
         const headers = new Headers(request.headers);
         headers.set('Authorization', `Bearer ${accessToken}`);
 
-        // We fetch and return the response.
+        // We fetch and return the response. 
         // If the browser sends a Range header, we MUST return the partial response.
         // Most modern fetch implementations in Service Workers pass 206s correctly.
         const response = await fetch(mediaUrl, {

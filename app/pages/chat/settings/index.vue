@@ -171,7 +171,7 @@ const startMinimized = computed({
 
 const isChecking = ref(false);
 const isInstalling = ref(false);
-const updateInfo = ref<any>(null);
+const updateInfo = shallowRef<any>(null);
 const showUpToDateBanner = ref(false);
 
 const checkForUpdates = async () => {
@@ -186,7 +186,7 @@ const checkForUpdates = async () => {
         const update = await check();
         
         if (update?.available) {
-            updateInfo.value = update;
+            updateInfo.value = markRaw(update);
         } else {
             showUpToDateBanner.value = true;
             setTimeout(() => {

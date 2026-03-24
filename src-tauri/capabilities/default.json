@@ -1,6 +1,6 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
-  "identifier": "main",
+  "identifier": "default",
   "description": "enables the default permissions",
   "windows": [
     "main"
@@ -43,9 +43,12 @@
     "store:default",
     "notification:default",
     "updater:default",
-    "tray-icon:default",
-    "tray-icon:allow-set-tooltip",
-    "tray-icon:allow-set-visible",
-    "autostart:default"
+    "core:tray:default",
+    "core:tray:allow-set-tooltip",
+    "core:tray:allow-set-visible",
+    "autostart:default",
+    "autostart:allow-enable",
+    "autostart:allow-disable",
+    "autostart:allow-is-enabled"
   ]
 }

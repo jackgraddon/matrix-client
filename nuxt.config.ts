@@ -1,3 +1,5 @@
+import { resolve } from 'node:path'
+
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
   future: { compatibilityVersion: 4 },
@@ -100,6 +102,9 @@ export default defineNuxtConfig({
         'class-variance-authority',
         'reka-ui',
         'livekit-client',
+        '@tauri-apps/plugin-autostart',
+        '@tauri-apps/plugin-notification',
+        '@tauri-apps/plugin-updater',
         'clsx',
         'tailwind-merge'
       ],
@@ -113,7 +118,9 @@ export default defineNuxtConfig({
         'top-level-await': true
       },
     },
-    build: {},
+    build: {
+      sourcemap: false
+    },
   },
 
   nitro: {
@@ -190,7 +197,7 @@ export default defineNuxtConfig({
       maximumFileSizeToCacheInBytes: 5000000,
     },
     injectManifest: {
-      swSrc: 'public/sw.js',
+      swSrc: resolve('public/sw.js'),
       globPatterns: ['**/*.{js,css,html,png,svg,ico}'],
       maximumFileSizeToCacheInBytes: 5000000,
     },

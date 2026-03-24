@@ -33,7 +33,7 @@ sw.addEventListener('fetch', (event) => {
 async function handleMediaProxy(request) {
     const url = new URL(request.url);
     const encodedData = url.searchParams.get('data');
-    
+
     if (!encodedData) {
         return new Response('Missing data parameter', { status: 400 });
     }
@@ -72,7 +72,7 @@ async function handleMediaProxy(request) {
 // Helper to extract a readable summary of the message
 function getMessageSummary(content) {
     if (!content) return 'New message';
-    
+
     // Handle encrypted messages (Matrix doesn't send content for these usually in push)
     if (content.msgtype === undefined && content.algorithm) {
         return 'Encrypted message';
@@ -116,13 +116,13 @@ sw.addEventListener('push', (event) => {
     const sender = data.sender_display_name || 'Someone';
     const roomName = data.room_name;
     const bodyText = getMessageSummary(data.content);
-    
+
     // Formatting:
     // If it's a room: "Room Name: Sender: Message"
     // If it's a DM: "Sender: Message"
     const title = roomName || sender;
     const notificationBody = roomName ? `${sender}: ${bodyText}` : bodyText;
-    
+
     const options = {
         body: notificationBody,
         icon: '/pwa-192x192.png',
