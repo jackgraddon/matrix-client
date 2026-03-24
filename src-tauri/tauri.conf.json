@@ -58,6 +58,9 @@
       "files": {
         "Resources/Assets.car": "resources/Assets.car"
       }
-    }
+    },
+    "resources": [
+      "icons/tray/*.png"
+    ]
   }
 }

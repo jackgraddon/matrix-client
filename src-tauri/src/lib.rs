@@ -134,8 +134,12 @@ pub fn run() {
             let check_updates = MenuItem::with_id(app, "check_updates", "Check for Updates", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show, &check_updates, &quit])?;
 
+            let tray_icon = tauri::image::Image::from_path(
+                app.path().resource_dir().unwrap().join("icons/tray/32x32.png")
+            ).unwrap_or_else(|_| app.default_window_icon().unwrap().clone());
+
             let _tray = TrayIconBuilder::new()
-                .icon(app.default_window_icon().unwrap().clone())
+                .icon(tray_icon)
                 .menu(&menu)
                 .tooltip("Tumult")
                 .on_menu_event(|app, event| match event.id.as_ref() {
