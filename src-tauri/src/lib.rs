@@ -113,8 +113,28 @@ pub fn run() {
             game_scanner::start(app.handle().clone(), scanner_state);
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| match event {
+            tauri::RunEvent::Exit => {
+                log::info!("[app] App exiting, cleaning up sidecars...");
+                
+                // Clean up rsRPC
+                if let Ok(mut child_guard) = tauri::Manager::state::<RsRpcState>(app_handle).child.lock() {
+                    if let Some(child) = child_guard.take() {
+                        let _ = child.kill();
+                    }
+                }
+
+                // Clean up legacy arRPC
+                if let Ok(mut child_guard) = tauri::Manager::state::<RpcState>(app_handle).child.lock() {
+                    if let Some(child) = child_guard.take() {
+                        let _ = child.kill();
+                    }
+                }
+            }
+            _ => {}
+        });
 }
 
 // ─── rsRPC sidecar ────────────────────────────────────────────────────────────
@@ -137,30 +157,32 @@ async fn start_rsrpc_server(
     let mut child_guard = state.child.lock().unwrap();
 
     // Kill any existing instance cleanly before spawning a new one.
-    if let Some(mut child) = child_guard.take() {
+    if let Some(child) = child_guard.take() {
         log::info!("[rsrpc] Killing existing sidecar instance...");
         let _ = child.kill();
         std::thread::sleep(Duration::from_millis(200));
     }
 
     // Belt-and-suspenders: kill any orphaned rsrpc processes from a previous run.
+    // We use "pkill -f" on Unix and "taskkill /IM rsrpc*" on Windows to catch both
+    // development (arch-specific) and production (renamed) binary names.
     #[cfg(target_os = "macos")]
     {
-        let _ = std::process::Command::new("killall")
-            .args(["rsrpc-aarch64-apple-darwin", "rsrpc-x86_64-apple-darwin"])
+        let _ = std::process::Command::new("pkill")
+            .args(["-f", "rsrpc"])
             .output();
     }
     #[cfg(target_os = "windows")]
     {
         let _ = std::process::Command::new("taskkill")
-            .args(["/F", "/IM", "rsrpc.exe"])
+            .args(["/F", "/IM", "rsrpc*"])
             .output();
     }
     #[cfg(target_os = "linux")]
     {
         let _ = std::process::Command::new("pkill")
             .arg("-f")
-            .arg("rsrpc-x86_64-unknown-linux")
+            .arg("rsrpc")
             .output();
     }
 
@@ -184,16 +206,13 @@ async fn start_rsrpc_server(
         .map_err(|e| format!("Failed to create rsrpc sidecar: {}", e))?
         .args(&args);
 
-    // rsRPC logs to stderr by default. We capture it so it surfaces in the
-    // Tauri log (visible in `tauri dev` and in the app's log file), but we
-    // do NOT bridge stdout to the frontend — the WebSocket on port 1337 does
-    // that job natively.
     let (mut rx, child) = sidecar
         .spawn()
         .map_err(|e| format!("Failed to spawn rsrpc sidecar: {}", e))?;
 
     log::info!("[rsrpc] Sidecar spawned (PID {:?})", child.pid());
 
+    // Log stdout/stderr from the sidecar
     tauri::async_runtime::spawn(async move {
         use tauri_plugin_shell::process::CommandEvent;
         while let Some(event) = rx.recv().await {
@@ -212,6 +231,64 @@ async fn start_rsrpc_server(
         }
     });
 
+    // Spawn a Rust-side WebSocket client that connects to rsRPC's bridge
+    // and forwards activity messages as Tauri events. This bypasses the
+    // browser's Mixed Content restriction (ws:// from https://).
+    let bridge_app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        use futures_util::StreamExt;
+        use tauri::Emitter;
+
+        let url = format!("ws://127.0.0.1:{}", port);
+
+        // Retry loop: the sidecar needs a moment to start its WS server
+        loop {
+            // Wait before (re)connecting
+            tokio::time::sleep(Duration::from_secs(2)).await;
+
+            log::info!("[rsrpc-bridge] Connecting to {}...", url);
+
+            let ws_stream = match tokio_tungstenite::connect_async(&url).await {
+                Ok((stream, _)) => stream,
+                Err(e) => {
+                    log::warn!("[rsrpc-bridge] Connection failed: {}, retrying...", e);
+                    continue;
+                }
+            };
+
+            log::info!("[rsrpc-bridge] Connected to rsRPC bridge");
+
+            let (_, mut read) = ws_stream.split();
+
+            while let Some(msg) = read.next().await {
+                match msg {
+                    Ok(tokio_tungstenite::tungstenite::Message::Text(text)) => {
+                        match serde_json::from_str::<serde_json::Value>(&text) {
+                            Ok(value) => {
+                                log::info!("[rsrpc-bridge] Forwarding activity event");
+                                let _ = bridge_app.emit("arrpc-activity", value);
+                            }
+                            Err(e) => {
+                                log::warn!("[rsrpc-bridge] Failed to parse JSON: {}", e);
+                            }
+                        }
+                    }
+                    Ok(tokio_tungstenite::tungstenite::Message::Close(_)) => {
+                        log::info!("[rsrpc-bridge] Server closed connection");
+                        break;
+                    }
+                    Err(e) => {
+                        log::warn!("[rsrpc-bridge] WebSocket error: {}", e);
+                        break;
+                    }
+                    _ => {}
+                }
+            }
+
+            log::info!("[rsrpc-bridge] Disconnected, will retry...");
+        }
+    });
+
     *child_guard = Some(child);
     Ok(())
 }
@@ -219,9 +296,9 @@ async fn start_rsrpc_server(
 #[tauri::command]
 async fn stop_rsrpc_server(state: tauri::State<'_, RsRpcState>) -> Result<(), String> {
     let mut child_guard = state.child.lock().unwrap();
-    if let Some(mut child) = child_guard.take() {
+    if let Some(child) = child_guard.take() {
         log::info!("[rsrpc] Stopping rsRPC sidecar...");
-        child.kill().map_err(|e| e.to_string())?;
+        let _ = child.kill();
     }
     Ok(())
 }
@@ -239,7 +316,7 @@ async fn start_rpc_server(
 ) -> Result<(), String> {
     let mut child_guard = state.child.lock().unwrap();
 
-    if let Some(mut child) = child_guard.take() {
+    if let Some(child) = child_guard.take() {
         log::info!("[rpc] Killing existing sidecar instance...");
         let _ = child.kill();
         std::thread::sleep(std::time::Duration::from_millis(200));
@@ -320,7 +397,7 @@ async fn stop_rpc_server(state: tauri::State<'_, RpcState>) -> Result<(), String
     let mut child_guard = state.child.lock().unwrap();
     if let Some(child) = child_guard.take() {
         log::info!("[rpc] Stopping arRPC sidecar...");
-        child.kill().map_err(|e| e.to_string())?;
+        let _ = child.kill();
     }
     Ok(())
 }
