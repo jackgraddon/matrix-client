@@ -5,7 +5,8 @@ on:
       - '*'
 
 jobs:
-  release:
+  # Build on each platform
+  build:
     permissions:
       contents: write
     strategy:
@@ -49,29 +50,26 @@ jobs:
             const fs = require('fs');
             const path = 'src-tauri/tauri.conf.json';
             const config = JSON.parse(fs.readFileSync(path, 'utf8'));
-            config.version = '${VERSION}'; 
+            config.version = '${VERSION}';
             fs.writeFileSync(path, JSON.stringify(config, null, 2));
+            console.log('Set tauri version to: ${VERSION}');
           "
 
-      - name: Build and Release
+      - name: Build
         shell: bash
         env:
-          # Map all secrets to temporary environment variables
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           NUXT_PUBLIC_MATRIX_BASE_URL: 'matrix.jackg.cc'
-          # Add any others here (e.g., APPLE_CERTIFICATE, APPLE_PASSWORD, etc.)
         run: |
           echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD=$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" > .env
           echo "TAURI_SIGNING_PRIVATE_KEY=$TAURI_SIGNING_PRIVATE_KEY" >> .env
           echo "NUXT_PUBLIC_MATRIX_BASE_URL=$NUXT_PUBLIC_MATRIX_BASE_URL" >> .env
-
           corepack yarn tauri build --verbose
 
-      - name: Upload Release Assets
+      - name: Upload release assets to GitHub Release
         uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/')
         with:
           files: |
             src-tauri/target/release/bundle/dmg/*.dmg
@@ -82,93 +80,104 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Commit and Push update.json
-        # Only run this if we are on a tag push
-        if: startsWith(github.ref, 'refs/tags/')
+      # Upload .sig files as Actions artifacts so the update_json job can download both platforms' sigs at once with no race condition.
+      - name: Upload .sig files as Actions artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sig-${{ matrix.platform }}
+          path: |
+            src-tauri/target/release/bundle/macos/*.tar.gz.sig
+            src-tauri/target/release/bundle/msi/*.msi.sig
+          if-no-files-found: error
+
+  # Generate update.json after both platforms have finished
+  update_json:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Download macOS .sig
+        uses: actions/download-artifact@v4
+        with:
+          name: sig-macos-latest
+          path: sigs/mac
+
+      - name: Download Windows .sig
+        uses: actions/download-artifact@v4
+        with:
+          name: sig-windows-latest
+          path: sigs/win
+
+      - name: Generate update.json
         shell: bash
         run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          
           VERSION="${{ github.ref_name }}"
-          RAW_VERSION=$(echo $VERSION | sed 's/^v//')
           DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          PLATFORM='${{ matrix.platform }}'
-          
-          # Attempt to commit and push with a retry loop to handle Mac/Win race conditions
-          for i in {1..10}; do
-            # 1. Pull with rebase to ensure we have the latest update.json from the other platform
-            git fetch origin main
-            git rebase origin/main || (git rebase --abort && git pull --rebase origin main)
-            
-            # 2. Generate/Merge the update.json content
-            node -e "
-              const fs = require('fs');
-              const path = require('path');
-              
-              const platformLabel = '$PLATFORM' === 'macos-latest' ? 'darwin-aarch64' : 'windows-x86_64';
-              
-              // Windows artifacts may vary by version in the filename
-              let sigPath = '$PLATFORM' === 'macos-latest' 
-                ? 'src-tauri/target/release/bundle/macos/Tumult.app.tar.gz.sig'
-                : 'src-tauri/target/release/bundle/msi/Tumult_' + '$RAW_VERSION' + '_x64_en-US.msi.sig';
+          REPO="${{ github.repository }}"
 
-              // Fallback for Windows if filename differs
-              if ('$PLATFORM' === 'windows-latest' && !fs.existsSync(sigPath)) {
-                 const msiDir = 'src-tauri/target/release/bundle/msi';
-                 if (fs.existsSync(msiDir)) {
-                    const files = fs.readdirSync(msiDir);
-                    const sigFile = files.find(f => f.endsWith('.msi.sig'));
-                    if (sigFile) sigPath = path.join(msiDir, sigFile);
-                 }
+          node -e "
+            const fs   = require('fs');
+            const path = require('path');
+
+            const version = '$VERSION';
+            const date    = '$DATE';
+            const repo    = '$REPO';
+
+            // ── macOS sig ────────────────────────────────────────────────────
+            const macSigDir = 'sigs/mac';
+            const macSigFile = fs.readdirSync(macSigDir).find(f => f.endsWith('.tar.gz.sig'));
+            if (!macSigFile) { console.error('macOS .sig not found'); process.exit(1); }
+            const macSig = fs.readFileSync(path.join(macSigDir, macSigFile), 'utf8').trim();
+
+            // ── Windows sig ──────────────────────────────────────────────────
+            const winSigDir = 'sigs/win';
+            const winSigFile = fs.readdirSync(winSigDir).find(f => f.endsWith('.msi.sig'));
+            if (!winSigFile) { console.error('Windows .sig not found'); process.exit(1); }
+            const winSig = fs.readFileSync(path.join(winSigDir, winSigFile), 'utf8').trim();
+
+            // ── Build download URLs ──────────────────────────────────────────
+            const base = 'https://github.com/' + repo + '/releases/download/' + version + '/';
+            const macAsset = 'Tumult.app.tar.gz';
+            // Strip the .sig suffix to get the actual installer filename
+            const winAsset = winSigFile.replace('.sig', '');
+
+            // ── Write update.json ────────────────────────────────────────────
+            const data = {
+              version,
+              notes: 'Release ' + version,
+              pub_date: date,
+              platforms: {
+                'darwin-aarch64': { signature: macSig, url: base + macAsset },
+                'darwin-x86_64':  { signature: macSig, url: base + macAsset },
+                'windows-x86_64': { signature: winSig, url: base + winAsset },
               }
-              
-              const updateDir = 'app/public';
-              const updateFile = path.join(updateDir, 'update.json');
+            };
 
-              if (fs.existsSync(sigPath)) {
-                const signature = fs.readFileSync(sigPath, 'utf8').trim();
-                if (!fs.existsSync(updateDir)) fs.mkdirSync(updateDir, { recursive: true });
+            fs.mkdirSync('app/public', { recursive: true });
+            fs.writeFileSync('app/public/update.json', JSON.stringify(data, null, 2));
+            console.log('update.json written for version ' + version);
+            console.log('  macOS asset : ' + macAsset);
+            console.log('  Windows asset: ' + winAsset);
+          "
 
-                let data = { version: '$VERSION', notes: 'Release $VERSION', pub_date: '$DATE', platforms: {} };
-                if (fs.existsSync(updateFile)) {
-                  try {
-                    const existing = JSON.parse(fs.readFileSync(updateFile, 'utf8'));
-                    // If the existing file is for the SAME version, merge platforms. 
-                    // Otherwise, start fresh for the new version.
-                    if (existing.version === '$VERSION') {
-                       data.platforms = existing.platforms;
-                    }
-                  } catch (e) { console.log('Starting new update.json'); }
-                }
-
-                data.platforms[platformLabel] = {
-                  signature: signature,
-                  url: 'https://github.com/${{ github.repository }}/releases/download/' + '$VERSION' + '/' + 
-                       (platformLabel.includes('darwin') ? 'Tumult.app.tar.gz' : path.basename(sigPath).replace('.sig', ''))
-                };
-
-                fs.writeFileSync(updateFile, JSON.stringify(data, null, 2));
-                console.log('Updated ' + platformLabel + ' in update.json');
-              } else {
-                console.error('Signature file not found: ' + sigPath);
-                process.exit(1);
-              }
-            "
-            
-            # 3. Commit and Push
-            git add app/public/update.json
-            if git commit -m "chore: update metadata for $PLATFORM [skip ci]"; then
-              if git push origin HEAD:main; then
-                echo "Successfully pushed update.json"
-                break
-              fi
-            else
-              echo "Nothing to commit for $PLATFORM (possibly already updated)"
-              # Check if push is needed even if no new commit (maybe rebase brought in changes)
-              git push origin HEAD:main && break || true
-            fi
-
-            echo "Conflict detected or push failed, retrying in a few seconds... ($i/10)"
-            sleep $(( (RANDOM % 15) + 10 ))
-          done
+      - name: Commit and push update.json
+        shell: bash
+        run: |
+          git config --global user.name  "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add app/public/update.json
+          # Only commit if the file actually changed
+          if git diff --cached --quiet; then
+            echo "update.json unchanged, nothing to commit."
+          else
+            git commit -m "chore: update.json for ${{ github.ref_name }} [skip ci]"
+            git push origin HEAD:main
+            echo "update.json pushed to main."
+          fi
