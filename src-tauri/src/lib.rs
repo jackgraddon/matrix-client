@@ -10,6 +10,7 @@ use tauri::{
 use tauri_plugin_shell::process::CommandChild;
 use tauri_plugin_shell::ShellExt;
 use tokio::sync::Notify;
+use tauri_plugin_store::StoreExt;
 
 mod game_scanner;
 
@@ -31,6 +32,72 @@ pub struct FailoverState {
 
 pub struct CliArgs {
     pub minimized: bool,
+}
+
+pub struct AppQuit(pub std::sync::atomic::AtomicBool);
+
+fn show_main_window(app: &tauri::AppHandle) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        #[cfg(target_os = "macos")]
+        {
+            // 1. Force policy to Regular to show Dock icon
+            let _ = app.set_activation_policy(tauri::ActivationPolicy::Regular);
+            
+            // Wait for macOS to actually process the policy switch
+            // before we demand the window render, avoiding a state clash
+            tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+            
+            let _ = app.show();
+        }
+
+        let window = if let Some(w) = app.get_webview_window("main") {
+            w
+        } else {
+            // RE-CREATE FALLBACK: If the window was destroyed, build it again.
+            log::warn!("[window] 'main' window missing, re-creating...");
+            
+            let builder = tauri::WebviewWindowBuilder::new(&app, "main", tauri::WebviewUrl::App("index.html".into()))
+                .title("Tumult")
+                .inner_size(1200.0, 800.0)
+                .min_inner_size(1000.0, 500.0)
+                .resizable(true);
+
+            #[cfg(target_os = "macos")]
+            let builder = builder.title_bar_style(tauri::TitleBarStyle::Overlay).hidden_title(true);
+
+            let w = builder.build().unwrap();
+            
+            // Re-apply navigation if we are not in failover
+            let is_failover = app.try_state::<FailoverState>().map(|s| s.is_failover).unwrap_or(false);
+            if !is_failover {
+                let _ = w.navigate("https://tumult.jackg.cc".parse().unwrap());
+            }
+            
+            w
+        };
+
+        // 2. Standard restoration
+        let _ = window.unminimize();
+        
+        // TELEPORT BACK to screen
+        let _ = window.center();
+        let _ = window.show();
+        let _ = window.set_focus();
+
+        // 3. THE "KICKSTART": Open DevTools and request attention
+        // window.open_devtools(); 
+        let _ = window.request_user_attention(Some(tauri::UserAttentionType::Critical));
+        
+        // 4. Force a resize nudge by 1 pixel to wake the renderer
+        if let Ok(size) = window.inner_size() {
+            let _ = window.set_size(tauri::Size::Physical(tauri::PhysicalSize {
+                width: size.width + 1,
+                height: size.height,
+            }));
+            let _ = window.set_size(tauri::Size::Physical(size));
+        }
+    });
 }
 
 // ─── App entry point ──────────────────────────────────────────────────────────
@@ -55,13 +122,10 @@ pub fn run() {
             Some(vec!["--minimized"]),
         ))
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.show();
-                let _ = window.unminimize();
-                let _ = window.set_focus();
-            }
+            show_main_window(app);
         }))
         .manage(scanner_state.clone())
+        .manage(AppQuit(std::sync::atomic::AtomicBool::new(false)))
         .manage(RpcState {
             child: Mutex::new(None),
         })
@@ -83,6 +147,7 @@ pub fn run() {
         ])
         .setup(move |app| {
             let window = app.get_webview_window("main").unwrap();
+            window.open_devtools();
 
             #[cfg(any(target_os = "windows", target_os = "linux"))]
             {
@@ -119,6 +184,24 @@ pub fn run() {
             let has_minimized_arg = args.contains(&"--minimized".to_string());
             app.manage(CliArgs { minimized: has_minimized_arg });
 
+            let mut store_minimized = false;
+            if let Ok(store) = app.store("preferences.json") {
+                if let Some(val) = store.get("matrix_start_minimized") {
+                    store_minimized = val.as_bool().unwrap_or(false);
+                }
+            }
+
+            if has_minimized_arg || store_minimized {
+                log::info!("[setup] Starting minimized to tray via hide");
+                let _ = window.hide();
+                let app_handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(tokio::time::Duration::from_millis(150)).await;
+                    #[cfg(target_os = "macos")]
+                    let _ = app_handle.set_activation_policy(tauri::ActivationPolicy::Accessory);
+                });
+            }
+
             if use_remote {
                 log::info!("Navigating to remote: {}", remote_url);
                 window.navigate(remote_url.parse().unwrap()).unwrap();
@@ -136,6 +219,42 @@ pub fn run() {
 
             game_scanner::start(app.handle().clone(), scanner_state);
 
+            // ─── Window Persistence ────────────────────────────────────────────────
+            // Register close/minimize interception directly on the window 
+            // to ensure it stays alive and doesn't get destroyed on MacOS.
+            let window_persistence = window.clone();
+            window.on_window_event(move |event| {
+                match event {
+                    tauri::WindowEvent::CloseRequested { api, .. } => {
+                        log::info!("[window] CloseRequested intercepted locally, hiding...");
+                        api.prevent_close();
+                        let _ = window_persistence.hide();
+                        
+                        let app_handle = window_persistence.app_handle().clone();
+                        tauri::async_runtime::spawn(async move {
+                            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                            #[cfg(target_os = "macos")]
+                            let _ = app_handle.set_activation_policy(tauri::ActivationPolicy::Accessory);
+                        });
+                    }
+                    tauri::WindowEvent::Resized(_) => {
+                        if window_persistence.is_minimized().unwrap_or(false) {
+                            log::info!("[window] Minimized intercepted locally, hiding...");
+                            let _ = window_persistence.unminimize(); // Preempt OS from fully minimizing window content
+                            let _ = window_persistence.hide();
+                            
+                            let app_handle = window_persistence.app_handle().clone();
+                            tauri::async_runtime::spawn(async move {
+                                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                                #[cfg(target_os = "macos")]
+                                let _ = app_handle.set_activation_policy(tauri::ActivationPolicy::Accessory);
+                            });
+                        }
+                    }
+                    _ => {}
+                }
+            });
+
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let show = MenuItem::with_id(app, "show", "Show Window", true, None::<&str>)?;
             let check_updates = MenuItem::with_id(app, "check_updates", "Check for Updates", true, None::<&str>)?;
@@ -152,21 +271,25 @@ pub fn run() {
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "quit" => {
                         log::info!("[tray] Quit requested via menu");
+                        app.state::<AppQuit>().0.store(true, std::sync::atomic::Ordering::Relaxed);
                         app.exit(0);
                     }
                     "show" => {
                         log::info!("[tray] Show requested via menu");
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.show();
-                            let _ = window.unminimize();
-                            let _ = window.set_focus();
+                        for (label, _w) in app.webview_windows() {
+                            log::info!("[debug] Active window label: {}", label);
                         }
+                        let window_exists = app.get_webview_window("main").is_some();
+                        log::info!("[debug] Does 'main' window exist? {}", window_exists);
+                        if let Some(window) = app.get_webview_window("main") {
+                            println!("Window visible: {:?}", window.is_visible());
+                            println!("Window minimized: {:?}", window.is_minimized());
+                        }
+                        show_main_window(app);
                     }
                     "check_updates" => {
+                        show_main_window(app);
                         if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.show();
-                            let _ = window.unminimize();
-                            let _ = window.set_focus();
                             let _ = window.emit("check-updates", ());
                         }
                     }
@@ -179,37 +302,33 @@ pub fn run() {
                         ..
                     } = event
                     {
-                        let app = tray.app_handle();
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.show();
-                            let _ = window.unminimize();
-                            let _ = window.set_focus();
-                        }
+                        show_main_window(tray.app_handle());
                     }
                 })
                 .build(app)?;
 
             Ok(())
         })
-        .on_window_event(|window, event| {
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                api.prevent_close();
-                window.hide().unwrap();
+        .on_window_event(|_window, event| match event {
+            tauri::WindowEvent::CloseRequested { .. } => {
+                log::info!("[global-window] CloseRequested reached global handler");
             }
+            tauri::WindowEvent::Destroyed { .. } => {
+                log::warn!("[global-window] Window is being DESTROYED!");
+            }
+            _ => {}
         })
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app_handle, event| match event {
-            tauri::RunEvent::ExitRequested { .. } => {
-                // We no longer prevent exit universally here, as it blocks the intentional app.exit(0)
-                // calls from the tray menu. The window cloes is already handled by WindowEvent::CloseRequested.
+            tauri::RunEvent::ExitRequested { api, .. } => {
+                let quit = app_handle.state::<AppQuit>();
+                if !quit.0.load(std::sync::atomic::Ordering::Relaxed) {
+                    api.prevent_exit();
+                }
             }
             tauri::RunEvent::Reopen { .. } => {
-                if let Some(window) = app_handle.get_webview_window("main") {
-                    let _ = window.show();
-                    let _ = window.unminimize();
-                    let _ = window.set_focus();
-                }
+                show_main_window(app_handle);
             }
             tauri::RunEvent::Exit => {
                 log::info!("[app] App exiting, cleaning up sidecars...");
@@ -227,6 +346,17 @@ pub fn run() {
                         let _ = child.kill();
                     }
                 }
+            }
+            tauri::RunEvent::WindowEvent { label, event, .. } => {
+                 match event {
+                    tauri::WindowEvent::CloseRequested { .. } => {
+                        log::info!("[run-event] Window '{}' CloseRequested", label);
+                    }
+                    tauri::WindowEvent::Destroyed { .. } => {
+                        log::warn!("[run-event] Window '{}' Destroyed!", label);
+                    }
+                    _ => {}
+                 }
             }
             _ => {}
         });
