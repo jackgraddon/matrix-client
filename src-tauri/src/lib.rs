@@ -272,6 +272,42 @@ pub fn run() {
 
             Ok(())
         })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                let quit = window.state::<AppQuit>();
+                if !quit.0.load(std::sync::atomic::Ordering::Relaxed) {
+                    log::info!("[window] CloseRequested intercepted, hiding instead of closing...");
+                    api.prevent_close();
+                    let _ = window.hide();
+
+                    #[cfg(target_os = "macos")]
+                    {
+                        let app_handle = window.app_handle().clone();
+                        tauri::async_runtime::spawn(async move {
+                            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                            let _ = app_handle.set_activation_policy(tauri::ActivationPolicy::Accessory);
+                        });
+                    }
+                }
+            } else if let tauri::WindowEvent::Resized(_) = event {
+                if window.is_minimized().unwrap_or(false) {
+                    log::info!("[window] Minimized intercepted, hiding...");
+                    let _ = window.unminimize();
+                    let _ = window.hide();
+
+                    #[cfg(target_os = "macos")]
+                    {
+                        let app_handle = window.app_handle().clone();
+                        tauri::async_runtime::spawn(async move {
+                            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                            let _ = app_handle.set_activation_policy(tauri::ActivationPolicy::Accessory);
+                        });
+                    }
+                }
+            } else if let tauri::WindowEvent::Destroyed { .. } = event {
+                log::warn!("[window] Window '{}' is being DESTROYED!", window.label());
+            }
+        })
         .on_menu_event(|app, event| {
             if event.id.as_ref() == "quit" {
                 log::info!("[menu] Quit requested via menu");
@@ -289,52 +325,6 @@ pub fn run() {
                 if !is_quitting {
                     api.prevent_exit();
                 }
-            }
-            tauri::RunEvent::WindowEvent { label, event, .. } => {
-                 match event {
-                    tauri::WindowEvent::CloseRequested { api, .. } => {
-                        let quit = app_handle.state::<AppQuit>();
-                        if !quit.0.load(std::sync::atomic::Ordering::Relaxed) {
-                            log::info!("[run] Window '{}' CloseRequested intercepted, hiding...", label);
-
-                            if let Some(window) = app_handle.get_webview_window(&label) {
-                                let _ = window.hide();
-
-                                #[cfg(target_os = "macos")]
-                                {
-                                    let app_handle_inner = app_handle.clone();
-                                    tauri::async_runtime::spawn(async move {
-                                        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-                                        let _ = app_handle_inner.set_activation_policy(tauri::ActivationPolicy::Accessory);
-                                    });
-                                }
-                            }
-                            api.prevent_close();
-                        }
-                    }
-                    tauri::WindowEvent::Resized(_) => {
-                        if let Some(window) = app_handle.get_webview_window(&label) {
-                            if window.is_minimized().unwrap_or(false) {
-                                log::info!("[run] Window '{}' Minimized intercepted, hiding...", label);
-                                let _ = window.unminimize();
-                                let _ = window.hide();
-
-                                #[cfg(target_os = "macos")]
-                                {
-                                    let app_handle_inner = app_handle.clone();
-                                    tauri::async_runtime::spawn(async move {
-                                        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-                                        let _ = app_handle_inner.set_activation_policy(tauri::ActivationPolicy::Accessory);
-                                    });
-                                }
-                            }
-                        }
-                    }
-                    tauri::WindowEvent::Destroyed { .. } => {
-                        log::warn!("[run] Window '{}' is being DESTROYED!", label);
-                    }
-                    _ => {}
-                 }
             }
             tauri::RunEvent::Reopen { .. } => {
                 show_main_window(app_handle);
