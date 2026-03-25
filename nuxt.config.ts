@@ -68,14 +68,15 @@ export default defineNuxtConfig({
       allowedHosts: ['localho.st', 'localhost'],
       strictPort: true,
       fs: {
-        allow: ['..']
+        allow: [
+          resolve('.'),
+          resolve('..'),
+        ]
       }
     },
     optimizeDeps: {
-      // Keep your existing exclude for the WASM crypto
       exclude: ['@matrix-org/matrix-sdk-crypto-wasm'],
       include: [
-        '@matrix-org/matrix-sdk-crypto-wasm',
         '@vue/devtools-core',
         '@vue/devtools-kit',
         'workbox-window',
@@ -106,9 +107,7 @@ export default defineNuxtConfig({
         '@tauri-apps/plugin-notification',
         '@tauri-apps/plugin-updater',
         'clsx',
-        'tailwind-merge',
-        'matrix-js-sdk/lib/pushprocessor',
-        'vue-draggable-plus'
+        'tailwind-merge'
       ],
       entries: [
         './app/app.vue',
@@ -207,7 +206,7 @@ export default defineNuxtConfig({
       installPrompt: true,
     },
     devOptions: {
-      enabled: true,
+      enabled: false,
       suppressWarnings: true,
       navigateFallback: '/',
       navigateFallbackAllowlist: [new RegExp('^\\/$')],
