@@ -93,9 +93,9 @@
         <div class="flex items-center gap-3">
           <Icon name="solar:bell-bold" class="h-5 w-5 text-muted-foreground" />
           <div class="space-y-0.5">
-            <p class="text-sm font-medium">Push Notifications</p>
+            <p class="text-sm font-medium">Enable Notifications</p>
             <p class="text-xs text-muted-foreground">
-              Enable background alerts when the app is closed
+              Show desktop and background alerts for new messages
             </p>
           </div>
         </div>
@@ -103,7 +103,7 @@
       </div>
 
       <div v-if="pushEnabled" class="space-y-4">
-        <div class="rounded-lg border p-4 space-y-4">
+        <div v-if="!isTauri" class="rounded-lg border p-4 space-y-4">
             <div class="flex items-center gap-3">
                 <Icon name="solar:server-bold" class="h-5 w-5 text-muted-foreground" />
                 <div class="space-y-0.5">

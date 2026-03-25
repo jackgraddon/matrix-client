@@ -5,6 +5,17 @@ import { isPermissionGranted, requestPermission, sendNotification as tauriNotify
  * and falls back to standard Web Notifications API for browsers/PWAs.
  */
 export async function notify(title: string, body: string, iconUrl?: string, roomId?: string) {
+  const store = useMatrixStore();
+
+  // Respect global toggle
+  if (!store.pushNotificationsEnabled) return;
+
+  // Respect Quiet Hours / Pause
+  if (Date.now() < store.notificationsQuietUntil) {
+    console.log('[Notify Helper] Notifications are currently paused (Quiet Hours)');
+    return;
+  }
+
   try {
     // 1. Check if running in Tauri
     if (typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__) {
