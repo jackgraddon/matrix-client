@@ -32,7 +32,8 @@
         <div :class="{'hidden md:block': store.ui.memberListVisible}" class="flex-1 min-w-0">
           <div 
             class="cursor-pointer group/header"
-            @contextmenu="store.openRoomContextMenu(roomId as string)"
+            @contextmenu.prevent="store.openRoomContextMenu(roomId as string)"
+            v-long-press="() => { haptics.medium(); store.openRoomContextMenu(roomId as string); }"
           >
             <RoomHeader 
               v-if="!isDm"
@@ -209,7 +210,8 @@
           <!-- Message content -->
           <div 
             class="contents"
-            @contextmenu="store.openMessageContextMenu(msg)"
+            @contextmenu.prevent="store.openMessageContextMenu(msg)"
+            v-long-press="() => { haptics.medium(); store.openMessageContextMenu(msg); }"
           >
             <div class="flex flex-col max-w-[90%] md:max-w-[75%] min-w-0 relative group/message order-1 md:order-none" :class="msg.isOwn ? 'items-end' : 'items-start'">
               <!-- Sender name (only for first in a group) -->
@@ -653,6 +655,7 @@ const props = defineProps<{
 
 const route = useRoute();
 const store = useMatrixStore();
+const haptics = useHaptics();
 const voiceStore = useVoiceStore();
 const { showKeychainWarning, handleJoinCall, handleProceed, handleCancel } = useJoinCall();
 

@@ -1764,7 +1764,7 @@ export const useMatrixStore = defineStore('matrix', {
 
       // 1.2 Session Heartbeat & Storage Sanity Check
       // Check if both the Session and the Crypto Store exist to prevent "Asymmetric Wipe" logouts.
-      const hasCryptoStore = await window.indexedDB.databases().then(dbs => dbs.some(db => db.name?.includes('crypto')));
+      const hasCryptoStore = await (window.indexedDB.databases ? window.indexedDB.databases().then(dbs => dbs.some(db => db.name?.includes('crypto'))) : Promise.resolve(true));
       const hasAccessToken = !!accessToken;
 
       console.log('[MatrixStore] Session Heartbeat:', { hasAccessToken, hasCryptoStore });
@@ -1831,7 +1831,7 @@ export const useMatrixStore = defineStore('matrix', {
       }
 
       // Global Error Interceptor for Crypto Failures (OTK 400s, etc.)
-      this.client.on(sdk.ClientEvent.Sync, (state: sdk.SyncState, prevState: sdk.SyncState | null, data?: any) => {
+      this.client.on(sdk.ClientEvent.Sync, async (state: sdk.SyncState, prevState: sdk.SyncState | null, data?: any) => {
         if (state === sdk.SyncState.Error) {
           const error = data?.error;
           this.lastSyncError = error;
@@ -1853,7 +1853,7 @@ export const useMatrixStore = defineStore('matrix', {
                 // often forces a server-side state alignment).
                 await (this.client as any).getInternalHttpApi().authedRequest(
                   sdk.Method.Post,
-                  "keys/upload",
+                  "/_matrix/client/v3/keys/upload",
                   {},
                   {}
                 );
@@ -3343,7 +3343,7 @@ export const useMatrixStore = defineStore('matrix', {
         // We use the path without leading slash to avoid double-prefixing in some SDK versions.
         const res = await (this.client as any).getInternalHttpApi().authedRequest(
           sdk.Method.Post,
-          "keys/upload",
+          "/_matrix/client/v3/keys/upload",
           {},
           {}
         );
