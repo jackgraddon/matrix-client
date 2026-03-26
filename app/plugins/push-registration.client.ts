@@ -133,14 +133,16 @@ export default defineNuxtPlugin(async (nuxtApp) => {
             await store.client.setPusher({
                 app_id: 'cc.jackg',
                 app_display_name: 'Tumult',
-                device_display_name: 'Web Client',
+                device_display_name: 'Notification Handler',
                 pushkey: pushKey,
                 kind: 'http',
                 lang: 'en',
                 data: {
                     url: `${relayUrl}/_matrix/push/v1/notify`,
-                    ek: encryptionKey // "Encryption Key" for blind relay
                     user_id: store.client.getUserId(),
+                    ...({
+                        ek: encryptionKey,
+                    } as any)
                 },
             });
             console.log('[PushPlugin] Matrix Pusher registered successfully');
