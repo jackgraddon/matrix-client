@@ -178,6 +178,17 @@ async function _ensureCryptoKey(): Promise<void> {
             );
             console.log('[AppStorage] Generated new crypto key (first launch)');
         }
+
+        // --- 2026 Standards: Sync Master Key to IndexedDB for Service Worker ---
+        // Service Workers cannot access localStorage, so we mirror the master key
+        // into a shared IndexedDB store so the SW can decrypt push notifications.
+        try {
+            const { saveCryptoKey } = await import('~/utils/crypto-db');
+            await saveCryptoKey(_cryptoKey);
+            console.log('[AppStorage] Master key synced to IndexedDB for SW access');
+        } catch (dbErr) {
+            console.warn('[AppStorage] Failed to sync key to IndexedDB:', dbErr);
+        }
     })();
 
     await _cryptoInitPromise;

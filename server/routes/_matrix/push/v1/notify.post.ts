@@ -59,14 +59,31 @@ export default defineEventHandler(async (event) => {
             const notificationBody = bodyText;
             const urlToOpen = notification.room_id ? `/chat/rooms/${notification.room_id}` : '/chat';
 
+            // --- Zero-Knowledge Encryption (2026 Standard) ---
+            // If the device provided an encryption key (ek), we encrypt the sensitive fields.
+            let encryptedData = null;
+            const encryptionKeyJwk = device.data?.ek;
+
+            if (encryptionKeyJwk) {
+                try {
+                    const secretPayload = JSON.stringify({ title, body: notificationBody });
+                    encryptedData = await encryptForDevice(secretPayload, encryptionKeyJwk);
+                } catch (err) {
+                    console.error('[Push Relay] Encryption failed for device:', err);
+                }
+            }
+
             // Hybrid Payload: Supports both Declarative Web Push and Imperative Service Worker fallback
             const payload = JSON.stringify({
                 // Declarative Keys (2026 Standard)
                 web_push: 8030,
-                title: title,
-                body: notificationBody,
+                title: encryptedData ? 'Tumult' : title,
+                body: encryptedData ? 'New message' : notificationBody,
                 icon: '/pwa-192x192.png',
                 navigate: urlToOpen,
+
+                // Encrypted Payload (Zero-Knowledge)
+                encrypted: encryptedData,
 
                 // Legacy/Custom Keys (for Service Worker)
                 event_id: notification.event_id,
@@ -115,6 +132,30 @@ export default defineEventHandler(async (event) => {
 
     return { rejected: [] };
 });
+
+async function encryptForDevice(plaintext: string, jwk: JsonWebKey) {
+    // Note: crypto.subtle is available in modern Node/Nitro environments
+    const key = await crypto.subtle.importKey(
+        'jwk',
+        jwk,
+        { name: 'AES-GCM', length: 256 },
+        false,
+        ['encrypt']
+    );
+
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const encoded = new TextEncoder().encode(plaintext);
+    const ciphertext = await crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv },
+        key,
+        encoded
+    );
+
+    return {
+        iv: Buffer.from(iv).toString('base64'),
+        ct: Buffer.from(new Uint8Array(ciphertext)).toString('base64')
+    };
+}
 
 // Helper to extract a readable summary of the message (Mirror of SW logic for server-side declarative push)
 function getMessageSummary(content: any) {

@@ -31,16 +31,26 @@ sw.addEventListener('activate', (event) => {
 sw.addEventListener('periodicsync', (event) => {
     if (event.tag === 'sync-messages') {
         console.log('[Service Worker] Periodic sync: pre-fetching messages for active rooms');
-        event.waitUntil(preFetchActiveRooms());
+        event.waitUntil(preFetchActiveRooms('periodicsync'));
     }
 });
 
-async function preFetchActiveRooms() {
-    // Logic: In 2026, we notify the client to sync buffers if open,
-    // or we attempt a background fetch for unread messages if supported.
+// --- Background Sync (2026 Standards) ---
+
+sw.addEventListener('sync', (event) => {
+    if (event.tag === 'sync-unread-messages') {
+        console.log('[Service Worker] Background sync: refreshing message buffers');
+        event.waitUntil(preFetchActiveRooms('sync'));
+    }
+});
+
+async function preFetchActiveRooms(reason = 'push') {
+    // Logic: In 2026, we notify the client to sync buffers if open.
+    // This allows the app to perform high-priority decryption and
+    // IndexedDB updates while the SW handles the notification.
     const clients = await sw.clients.matchAll({ type: 'window' });
     for (const client of clients) {
-        client.postMessage({ type: 'SYNC_BUFFERS', reason: 'periodicsync' });
+        client.postMessage({ type: 'SYNC_BUFFERS', reason });
     }
 }
 
@@ -125,6 +135,54 @@ function getMessageSummary(content) {
     }
 }
 
+// --- Zero-Knowledge Decryption (2026 Standards) ---
+
+const DB_NAME = 'tumult-crypto-storage';
+const STORE_NAME = 'keys';
+const KEY_NAME = 'notification-decryption-key';
+
+async function decryptNotification(encrypted) {
+    if (!encrypted || !encrypted.iv || !encrypted.ct) return null;
+
+    try {
+        // Open IndexedDB
+        const db = await new Promise((resolve, reject) => {
+            const request = indexedDB.open(DB_NAME, 1);
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+        });
+
+        // Get Key
+        const key = await new Promise((resolve, reject) => {
+            const transaction = db.transaction(STORE_NAME, 'readonly');
+            const store = transaction.objectStore(STORE_NAME);
+            const request = store.get(KEY_NAME);
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+        });
+
+        if (!key) {
+            console.warn('[Service Worker] No decryption key found in IndexedDB');
+            return null;
+        }
+
+        // Decrypt
+        const iv = new Uint8Array(atob(encrypted.iv).split('').map(c => c.charCodeAt(0)));
+        const ct = new Uint8Array(atob(encrypted.ct).split('').map(c => c.charCodeAt(0)));
+
+        const decrypted = await sw.crypto.subtle.decrypt(
+            { name: 'AES-GCM', iv },
+            key,
+            ct
+        );
+
+        return JSON.parse(new TextDecoder().decode(decrypted));
+    } catch (err) {
+        console.error('[Service Worker] Decryption failed:', err);
+        return null;
+    }
+}
+
 // Handle incoming push notifications
 sw.addEventListener('push', (event) => {
     console.log('[Service Worker] Push Received.');
@@ -139,20 +197,36 @@ sw.addEventListener('push', (event) => {
         }
     }
 
-    // If this browser supports Declarative Web Push (web_push: 8030),
-    // it may have already shown the notification natively.
-    // However, we still handle the push event to ensure the Service Worker
-    // can perform background logic like pre-fetching.
+    event.waitUntil(handlePushEvent(data));
+});
 
-    // Matrix Sygnal-derived format from our relay
-    // Fallback logic for when the browser doesn't natively handle declarative push:
+async function handlePushEvent(data) {
+    // 1. Attempt Zero-Knowledge Decryption
+    let title = data.title;
+    let notificationBody = data.body;
+
+    if (data.encrypted) {
+        console.log('[Service Worker] Encrypted push detected, decrypting...');
+        const decrypted = await decryptNotification(data.encrypted);
+        if (decrypted) {
+            title = decrypted.title;
+            notificationBody = decrypted.body;
+            console.log('[Service Worker] Decryption successful:', title);
+        } else {
+            console.warn('[Service Worker] Decryption failed, falling back to generic notification');
+            title = 'Tumult';
+            notificationBody = 'New message';
+        }
+    }
+
+    // 2. Fallback logic for when the browser doesn't natively handle declarative push:
     const sender = data.sender_display_name || 'Someone';
     const roomName = data.room_name;
     const bodyText = getMessageSummary(data.content);
 
-    // Formatting (Prefer server-sent title/body if available)
-    const title = data.title || (roomName || sender);
-    const notificationBody = data.body || (roomName ? `${sender}: ${bodyText}` : bodyText);
+    // Formatting (Prefer server-sent/decrypted title/body if available)
+    title = title || (roomName || sender);
+    notificationBody = notificationBody || (roomName ? `${sender}: ${bodyText}` : bodyText);
     const urlToOpen = data.navigate || (data.data?.url || (data.room_id ? `/chat/rooms/${data.room_id}` : '/chat'));
 
     const options = {
@@ -177,14 +251,20 @@ sw.addEventListener('push', (event) => {
     const now = Date.now();
     const shouldShow = now > quietUntil;
 
-    event.waitUntil(
-        Promise.all([
-            shouldShow ? sw.registration.showNotification(title, options) : Promise.resolve(),
-            // Use this wake-up to also pre-fetch if appropriate
-            preFetchActiveRooms()
-        ])
-    );
-});
+    const promises = [
+        shouldShow ? sw.registration.showNotification(title, options) : Promise.resolve(),
+        // Use this wake-up to also pre-fetch if appropriate
+        preFetchActiveRooms('push')
+    ];
+
+    // Register a one-off background sync to ensure data is fresh even if the
+    // initial pre-fetch wake-up is too brief.
+    if ('sync' in sw.registration) {
+        promises.push(sw.registration.sync.register('sync-unread-messages'));
+    }
+
+    await Promise.all(promises);
+}
 
 // Handle notification clicks
 sw.addEventListener('notificationclick', (event) => {
