@@ -87,6 +87,12 @@ fn show_main_window(app: &tauri::AppHandle) {
         let _ = window.show();
         let _ = window.set_focus();
 
+        #[cfg(target_os = "windows")]
+        {
+            // Windows-specific: ensure taskbar focus and bring to top
+            let _ = window.set_skip_taskbar(false);
+        }
+
         // 3. THE "KICKSTART": Open DevTools and request attention
         // window.open_devtools(); 
         let _ = window.request_user_attention(Some(tauri::UserAttentionType::Critical));
@@ -153,8 +159,6 @@ pub fn run() {
             
             // Register the main window in our generalized manager to ensure longevity
             app.state::<WindowMap>().0.lock().unwrap().insert("main".to_string(), window.clone());
-
-            window.open_devtools();
 
             #[cfg(any(target_os = "windows", target_os = "linux"))]
             {
@@ -240,13 +244,21 @@ pub fn run() {
                 .menu(&menu)
                 .tooltip("Tumult")
                 .on_tray_icon_event(|tray, event| {
-                    if let TrayIconEvent::Click {
-                        button: MouseButton::Left,
-                        button_state: MouseButtonState::Up,
-                        ..
-                    } = event
-                    {
-                        show_main_window(tray.app_handle());
+                    match event {
+                        TrayIconEvent::Click {
+                            button: MouseButton::Left,
+                            button_state: MouseButtonState::Up,
+                            ..
+                        } => {
+                            show_main_window(tray.app_handle());
+                        }
+                        TrayIconEvent::DoubleClick {
+                            button: MouseButton::Left,
+                            ..
+                        } => {
+                            show_main_window(tray.app_handle());
+                        }
+                        _ => {}
                     }
                 })
                 .build(app)?;
@@ -337,6 +349,7 @@ pub fn run() {
                     _ => {}
                  }
             }
+            #[cfg(target_os = "macos")]
             tauri::RunEvent::Reopen { .. } => {
                 show_main_window(app_handle);
             }

@@ -6,7 +6,8 @@
             :class="[
                 store.ui.sidebarOpen ? 'translate-x-0' : 'translate-x-[-100%] md:translate-x-0',
                 'fixed top-0 left-0 md:relative',
-                !store.ui.sidebarOpen && 'pointer-events-none md:pointer-events-auto'
+                !store.ui.sidebarOpen && 'pointer-events-none md:pointer-events-auto',
+                isTauri ? '' : 'top-safe'
             ]"
         >
             <!-- Servers Sidebar (Guild Bar) -->
@@ -72,7 +73,8 @@
                         class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 group shrink-0 relative"
                         :class="{ 'rounded-[16px]': isLinkActive(`/chat/spaces/${server.roomId}`) }"
                         @click="() => { store.ui.memberListVisible = false; }"
-                        @contextmenu="store.openRoomContextMenu(server.roomId)"
+                        @contextmenu.prevent="store.openRoomContextMenu(server.roomId)"
+                        v-long-press="() => { haptics.medium(); store.openRoomContextMenu(server.roomId); }"
                         as-child
                     >
                         <NuxtLink 
@@ -147,7 +149,8 @@
             :class="[
                 store.ui.memberListVisible ? 'translate-x-0 md:w-60' : 'translate-x-full md:translate-x-0 md:w-0',
                 'fixed top-0 left-0 md:left-auto md:right-0 md:relative',
-                !store.ui.memberListVisible && 'pointer-events-none'
+                !store.ui.memberListVisible && 'pointer-events-none',
+                isTauri ? '' : 'top-safe'
             ]"
         >
             <RoomMemberList :room="(currentRoom as any)" class="h-full w-full md:w-60 bg-background shrink-0" />
@@ -183,6 +186,7 @@ const isChatRoute = computed(() => {
 });
 
 const store = useMatrixStore();
+const { $isTauri: isTauri } = useNuxtApp();
 useGameActivity(); // Initialize game detection at layout level
 
 const sidebarRef = ref<any>(null);

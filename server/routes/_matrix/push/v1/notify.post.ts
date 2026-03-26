@@ -28,7 +28,7 @@ export default defineEventHandler(async (event) => {
 
     const notification = body.notification;
     if (!notification || !notification.devices || notification.devices.length === 0) {
-        return { status: 'ok', message: 'No devices to notify' };
+        return { rejected: [] };
     }
 
     // Configure web-push
@@ -124,7 +124,7 @@ export default defineEventHandler(async (event) => {
 
     await Promise.all(promises);
 
-    return { status: 'ok' };
+    return { rejected: [] };
 });
 
 // Helper to extract a readable summary of the message (Mirror of SW logic for server-side declarative push)

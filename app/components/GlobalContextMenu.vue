@@ -1,7 +1,12 @@
 <template>
   <UiContextMenu @update:open="onOpenChange">
-    <UiContextMenuTrigger class="contents" @contextmenu="onGlobalContextMenu">
-      <slot />
+    <UiContextMenuTrigger
+      class="contents"
+      @contextmenu="onGlobalContextMenu"
+    >
+      <div v-long-press="onGlobalLongPress" class="contents">
+        <slot />
+      </div>
     </UiContextMenuTrigger>
     <UiContextMenuContent class="w-64">
       <!-- Room Context Menu Content -->
@@ -32,7 +37,7 @@
             <UiContextMenuSeparator />
             <UiContextMenuItem @click="confirmLeave" class="cursor-pointer text-destructive focus:text-destructive">
               <Icon name="solar:logout-bold-duotone" class="mr-2 h-4 w-4" />
-              {{ isDM ? 'End the tumult' : 'Leave the uproar' }}
+              {{ isDM ? 'Close DM' : 'Leave the room' }}
             </UiContextMenuItem>
           </template>
 
@@ -61,7 +66,7 @@
             <UiContextMenuSeparator />
             <UiContextMenuItem @click="confirmLeave" class="cursor-pointer text-destructive focus:text-destructive">
               <Icon name="solar:logout-bold-duotone" class="mr-2 h-4 w-4" />
-              Abandon stronghold
+              Leave space
             </UiContextMenuItem>
           </template>
         </template>
@@ -149,6 +154,7 @@ import EmojiPicker from 'vue3-emoji-picker';
 import 'vue3-emoji-picker/css';
 
 const store = useMatrixStore();
+const haptics = useHaptics();
 const showReactionPicker = ref(false);
 
 // --- Global Actions ---
@@ -168,6 +174,12 @@ const onGlobalContextMenu = (e: MouseEvent) => {
     }, 10);
     return;
   }
+  store.setContextMenu('global');
+};
+
+const onGlobalLongPress = () => {
+  if (store.ui._contextMenuHandled) return;
+  haptics.medium();
   store.setContextMenu('global');
 };
 
