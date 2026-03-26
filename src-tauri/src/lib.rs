@@ -154,8 +154,6 @@ pub fn run() {
             // Register the main window in our generalized manager to ensure longevity
             app.state::<WindowMap>().0.lock().unwrap().insert("main".to_string(), window.clone());
 
-            window.open_devtools();
-
             #[cfg(any(target_os = "windows", target_os = "linux"))]
             {
                 window.set_decorations(false).unwrap();

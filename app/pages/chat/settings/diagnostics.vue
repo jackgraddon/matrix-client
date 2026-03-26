@@ -2,6 +2,17 @@
   <div class="space-y-4">
     <h2 class="text-2xl font-semibold tracking-tight">Diagnostics</h2>
 
+    <div class="flex gap-2">
+      <UiButton @click="getPushers" variant="outline" class="gap-2">
+        <Icon name="solar:monitor-bold-duotone" class="h-4 w-4" />
+        Get Pushers
+      </UiButton>
+      <UiButton @click="resetPusher" variant="destructive" class="gap-2" :disabled="isResettingPusher">
+        <Icon :name="isResettingPusher ? 'solar:refresh-bold' : 'solar:refresh-bold-duotone'" class="h-4 w-4" :class="{ 'animate-spin': isResettingPusher }" />
+        {{ isResettingPusher ? 'Fixing...' : 'Fix Pusher URL' }}
+      </UiButton>
+    </div>
+
     <div class="flex items-center justify-between">
       <div>
         <p class="text-sm text-muted-foreground mt-0.5">Check your voice call setup and connectivity</p>
@@ -78,6 +89,30 @@
         </UiCardContent>
       </UiCard>
 
+      <!-- Push Notifications -->
+      <UiCard>
+        <UiCardHeader class="pb-2 pt-4 px-4">
+          <UiCardTitle class="text-sm font-medium flex items-center gap-2">
+            <Icon name="solar:bell-bold-duotone" class="h-4 w-4 text-muted-foreground" />
+            Push Notifications
+          </UiCardTitle>
+        </UiCardHeader>
+        <UiCardContent class="px-4 pb-4 space-y-2">
+          <DiagRow label="Service Worker" :status="getStatus(diagnostics.push.serviceWorker)" />
+          <DiagRow label="Push Manager" :status="getStatus(diagnostics.push.pushManager)" />
+          <DiagRow label="Notification Permission" :status="getStatus(diagnostics.push.permission)" />
+          <DiagRow label="Push Subscription" :status="getStatus(diagnostics.push.subscription)" />
+          <DiagRow label="Matrix Pusher Registered" :status="getStatus(diagnostics.push.pusherRegistered)" />
+          <DiagRow label="Pusher URL Correct" :status="getStatus(diagnostics.push.pusherUrlCorrect)" />
+          <div v-if="diagnostics.push.pusherUrl" class="mt-2 p-2 rounded bg-muted/40 font-mono text-[10px] break-all text-muted-foreground">
+            <span class="text-foreground font-semibold">Registered URL: </span>{{ diagnostics.push.pusherUrl }}
+          </div>
+          <div v-if="diagnostics.push.expectedUrl" class="p-2 rounded bg-muted/40 font-mono text-[10px] break-all text-muted-foreground">
+            <span class="text-foreground font-semibold">Expected URL: </span>{{ diagnostics.push.expectedUrl }}
+          </div>
+        </UiCardContent>
+      </UiCard>
+
     </div>
 
     <!-- Results Log -->
@@ -140,6 +175,62 @@
 
     </template>
 
+    <!-- Pusher reset status -->
+    <UiCard v-if="pusherResetStatus" :class="pusherResetStatus.ok ? 'border-green-500/40 bg-green-500/5' : 'border-destructive/40 bg-destructive/5'">
+      <UiCardContent class="px-4 py-4 flex items-center gap-3">
+        <Icon
+          :name="pusherResetStatus.ok ? 'solar:check-circle-bold' : 'solar:close-circle-bold'"
+          class="h-5 w-5 shrink-0"
+          :class="pusherResetStatus.ok ? 'text-green-500' : 'text-destructive'"
+        />
+        <p class="text-sm" :class="pusherResetStatus.ok ? 'text-green-700 dark:text-green-400' : 'text-destructive'">
+          {{ pusherResetStatus.message }}
+        </p>
+      </UiCardContent>
+    </UiCard>
+
+    <!-- Matrix Pushers List -->
+    <UiCard>
+      <UiCardHeader class="pb-2 pt-4 px-4">
+        <UiCardTitle class="text-sm font-medium flex items-center gap-2">
+          <Icon name="solar:notification-lines-remove-bold-duotone" class="h-4 w-4 text-muted-foreground" />
+          Matrix Pushers
+        </UiCardTitle>
+      </UiCardHeader>
+      <UiCardContent class="px-4 pb-4">
+        <div v-if="pusherList.length === 0" class="text-xs text-muted-foreground py-2">
+          No pushers found. Click "Get Pushers" to refresh.
+        </div>
+        <div v-else class="space-y-3">
+          <div v-for="p in pusherList" :key="p.pushkey" class="p-2 border rounded-md bg-muted/30 space-y-1">
+            <div class="flex justify-between items-center">
+              <span class="font-mono text-xs font-bold">{{ p.app_id }}</span>
+              <div class="flex items-center gap-1.5">
+                <!-- Flag bad Tumult pusher URL inline -->
+                <span
+                  v-if="p.app_id === 'cc.jackg' && !isCorrectPusherUrl(p.data?.url)"
+                  class="text-[10px] px-1.5 py-0.5 rounded-full bg-destructive/10 text-destructive font-medium"
+                >
+                  Wrong URL
+                </span>
+                <span
+                  v-else-if="p.app_id === 'cc.jackg'"
+                  class="text-[10px] px-1.5 py-0.5 rounded-full bg-green-500/10 text-green-600 dark:text-green-400 font-medium"
+                >
+                  URL OK
+                </span>
+                <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary">{{ p.kind || 'none' }}</span>
+              </div>
+            </div>
+            <div class="text-[10px] text-muted-foreground break-all">
+              <p><strong>Pusher URL:</strong> {{ p.data?.url || 'N/A' }}</p>
+              <p><strong>Display:</strong> {{ p.app_display_name }} ({{ p.device_display_name }})</p>
+            </div>
+          </div>
+        </div>
+      </UiCardContent>
+    </UiCard>
+
     <!-- Debug: Room State Dump (dev tool) -->
     <UiCard class="border-dashed">
       <UiCardHeader class="pb-2 pt-4 px-4">
@@ -173,11 +264,26 @@ definePageMeta({
 
 import { ref, reactive } from 'vue';
 import { useMatrixStore } from '~/stores/matrix';
+import { Method } from 'matrix-js-sdk';
 
+const { $isTauri: isTauri } = useNuxtApp();
 const matrixStore = useMatrixStore();
+const config = useRuntimeConfig();
+
 const isRunning = ref(false);
 const hasRun = ref(false);
+const isResettingPusher = ref(false);
 const debugRoomId = ref('');
+const pusherList = ref<any[]>([]);
+const pusherResetStatus = ref<{ ok: boolean; message: string } | null>(null);
+
+// The correct URL is the Nuxt server route path directly.
+// The homeserver POSTs to this URL as-is (does NOT append anything).
+const CORRECT_PUSHER_URL = 'https://tumult.jackg.cc/api/_matrix/push/v1/notify';
+
+function isCorrectPusherUrl(url: string | undefined): boolean {
+  return url === CORRECT_PUSHER_URL;
+}
 
 // Tri-state: null = not yet checked, true = pass, false = fail
 const diagnostics = reactive({
@@ -200,11 +306,93 @@ const diagnostics = reactive({
     e2ee: null as boolean | null,
     websocket: null as boolean | null,
   },
+  push: {
+    serviceWorker: null as boolean | null,
+    pushManager: null as boolean | null,
+    permission: null as boolean | null,
+    subscription: null as boolean | null,
+    pusherRegistered: null as boolean | null,
+    pusherUrlCorrect: null as boolean | null,
+    pusherUrl: null as string | null,
+    expectedUrl: null as string | null,
+  },
   errors: [] as string[],
   successes: [] as string[],
   recommendations: [] as string[],
 });
 
+async function getPushers() {
+  if (!matrixStore.client) return;
+  const pushers = await matrixStore.client.getPushers();
+  pusherList.value = pushers.pushers;
+  console.log(pushers);
+}
+
+/**
+ * Directly overwrites the Tumult pusher on the homeserver with the correct URL.
+ * 
+ * We do NOT delete-and-reload because that just re-registers using the same
+ * broken NUXT_PUBLIC_PUSH_RELAY_URL env var, ending up back at the Sygnal address.
+ * Instead, setPusher with the same app_id overwrites the existing entry in-place.
+ */
+async function resetPusher() {
+  if (!matrixStore.client) {
+    pusherResetStatus.value = { ok: false, message: 'Matrix client not ready.' };
+    return;
+  }
+
+  isResettingPusher.value = true;
+  pusherResetStatus.value = null;
+
+  try {
+    // Always fetch fresh from the server so we have the exact pushkey
+    const { pushers } = await matrixStore.client.getPushers();
+    pusherList.value = pushers;
+
+    const tumultPusher = pushers.find((p: any) => p.app_id === 'cc.jackg');
+
+    if (!tumultPusher) {
+      pusherResetStatus.value = { ok: false, message: 'No Tumult pusher found on the homeserver. Open the app fresh to register one.' };
+      return;
+    }
+
+    // Re-use the existing pushkey exactly as stored — no SW lookup needed.
+    // setPusher with the same app_id overwrites the entry in-place on the homeserver.
+    await matrixStore.client.setPusher({
+      app_id: 'cc.jackg',
+      app_display_name: 'Tumult',
+      device_display_name: tumultPusher.device_display_name ?? 'Web Client',
+      pushkey: tumultPusher.pushkey,  // exact value already on the server
+      kind: 'http',
+      lang: 'en',
+      data: {
+        url: CORRECT_PUSHER_URL,
+      },
+    });
+
+    // Refresh and verify
+    const after = await matrixStore.client.getPushers();
+    pusherList.value = after.pushers;
+
+    const updated = after.pushers.find((p: any) => p.app_id === 'cc.jackg');
+    if (updated && isCorrectPusherUrl(updated.data?.url)) {
+      pusherResetStatus.value = { ok: true, message: `✓ Pusher URL fixed → ${CORRECT_PUSHER_URL}` };
+    } else {
+      pusherResetStatus.value = {
+        ok: false,
+        message: `Pusher was updated but URL still shows: "${updated?.data?.url ?? 'unknown'}". The homeserver may have rejected the change.`
+      };
+    }
+  } catch (error) {
+    console.error('[Diagnostics] resetPusher failed:', error);
+    pusherResetStatus.value = {
+      ok: false,
+      message: `Error: ${error instanceof Error ? error.message : String(error)}`
+    };
+  } finally {
+    isResettingPusher.value = false;
+  }
+}
 // Maps boolean | null to a display status
 function getStatus(val: boolean | null): 'pending' | 'pass' | 'fail' {
   if (val === null) return 'pending';
@@ -223,12 +411,14 @@ async function runDiagnostics() {
   Object.keys(diagnostics.network).forEach(k => (diagnostics.network as any)[k] = null);
   Object.keys(diagnostics.matrixRTC).forEach(k => (diagnostics.matrixRTC as any)[k] = null);
   Object.keys(diagnostics.livekit).forEach(k => (diagnostics.livekit as any)[k] = null);
+  Object.keys(diagnostics.push).forEach(k => (diagnostics.push as any)[k] = null);
 
   try {
     await checkBrowserCapabilities();
     await checkNetworkConnectivity();
     await checkMatrixRTC();
     await checkLiveKit();
+    await checkPushNotifications();
     generateRecommendations();
     hasRun.value = true;
   } catch (error) {
@@ -359,6 +549,81 @@ async function checkLiveKit() {
   }
 }
 
+async function checkPushNotifications() {
+  // Service Worker
+  diagnostics.push.serviceWorker = 'serviceWorker' in navigator;
+  if (!diagnostics.push.serviceWorker) {
+    diagnostics.errors.push('Service Worker not supported — background push is impossible');
+    diagnostics.push.pushManager = false;
+    diagnostics.push.permission = false;
+    diagnostics.push.subscription = false;
+    diagnostics.push.pusherRegistered = false;
+    diagnostics.push.pusherUrlCorrect = false;
+    return;
+  }
+
+  // Push Manager
+  diagnostics.push.pushManager = 'PushManager' in window;
+  if (!diagnostics.push.pushManager) {
+    diagnostics.errors.push('PushManager not available — this browser cannot receive push notifications');
+  }
+
+  // Notification Permission
+  const permission = Notification.permission;
+  diagnostics.push.permission = permission === 'granted';
+  if (permission === 'denied') {
+    diagnostics.errors.push('Notification permission denied — user must re-enable in iOS Settings');
+  } else if (permission === 'default') {
+    diagnostics.errors.push('Notification permission not yet granted');
+  }
+
+  // Push Subscription
+  try {
+    const swReg = await navigator.serviceWorker.ready;
+    const sub = await swReg.pushManager.getSubscription();
+    diagnostics.push.subscription = !!sub;
+    if (!sub) {
+      diagnostics.errors.push('No active push subscription — the app needs to be re-opened to re-subscribe');
+    }
+  } catch (e) {
+    diagnostics.push.subscription = false;
+    diagnostics.errors.push(`Push subscription check failed: ${e instanceof Error ? e.message : String(e)}`);
+  }
+
+  // Matrix Pusher & URL check
+  if (!matrixStore.client) {
+    diagnostics.push.pusherRegistered = false;
+    diagnostics.push.pusherUrlCorrect = false;
+    return;
+  }
+
+  try {
+    const { pushers } = await matrixStore.client.getPushers();
+    pusherList.value = pushers; // keep the list in sync
+    const tumultPusher = pushers.find((p: any) => p.app_id === 'cc.jackg');
+
+    diagnostics.push.pusherRegistered = !!tumultPusher;
+    if (!tumultPusher) {
+      diagnostics.errors.push('No Tumult pusher registered on the homeserver — push will not be delivered when closed');
+    } else {
+      const registeredUrl = tumultPusher.data?.url ?? '';
+      diagnostics.push.pusherUrl = registeredUrl;
+      diagnostics.push.expectedUrl = CORRECT_PUSHER_URL;
+      diagnostics.push.pusherUrlCorrect = isCorrectPusherUrl(registeredUrl);
+
+      if (!diagnostics.push.pusherUrlCorrect) {
+        diagnostics.errors.push(
+          `Pusher URL is wrong: "${registeredUrl}". Click "Fix Pusher URL" to correct it.`
+        );
+      }
+    }
+  } catch (e) {
+    diagnostics.push.pusherRegistered = false;
+    diagnostics.push.pusherUrlCorrect = false;
+    diagnostics.errors.push(`Failed to fetch pushers: ${e instanceof Error ? e.message : String(e)}`);
+  }
+}
+
 function generateRecommendations() {
   if (!diagnostics.browser.getUserMedia) {
     diagnostics.recommendations.push('Enable microphone/camera permissions in your browser or OS settings');
@@ -371,6 +636,12 @@ function generateRecommendations() {
   }
   if (!diagnostics.livekit.e2ee) {
     diagnostics.recommendations.push('Use a browser with WebCrypto support (Chrome, Firefox, Safari) for E2EE');
+  }
+  if (diagnostics.push.pusherRegistered && !diagnostics.push.pusherUrlCorrect) {
+    diagnostics.recommendations.push('Click "Fix Pusher URL" at the top of this page to correct the push relay address');
+  }
+  if (!diagnostics.push.permission) {
+    diagnostics.recommendations.push('On iOS, make sure this app is added to your Home Screen and notifications are enabled in Settings → Notifications');
   }
 }
 
