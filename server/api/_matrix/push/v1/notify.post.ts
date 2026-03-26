@@ -40,6 +40,13 @@ export default defineEventHandler(async (event) => {
 
     const promises = notification.devices.map(async (device: any) => {
         try {
+            // 1. Skip self-notifications
+            // Check the registered user_id in device.data against the event sender
+            if (device.data?.user_id && device.data.user_id === notification.sender) {
+                console.log(`[Push Relay] 🛑 Skipping self-notification for ${notification.sender} on device ${device.pushkey.slice(-15)}`);
+                return;
+            }
+
             let subscription;
             try {
                 subscription = JSON.parse(device.pushkey);
@@ -50,12 +57,13 @@ export default defineEventHandler(async (event) => {
 
             // --- 2026 Standards: Declarative Web Push Construction ---
             // We move the formatting logic to the server so we can support Declarative Web Push (Safari 18.4+)
-            const sender = notification.sender_display_name || 'Someone';
+            const sender = notification.sender_display_name || notification.sender || 'Someone';
             const roomName = notification.room_name;
             const bodyText = getMessageSummary(notification.content);
 
-            const title = roomName || sender;
-            const notificationBody = roomName ? `${sender}: ${bodyText}` : bodyText;
+            // Match frontend title: 'User in Room' or just 'User' for DMs
+            const title = roomName ? `${sender} in ${roomName}` : sender;
+            const notificationBody = bodyText;
             const urlToOpen = notification.room_id ? `/chat/rooms/${notification.room_id}` : '/chat';
 
             // Hybrid Payload: Supports both Declarative Web Push and Imperative Service Worker fallback
@@ -81,14 +89,36 @@ export default defineEventHandler(async (event) => {
                 }
             });
 
-            await webpush.sendNotification(subscription, payload);
-            console.log('[Push Relay] Successfully forwarded notification to:', subscription.endpoint);
-        } catch (err: any) {
-            if (err.statusCode === 410 || err.statusCode === 404) {
-                console.warn('[Push Relay] Subscription expired or removed (410 Gone):', device.pushkey);
-            } else {
-                console.error('[Push Relay] Failed to send notification:', err.message);
+            try {
+                const result = await webpush.sendNotification(subscription, payload);
+
+                // ✅ This is what you want to see — APNs accepted the message
+                console.log('[Push Relay] ✅ Delivered:', {
+                    status: result.statusCode,      // Should be 201
+                    endpoint: subscription.endpoint.slice(-30), // Last 30 chars to identify without leaking full URL
+                    room: notification.room_id,
+                    sender: notification.sender,
+                    event_id: notification.event_id
+                });
+
+            } catch (err: any) {
+                // ❌ webpush throws on any non-2xx response — all failures land here
+                console.error('[Push Relay] ❌ Delivery failed:', {
+                    status: err.statusCode,         // 403 = VAPID mismatch, 410 = dead sub, 400 = bad payload
+                    body: err.body,                 // APNs error string e.g. "InvalidVapidKey", "ExpiredSubscription"
+                    endpoint: subscription.endpoint?.slice(-30),
+                    room: notification.room_id,
+                    sender: notification.sender,
+                    event_id: notification.event_id
+                });
+
+                // Clean up dead subscriptions (410 = expired, 404 = not found)
+                if (err.statusCode === 410 || err.statusCode === 404) {
+                    console.warn('[Push Relay] 🗑️ Dead subscription — you should remove this pushkey from your DB');
+                }
             }
+        } catch (err: any) {
+            console.error('[Push Relay] Fatal processing error:', err.message);
         }
     });
 
@@ -112,7 +142,7 @@ function getMessageSummary(content: any) {
         case 'm.emote':
             return content.body;
         case 'm.image':
-            return 'Sent an image';
+            return `Sent an image: ${content.body || 'filename'}`;
         case 'm.video':
             return 'Sent a video';
         case 'm.audio':

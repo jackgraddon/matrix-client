@@ -63,6 +63,7 @@ export default defineNuxtPlugin(async (nuxtApp) => {
                 lang: 'en',
                 data: {
                     url: relayUrl,
+                    user_id: store.client.getUserId(),
                 },
             });
             console.log('[PushPlugin] Matrix Pusher registered successfully');
