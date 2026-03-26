@@ -1,6 +1,6 @@
 <template>
   <aside class="w-full md:w-60 flex flex-col shrink-0 h-full relative">
-    <div class="p-4 border-b border-border/50 flex items-center gap-2">
+    <div class="p-4 flex items-center gap-2">
       <UiButton
         variant="ghost"
         size="icon-sm"

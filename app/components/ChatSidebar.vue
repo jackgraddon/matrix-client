@@ -1,25 +1,24 @@
 <template>
-    <aside class="flex h-full flex-col w-full md:w-[250px] shrink-0 bg-sidebar">
-        <header class="h-16 flex items-center px-4 justify-between">
+    <aside class="flex h-full flex-col w-full md:w-[250px] shrink-0">
+        <header class="flex items-center h-12 p-2 justify-between">
             <div class="flex items-center gap-2 overflow-hidden">
                 <UiButton 
                     variant="ghost" 
                     size="icon" 
-                    class="md:hidden shrink-0" 
+                    class="md:hidden" 
                     @click="store.toggleSidebar(false)"
                 >
-                    <Icon name="solar:close-circle-linear" class="h-6 w-6" />
+                    <Icon name="solar:close-circle-linear" />
                 </UiButton>
-                <h2 class="text-lg font-semibold flex items-center gap-2 truncate">
-                    <Icon name="solar:chat-round-dots-bold" class="h-5 w-5 shrink-0" />
+                <Icon name="solar:chat-round-dots-bold" />
+                <h2 class="text-lg font-semibold truncate">
                     {{ routeName.length > 0 ? routeName : 'Tumult' }}
                 </h2>
             </div>
             <UiButton 
                 v-if="activeSpaceId && isLinkActive('/chat/spaces')"
                 variant="ghost" 
-                size="icon" 
-                class="shrink-0"
+                size="icon-sm" 
                 @click="store.openSpaceSettingsModal(activeSpaceId)"
                 title="Space Settings"
             > 

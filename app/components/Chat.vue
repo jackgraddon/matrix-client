@@ -500,7 +500,7 @@
           
           <button 
             @click.prevent="removeStagedFile(index)" 
-            class="absolute -top-2 -right-2 bg-background border border-border hover:bg-destructive hover:text-destructive-foreground text-foreground rounded-full p-1 transition-colors shadow-md"
+            class="absolute -top-2 -right-2 bg-background border border-border hover:bg-destructive hover:text-destructive-foreground text-foreground rounded-full p-1 transition-colors"
             title="Remove attachment"
           >
              <Icon name="solar:close-circle-bold" class="h-4 w-4" />
@@ -533,7 +533,7 @@
           class="hidden"
           @change="handleFileSelect"
         />
-        <UiInputGroup class="bg-background rounded-2xl shadow flex items-end p-1 gap-1">
+        <UiInputGroup class="bg-background rounded-2xl flex items-end p-1 gap-1">
           <UiInputGroupAddon align="inline-start">
             <UiDropdownMenu>
               <UiDropdownMenuTrigger as-child>

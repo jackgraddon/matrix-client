@@ -120,13 +120,13 @@
 
         <!-- Main Content -->
         <main 
-            class="flex-1 flex-col min-w-0 min-h-0 p-2 pt-0 transition-transform duration-300 ease-in-out z-20"
+            class="flex-1 flex-col min-w-0 min-h-0 mr-2 mb-2 transition-transform duration-300 ease-in-out z-20"
             :class="[
                 store.ui.sidebarOpen ? 'translate-x-full md:translate-x-0' : (store.ui.memberListVisible ? '-translate-x-full md:translate-x-0' : 'translate-x-0')
             ]"
         >
             <!-- Lighter background for the main chat area to contrast with the root background -->
-            <div class="rounded-lg h-full bg-sidebar md:bg-card min-w-0 flex flex-col min-h-0 overflow-hidden relative shadow-sm">
+            <div class="rounded-lg h-full bg-sidebar md:bg-card min-w-0 flex flex-col min-h-0 overflow-hidden relative">
                 <!-- Mobile Overlays to close sidebars -->
                 <div 
                     v-if="store.ui.sidebarOpen" 
