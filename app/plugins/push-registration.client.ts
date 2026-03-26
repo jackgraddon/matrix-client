@@ -13,7 +13,7 @@ export default defineNuxtPlugin(async (nuxtApp) => {
      */
     const isVapidKeyMatch = (appServerKey: ArrayBuffer | null, vapidBase64: string): boolean => {
         if (!appServerKey) return false;
-
+        
         try {
             // Convert base64 to Uint8Array
             const binaryString = atob(vapidBase64.replace(/-/g, '+').replace(/_/g, '/'));
@@ -58,29 +58,46 @@ export default defineNuxtPlugin(async (nuxtApp) => {
             // 2. If no subscription (or just unsubscribed), create one
             if (!subscription) {
                 console.log('[PushPlugin] Requesting new push subscription...');
+
+                // Convert base64 VAPID key to Uint8Array for cross-browser support
+                const binaryString = atob(vapidPublicKey.replace(/-/g, '+').replace(/_/g, '/'));
+                const vapidKey = new Uint8Array(binaryString.length);
+                for (let i = 0; i < binaryString.length; i++) {
+                    vapidKey[i] = binaryString.charCodeAt(i);
+                }
+
                 subscription = await registration.pushManager.subscribe({
                     userVisibleOnly: true,
-                    applicationServerKey: vapidPublicKey
+                    applicationServerKey: vapidKey
                 });
             }
 
             if (subscription && store.client) {
-                // 3. Verify if we already have this pusher registered on the homeserver and if it's valid
+                // 3. Ensure we have a notification decryption key for Zero-Knowledge push
+                const { getOrCreateNotificationKey } = await import('~/utils/crypto-db');
+                const { jwk } = await getOrCreateNotificationKey();
+
+                // 4. Verify if we already have this pusher registered on the homeserver and if it's valid
                 const { pushers } = await store.client.getPushers();
                 const currentPusher = pushers.find(p => p.app_id === 'cc.jackg');
-
+                
                 let needsUpdate = !currentPusher;
-
+                
                 if (currentPusher) {
                     // Check if the pushkey is valid JSON (not an old FCM URL)
                     try {
                         JSON.parse(currentPusher.pushkey);
-
+                        
                         // Check if URL matches
                         const relayUrl = (store.customPushEndpoint || defaultRelayUrl).replace(/\/$/, '');
                         const expectedUrl = `${relayUrl}/_matrix/push/v1/notify`;
-                        if (currentPusher.data?.url !== expectedUrl) {
-                            console.log('[PushPlugin] Pusher URL mismatch, updating...');
+                        
+                        // Check if key matches
+                        const hasKey = currentPusher.data?.ek && typeof currentPusher.data.ek === 'object';
+                        const keyMatch = hasKey && JSON.stringify(currentPusher.data.ek) === JSON.stringify(jwk);
+
+                        if (currentPusher.data?.url !== expectedUrl || !keyMatch) {
+                            console.log('[PushPlugin] Pusher URL or Encryption Key mismatch, updating...');
                             needsUpdate = true;
                         }
                     } catch (e) {
@@ -90,7 +107,7 @@ export default defineNuxtPlugin(async (nuxtApp) => {
                 }
 
                 if (needsUpdate) {
-                    await registerMatrixPusher(subscription);
+                    await registerMatrixPusher(subscription, jwk);
                 } else {
                     console.log('[PushPlugin] Matrix Pusher is already up to date');
                 }
@@ -100,18 +117,18 @@ export default defineNuxtPlugin(async (nuxtApp) => {
         }
     };
 
-    const registerMatrixPusher = async (subscription: PushSubscription) => {
+    const registerMatrixPusher = async (subscription: PushSubscription, encryptionKey: JsonWebKey) => {
         if (!store.client) return;
 
         try {
             // We stringify the entire subscription object and send it as the "pushkey".
             // The relay server will then parse it back to get the endpoint, p256dh, and auth keys.
             const pushKey = JSON.stringify(subscription.toJSON());
-
+            
             // Normalize relay URL to remove trailing slash
             const relayUrl = (store.customPushEndpoint || defaultRelayUrl).replace(/\/$/, '');
 
-            console.log('[PushPlugin] Registering Matrix Pusher with relay:', relayUrl);
+            console.log('[PushPlugin] Registering Matrix Pusher with relay (Zero-Knowledge enabled):', relayUrl);
 
             await store.client.setPusher({
                 app_id: 'cc.jackg',
@@ -122,6 +139,7 @@ export default defineNuxtPlugin(async (nuxtApp) => {
                 lang: 'en',
                 data: {
                     url: `${relayUrl}/_matrix/push/v1/notify`,
+                    ek: encryptionKey // "Encryption Key" for blind relay
                 },
             });
             console.log('[PushPlugin] Matrix Pusher registered successfully');

@@ -380,6 +380,10 @@ async function resetPusher() {
     }
 
     // Re-use the existing pushkey exactly as stored — no SW lookup needed.
+    // Ensure we have a notification key
+    const { getOrCreateNotificationKey } = await import('~/utils/crypto-db');
+    const { jwk } = await getOrCreateNotificationKey();
+
     // setPusher with the same app_id overwrites the entry in-place on the homeserver.
     await (matrixStore.client as any).setPusher({
       app_id: 'cc.jackg',
@@ -390,6 +394,7 @@ async function resetPusher() {
       lang: 'en',
       data: {
         url: CORRECT_PUSHER_URL,
+        ek: jwk, // Ensure Zero-Knowledge is enabled
       },
     });
 
@@ -445,10 +450,23 @@ async function hardResetPush() {
     }
 
     console.log('[Diagnostics] Re-subscribing...');
+    
+    // Convert base64 VAPID key to Uint8Array for cross-browser support
+    const vapidBase64 = config.public.push.vapidPublicKey;
+    const binaryString = atob(vapidBase64.replace(/-/g, '+').replace(/_/g, '/'));
+    const vapidKey = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+        vapidKey[i] = binaryString.charCodeAt(i);
+    }
+
     const newSub = await registration.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey: config.public.push.vapidPublicKey
+      applicationServerKey: vapidKey
     });
+
+    console.log('[Diagnostics] Ensuring notification key exists...');
+    const { getOrCreateNotificationKey } = await import('~/utils/crypto-db');
+    const { jwk } = await getOrCreateNotificationKey();
 
     console.log('[Diagnostics] Registering new pusher on homeserver...');
     await (matrixStore.client as any).setPusher({
@@ -460,6 +478,7 @@ async function hardResetPush() {
       lang: 'en',
       data: {
         url: CORRECT_PUSHER_URL,
+        ek: jwk, // Enable Zero-Knowledge for the new subscription
       },
     });
 

@@ -32,7 +32,7 @@ export default defineNuxtConfig({
       contactEmail: process.env.NUXT_MATRIX_CONTACT_EMAIL || 'admin@localho.st',
     },
     vapid: {
-      publicKey: process.env.NUXT_VAPID_PUBLIC_KEY || 'BG1ZIw13v4KW4i2Xu6cV8IdPBgvXWj2E3CmjmI5njf_rCf05h0jv3D85uzKvn9YAuwMd0UBZfDDlbr3hbutwF_Y',
+      publicKey: process.env.NUXT_VAPID_PUBLIC_KEY || '',
       privateKey: process.env.NUXT_VAPID_PRIVATE_KEY || '',
       subject: process.env.NUXT_VAPID_SUBJECT || 'mailto:admin@tumult.jackg.cc',
     },

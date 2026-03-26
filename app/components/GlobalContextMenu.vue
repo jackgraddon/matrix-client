@@ -32,7 +32,7 @@
             <UiContextMenuSeparator />
             <UiContextMenuItem @click="confirmLeave" class="cursor-pointer text-destructive focus:text-destructive">
               <Icon name="solar:logout-bold-duotone" class="mr-2 h-4 w-4" />
-              {{ isDM ? 'End the tumult' : 'Leave the uproar' }}
+              {{ isDM ? 'Close DM' : 'Leave the room' }}
             </UiContextMenuItem>
           </template>
 
@@ -61,7 +61,7 @@
             <UiContextMenuSeparator />
             <UiContextMenuItem @click="confirmLeave" class="cursor-pointer text-destructive focus:text-destructive">
               <Icon name="solar:logout-bold-duotone" class="mr-2 h-4 w-4" />
-              Abandon stronghold
+              Leave space
             </UiContextMenuItem>
           </template>
         </template>
