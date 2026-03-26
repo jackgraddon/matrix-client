@@ -125,7 +125,8 @@
                 store.ui.sidebarOpen ? 'translate-x-full md:translate-x-0' : (store.ui.memberListVisible ? '-translate-x-full md:translate-x-0' : 'translate-x-0')
             ]"
         >
-            <div class="rounded-lg h-full bg-card min-w-0 flex flex-col min-h-0 overflow-hidden relative">
+            <!-- Lighter background for the main chat area to contrast with the root background -->
+            <div class="rounded-lg h-full bg-sidebar md:bg-card min-w-0 flex flex-col min-h-0 overflow-hidden relative shadow-sm">
                 <!-- Mobile Overlays to close sidebars -->
                 <div 
                     v-if="store.ui.sidebarOpen" 
