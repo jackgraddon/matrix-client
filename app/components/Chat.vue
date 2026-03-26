@@ -343,7 +343,7 @@
                   class="rounded-2xl mt-1 px-3.5 py-2 overflow-hidden flex flex-col gap-1"
                   :class="msg.isOwn
                     ? 'bg-primary rounded-br-md text-primary-foreground'
-                    : 'bg-background border border-border/50 rounded-bl-md text-foreground'"
+                    : 'bg-muted border border-border/50 rounded-bl-md text-foreground'"
                 >
                   <MessageContent 
                     v-if="!msg.isUrlOnly"
@@ -583,7 +583,13 @@
             placeholder="Type a message..."
             rows="1" 
             class="min-h-10 max-h-[200px] resize-none border-0 focus-visible:ring-0 shadow-none py-2.5 flex-1 text-base md:text-sm"
-            @keydown.enter.exact.prevent="sendMessage"
+            @keydown.enter.exact="(e) => {
+              const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+              if (!isMobile) {
+                e.preventDefault();
+                sendMessage();
+              }
+            }"
             @input="autoResize"
             @paste="handlePaste"
           />
@@ -1469,6 +1475,7 @@ async function handleTypingInput() {
 
 async function sendMessage() {
   if (!canSend.value || !store.client) return;
+  haptics.light();
   
   const text = newMessage.value.trim();
   const filesToSend = [...stagedFiles.value]; // Copy array

@@ -1,5 +1,5 @@
 <template>
-    <aside class="flex h-full flex-col w-full md:w-[250px] shrink-0">
+    <aside class="flex h-full flex-col w-full md:w-[250px] shrink-0 bg-sidebar">
         <header class="h-16 flex items-center px-4 justify-between">
             <div class="flex items-center gap-2 overflow-hidden">
                 <UiButton 

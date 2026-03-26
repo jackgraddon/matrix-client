@@ -10,6 +10,8 @@ export default defineNuxtPlugin((nuxtApp) => {
       const MOVE_THRESHOLD = 10;
 
       const start = (e: any) => {
+        const store = useMatrixStore();
+
         // Only primary mouse button or touch
         if (e.type === 'mousedown' && e.button !== 0) return;
 
@@ -24,7 +26,9 @@ export default defineNuxtPlugin((nuxtApp) => {
             binding.value(e);
 
             // Light haptic feedback to signal trigger
-            if ('vibrate' in navigator) navigator.vibrate(10);
+            if (store.ui.hapticFeedbackEnabled && 'vibrate' in navigator) {
+              navigator.vibrate(10);
+            }
 
             // Prevent default behavior to avoid native menus after trigger
             if (e.cancelable) e.preventDefault();

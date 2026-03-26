@@ -1,5 +1,8 @@
 <template>
-    <div class="flex flex-row h-full relative overflow-hidden">
+    <div
+        class="flex flex-row h-full relative overflow-hidden pb-safe pl-safe pr-safe"
+        :class="isTauri ? 'pt-[30px]' : 'pt-safe'"
+    >
         <!-- Sidebar Pane (Guild Bar + Chat Sidebar) -->
         <div 
             class="flex flex-row h-full shrink-0 transition-transform duration-300 ease-in-out z-10 w-full md:w-auto"
@@ -11,7 +14,7 @@
             ]"
         >
             <!-- Servers Sidebar (Guild Bar) -->
-            <aside class="rounded-lg ml-2 mb-2 flex flex-col items-center p-2 gap-2 shrink-0 overflow-y-auto overflow-x-hidden bg-background">
+            <aside class="rounded-lg ml-2 mb-2 flex flex-col items-center p-2 gap-2 shrink-0 overflow-y-auto overflow-x-hidden bg-sidebar">
                 <!-- Home Button -->
                 <UiButton 
                     class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 flex items-center justify-center shrink-0 relative group" 
@@ -153,7 +156,7 @@
                 isTauri ? '' : 'top-safe'
             ]"
         >
-            <RoomMemberList :room="(currentRoom as any)" class="h-full w-full md:w-60 bg-background shrink-0" />
+            <RoomMemberList :room="(currentRoom as any)" class="h-full w-full md:w-60 bg-sidebar shrink-0" />
         </div>
     </div>
     <VerificationModal />
