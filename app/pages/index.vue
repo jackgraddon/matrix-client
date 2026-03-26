@@ -32,11 +32,7 @@
 
     <!-- CTA -->
     <div class="flex flex-col items-center gap-6">
-      <div v-if="isRestoringSession" class="flex flex-col items-center gap-4 py-4">
-          <UiSpinner class="size-8 text-primary" />
-          <p class="text-sm text-muted-foreground">Restoring your session...</p>
-      </div>
-      <div v-else-if="!isAuthenticated" class="flex flex-col items-center gap-4">
+      <div v-if="!isAuthenticated" class="flex flex-col items-center gap-4">
         <UiButton size="lg" class="text-xl p-6 shadow-xl" as-child>
           <NuxtLink to="/login">
             Reclaim your conversations

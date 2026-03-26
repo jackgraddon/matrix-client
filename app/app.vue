@@ -6,12 +6,26 @@
     <CustomTitlebar v-if="isTauri" />
     <component :is="'style'" v-if="store.ui.customCss" v-html="store.ui.customCss" />
     <div 
-      class="h-screen w-screen transition-colors overflow-hidden bg-neutral-100 dark:bg-neutral-900 text-foreground pb-safe pl-safe pr-safe"
+      class="h-screen w-screen transition-colors overflow-hidden bg-background text-foreground"
       :class="[
-        isTauri ? 'pt-[30px]' : 'pt-safe',
         store.ui.themePreset !== 'default' ? 'theme-' + store.ui.themePreset : ''
       ]"
     >
+      <!-- Splash Screen / Restoration Overlay -->
+      <div
+        v-if="store.isRestoringSession"
+        class="fixed inset-0 z-[200] bg-background flex flex-col items-center justify-center gap-8 animate-in fade-in duration-300"
+      >
+        <div class="flex flex-col items-center gap-4">
+          <img src="~/assets/Flame.svg" class="size-24" alt="Tumult Logo" />
+          <h1 class="text-4xl font-black tracking-tighter">Tumult</h1>
+        </div>
+        <div class="flex flex-col items-center gap-3">
+          <UiSpinner class="size-8 text-primary" />
+          <p class="text-sm text-muted-foreground font-medium animate-pulse">Resuming your session...</p>
+        </div>
+      </div>
+
       <!-- Sync Progress Bar -->
       <div 
         v-if="!useMatrixStore().isFullySynced && useMatrixStore().isAuthenticated" 
@@ -53,9 +67,9 @@ const colorMode = useColorMode();
 const store = useMatrixStore();
 
 // Dynamic theme-color meta tag for PWA/Mobile
-// We precisely match the neutral-100 (#f5f5f5) and neutral-900 (#171717)
+// We precisely match the oklch(0.96 0 0) (#f5f5f5) and oklch(0 0 0) (#000000)
 // backgrounds used in our Tailwind config to ensure an "edge-to-edge" look.
-const themeColor = computed(() => colorMode.value === 'dark' ? '#171717' : '#f5f5f5');
+const themeColor = computed(() => colorMode.value === 'dark' ? '#000000' : '#f5f5f5');
 
 useHead({
   meta: [
@@ -115,9 +129,9 @@ onMounted(async () => {
 
     // Watch for the resolved color mode ('light' or 'dark')
     watch(() => colorMode.value, async (newMode) => {
-      // Light: oklch(1 0 0) -> #ffffff
+      // Light: oklch(0.96 0 0) -> #f5f5f5
       // Dark: oklch(0 0 0) -> #000000
-      const bgColor = newMode === 'dark' ? '#000000' : '#ffffff'; 
+      const bgColor = newMode === 'dark' ? '#000000' : '#f5f5f5';
       
       try {
         // Sync theme (affects titlebar on macOS and window decorations)

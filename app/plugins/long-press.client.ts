@@ -9,25 +9,29 @@ export default defineNuxtPlugin((nuxtApp) => {
       let startY = 0;
       const MOVE_THRESHOLD = 10;
 
-      const start = (e: any) => {
-        // Only primary mouse button or touch
-        if (e.type === 'mousedown' && e.button !== 0) return;
+      let isLongPressTriggered = false;
 
-        if (e.type === 'touchstart') {
-          startX = e.touches[0].clientX;
-          startY = e.touches[0].clientY;
-        }
+      const start = (e: TouchEvent) => {
+        const store = useMatrixStore();
+
+        // Touch only to avoid interfering with desktop right-click logic
+        if (e.type !== 'touchstart') return;
+
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
+        isLongPressTriggered = false;
 
         if (timer === null) {
           timer = setTimeout(() => {
+            isLongPressTriggered = true;
+
             // Trigger long press
             binding.value(e);
 
             // Light haptic feedback to signal trigger
-            if ('vibrate' in navigator) navigator.vibrate(10);
-
-            // Prevent default behavior to avoid native menus after trigger
-            if (e.cancelable) e.preventDefault();
+            if (store.ui.hapticFeedbackEnabled && 'vibrate' in navigator) {
+              navigator.vibrate(10);
+            }
 
             // Cleanup timer
             timer = null;
@@ -53,33 +57,29 @@ export default defineNuxtPlugin((nuxtApp) => {
         }
       };
 
-      el.addEventListener('mousedown', start);
+      const handleContextMenu = (e: Event) => {
+        // If we already triggered the action via the timer, prevent the standard
+        // contextmenu event from firing to avoid double-triggering on mobile.
+        if (isLongPressTriggered) {
+          e.preventDefault();
+          e.stopPropagation();
+          isLongPressTriggered = false;
+        }
+      };
+
       el.addEventListener('touchstart', start, { passive: false });
       el.addEventListener('touchmove', move);
-      el.addEventListener('mouseup', cancel);
-      el.addEventListener('mouseleave', cancel);
       el.addEventListener('touchend', cancel);
       el.addEventListener('touchcancel', cancel);
-
-      // Also intercept the actual contextmenu event to prevent native fallback
-      // if we've handled it via long-press (or just generally for these elements)
-      const preventDefault = (e: Event) => {
-        // Optional: Only prevent if we handled it. But usually elements with
-        // @contextmenu want to prevent native anyway.
-        // e.preventDefault();
-      };
-      el.addEventListener('contextmenu', preventDefault);
+      el.addEventListener('contextmenu', handleContextMenu, { capture: true });
 
       // Cleanup
       el._longPressCleanup = () => {
-        el.removeEventListener('mousedown', start);
         el.removeEventListener('touchstart', start);
         el.removeEventListener('touchmove', move);
-        el.removeEventListener('mouseup', cancel);
-        el.removeEventListener('mouseleave', cancel);
         el.removeEventListener('touchend', cancel);
         el.removeEventListener('touchcancel', cancel);
-        el.removeEventListener('contextmenu', preventDefault);
+        el.removeEventListener('contextmenu', handleContextMenu);
       };
     },
     unmounted(el) {

@@ -1,18 +1,13 @@
 
 export function useHaptics() {
-  const { $isTauri: isTauri } = useNuxtApp();
+  const store = useMatrixStore();
 
   const vibrate = (pattern: number | number[] = 10) => {
     if (import.meta.server) return;
+    if (!store.ui.hapticFeedbackEnabled) return;
 
-    if (isTauri) {
-      if ('vibrate' in navigator) {
-        navigator.vibrate(pattern);
-      }
-    } else {
-      if ('vibrate' in navigator) {
-        navigator.vibrate(pattern);
-      }
+    if ('vibrate' in navigator) {
+      navigator.vibrate(pattern);
     }
   };
 

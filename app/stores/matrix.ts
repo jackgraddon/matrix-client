@@ -46,6 +46,7 @@ export interface UIState {
   };
   themePreset: string;
   customCss: string;
+  hapticFeedbackEnabled: boolean;
   sidebarOpen: boolean;
   contextMenu: {
     type: 'room' | 'message' | 'global' | null;
@@ -284,6 +285,7 @@ export const useMatrixStore = defineStore('matrix', {
       uiOrder: { rootSpaces: [], categories: {}, rooms: {} },
       themePreset: 'default',
       customCss: '',
+      hapticFeedbackEnabled: true,
       sidebarOpen: false,
       contextMenu: {
         type: null,
@@ -673,6 +675,7 @@ export const useMatrixStore = defineStore('matrix', {
       this.ui.showEmptyRooms = await getPref('matrix_show_empty_rooms', false);
       this.ui.themePreset = await getPref('matrix_theme_preset', 'default');
       this.ui.customCss = await getPref('matrix_custom_css', '');
+      this.ui.hapticFeedbackEnabled = await getPref('matrix_haptic_feedback_enabled', true);
       this.ui.uiOrder = await getPref('matrix_ui_order', {
         rootSpaces: [], categories: {}, rooms: {}
       });
@@ -1145,6 +1148,11 @@ export const useMatrixStore = defineStore('matrix', {
     async setCustomCss(css: string) {
       this.ui.customCss = css;
       await setPref('matrix_custom_css', css);
+    },
+
+    async setHapticFeedbackEnabled(enabled: boolean) {
+      this.ui.hapticFeedbackEnabled = enabled;
+      await setPref('matrix_haptic_feedback_enabled', enabled);
     },
 
     setContextMenu(type: UIState['contextMenu']['type'], data: any = null) {
