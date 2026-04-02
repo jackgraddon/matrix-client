@@ -3,7 +3,7 @@ import { toast } from 'vue-sonner';
 import { markRaw } from 'vue';
 import { navigateTo } from '#app';
 import * as sdk from 'matrix-js-sdk';
-import { OidcTokenRefresher } from 'matrix-js-sdk';
+import { OidcTokenRefresher, type AccessTokens } from 'matrix-js-sdk';
 import { CryptoEvent } from 'matrix-js-sdk/lib/crypto-api/CryptoEvent';
 import { VerificationRequestEvent, VerificationPhase, VerifierEvent } from 'matrix-js-sdk/lib/crypto-api/verification';
 import type { VerificationRequest, Verifier, ShowSasCallbacks } from 'matrix-js-sdk/lib/crypto-api/verification';
@@ -126,10 +126,63 @@ const authResponseHtml = `
  * Subclass of OidcTokenRefresher that persists rotated tokens to the encrypted store (or sessionStorage fallback).
  */
 class LocalStorageOidcTokenRefresher extends OidcTokenRefresher {
-  protected override async persistTokens(tokens: { accessToken: string; refreshToken?: string }): Promise<void> {
+  public override async doRefreshAccessToken(refreshToken: string): Promise<AccessTokens> {
+    const performRefresh = async (): Promise<AccessTokens> => {
+      // 1. Check storage first. Maybe another context already refreshed the token?
+      const latestRefreshToken = await getSecret('matrix_refresh_token');
+      if (latestRefreshToken && latestRefreshToken !== refreshToken) {
+        console.log('[MatrixStore] OIDC: Newer refresh token found in storage, skipping OIDC refresh call.');
+        const latestAccessToken = await getSecret('matrix_access_token');
+        const latestExpiry = await getPref<number | null>('matrix_token_expiry', null);
+        return {
+          accessToken: latestAccessToken!,
+          refreshToken: latestRefreshToken,
+          expiry: latestExpiry ? new Date(latestExpiry) : undefined
+        };
+      }
+
+      // 2. Otherwise, do the real refresh
+      try {
+        console.log('[MatrixStore] OIDC: Calling OIDC refresh...');
+        return await super.doRefreshAccessToken(refreshToken);
+      } catch (e) {
+        // 3. If refresh fails, check storage AGAIN.
+        // Maybe someone else finished the refresh while we were trying?
+        const finalRefreshToken = await getSecret('matrix_refresh_token');
+        if (finalRefreshToken && finalRefreshToken !== refreshToken) {
+          console.warn('[MatrixStore] OIDC: Refresh failed but storage has a newer token. Recovering...', e);
+          const finalAccessToken = await getSecret('matrix_access_token');
+          const finalExpiry = await getPref<number | null>('matrix_token_expiry', null);
+          return {
+            accessToken: finalAccessToken!,
+            refreshToken: finalRefreshToken,
+            expiry: finalExpiry ? new Date(finalExpiry) : undefined
+          };
+        }
+        throw e;
+      }
+    };
+
+    // Use Web Locks to ensure only one refresh happens at a time across all tabs/windows
+    if (typeof navigator !== 'undefined' && navigator.locks) {
+      return await navigator.locks.request('matrix-token-refresh', { mode: 'exclusive' }, performRefresh);
+    } else {
+      return await performRefresh();
+    }
+  }
+
+  protected override async persistTokens(tokens: { accessToken: string; refreshToken?: string; expiry?: Date }): Promise<void> {
+    console.log('[MatrixStore] OIDC tokens refreshed, persisting...', {
+      hasAccessToken: !!tokens.accessToken,
+      hasRefreshToken: !!tokens.refreshToken,
+      expiry: tokens.expiry?.toISOString()
+    });
     await setSecret('matrix_access_token', tokens.accessToken);
     if (tokens.refreshToken) {
       await setSecret('matrix_refresh_token', tokens.refreshToken);
+    }
+    if (tokens.expiry) {
+      await setPref('matrix_token_expiry', tokens.expiry.getTime());
     }
   }
 }
@@ -1578,6 +1631,14 @@ export const useMatrixStore = defineStore('matrix', {
       // Create new client FIRST, then startup the store
       this.client = markRaw(sdk.createClient(clientOpts));
 
+      // Restore token expiry to the client's internal TokenRefresher
+      const storedExpiry = await getPref<number | null>('matrix_token_expiry', null);
+      if (storedExpiry && (this.client as any).tokenRefresher) {
+        const expiryDate = new Date(storedExpiry);
+        console.log(`[MatrixStore] Restoring token expiry: ${expiryDate.toISOString()}`);
+        (this.client as any).tokenRefresher.latestTokenRefreshExpiry = expiryDate;
+      }
+
       try {
         console.log('[MatrixStore] Starting IndexedDBStore (after assignment to client)...');
         await roomStore.startup();
@@ -1816,7 +1877,12 @@ export const useMatrixStore = defineStore('matrix', {
 
       // Listen for token invalidation from the server (e.g. device deleted)
       this.client.on(sdk.HttpApiEvent.SessionLoggedOut, (err) => {
-        console.error("🚨 [MatrixStore] Server invalidated session (M_UNKNOWN_TOKEN). Forcing logout run.", err);
+        console.error("🚨 [MatrixStore] Server invalidated session (M_UNKNOWN_TOKEN). Forcing logout run.", {
+          message: err?.message,
+          errcode: err?.errcode,
+          httpStatus: err?.httpStatus,
+          data: err?.data
+        });
         // Instantly stop the client to prevent infinite request loops
         if (this.client) {
           this.client.stopClient();
@@ -3287,7 +3353,7 @@ export const useMatrixStore = defineStore('matrix', {
         return;
       }
       this.isLoggingOut = true;
-      console.log("Logging out...");
+      console.log("Logging out...", new Error('Stack Trace').stack);
 
       try {
         // Stop the Matrix client (Kill Sync & Crypto)
@@ -3306,10 +3372,12 @@ export const useMatrixStore = defineStore('matrix', {
         this._resetVerificationState();
 
         // Wipe Tauri Storage, remove critical session data
+        console.log('[MatrixStore] logout: Wiping critical session data...');
         await deleteSecret('matrix_access_token');
         await deleteSecret('matrix_refresh_token');
         await deletePref('matrix_user_id');
         await deletePref('matrix_device_id');
+        await deletePref('matrix_token_expiry');
 
         // CRITICAL FOR CRYPTO RESYNC:
         // Also purge from localStorage in case it leaked or was cached there, 

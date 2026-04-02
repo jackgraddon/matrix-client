@@ -74,9 +74,9 @@ async function idbSet<T>(storeName: string, key: string, value: T): Promise<void
     return new Promise((resolve, reject) => {
         const transaction = db.transaction(storeName, 'readwrite');
         const store = transaction.objectStore(storeName);
-        const request = store.put(value, key);
-        request.onsuccess = () => resolve();
-        request.onerror = () => reject(request.error);
+        store.put(value, key);
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error);
     });
 }
 
@@ -85,9 +85,9 @@ async function idbDelete(storeName: string, key: string): Promise<void> {
     return new Promise((resolve, reject) => {
         const transaction = db.transaction(storeName, 'readwrite');
         const store = transaction.objectStore(storeName);
-        const request = store.delete(key);
-        request.onsuccess = () => resolve();
-        request.onerror = () => reject(request.error);
+        store.delete(key);
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error);
     });
 }
 
