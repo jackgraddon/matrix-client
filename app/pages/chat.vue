@@ -76,7 +76,7 @@
                         class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 group shrink-0 relative"
                         :class="{ 'rounded-[16px]': isLinkActive(`/chat/spaces/${server.roomId}`) }"
                         @click="() => { store.ui.memberListVisible = false; }"
-                        @contextmenu.prevent="store.openRoomContextMenu(server.roomId)"
+                        @contextmenu="store.openRoomContextMenu(server.roomId)"
                         v-long-press="() => { haptics.medium(); store.openRoomContextMenu(server.roomId); }"
                         as-child
                     >
