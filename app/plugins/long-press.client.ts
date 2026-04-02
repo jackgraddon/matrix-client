@@ -60,9 +60,10 @@ export default defineNuxtPlugin((nuxtApp) => {
       const handleContextMenu = (e: Event) => {
         // If we already triggered the action via the timer, prevent the standard
         // contextmenu event from firing to avoid double-triggering on mobile.
+        // We DO NOT stopPropagation here because the GlobalContextMenu needs to
+        // receive this event to actually open the menu.
         if (isLongPressTriggered) {
           e.preventDefault();
-          e.stopPropagation();
           isLongPressTriggered = false;
         }
       };
