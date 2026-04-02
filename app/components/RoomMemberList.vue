@@ -31,8 +31,8 @@
             :key="member.userId"
             class="group flex items-center gap-3 px-2 py-1.5 rounded-md hover:bg-muted cursor-pointer transition-colors"
             :class="{ 'bg-secondary text-secondary-foreground': selectedUserId === member.userId }"
-            @click="(e) => openUserProfileCard(e, member.userId)"
-            v-long-press="(e) => openUserProfileCard(e as any, member.userId)"
+            @click="(e: any) => openUserProfileCard(e, member.userId)"
+            v-long-press="(e: any) => openUserProfileCard(e, member.userId)"
           >
             <UserProfile 
               :user-id="member.userId"
@@ -55,8 +55,8 @@
             :key="member.userId"
             class="group flex items-center gap-3 px-2 py-1.5 rounded-md hover:bg-muted cursor-pointer transition-colors"
             :class="{ 'bg-secondary text-secondary-foreground': selectedUserId === member.userId }"
-            @click="(e) => openUserProfileCard(e, member.userId)"
-            v-long-press="(e) => openUserProfileCard(e as any, member.userId)"
+            @click="(e: any) => openUserProfileCard(e, member.userId)"
+            v-long-press="(e: any) => openUserProfileCard(e, member.userId)"
           >
             <UserProfile 
               :user-id="member.userId"
@@ -161,7 +161,12 @@ function openUserProfileCard(event: MouseEvent, userId: string) {
   const pos = {
     // Math.min ensures the card doesn't push off the bottom edge of the screen if clicked near the bottom
     top: `${Math.min(rect.top, window.innerHeight - estimatedCardHeight - 20)}px`,
-    right: `${window.innerWidth - rect.left + spacingGap}px`
+
+    // If on mobile, we want to position the card to the right of the sidebar. 
+    // If on desktop, we want to position the card to the left of the sidebar. 
+
+    right: window.innerWidth < 768 ? `${rect.left}px` : `${rect.left - spacingGap}px`
+
   };
 
   store.setUISelectedUser(userId, pos);

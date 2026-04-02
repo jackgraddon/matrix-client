@@ -19,6 +19,7 @@ import { MatrixRTCSessionEvent } from 'matrix-js-sdk/lib/matrixrtc/MatrixRTCSess
 import { isVoiceChannel } from '~/utils/room';
 import { useDebounceFn } from '@vueuse/core';
 import { setPref, getPref, deletePref, setSecret, getSecret, deleteSecret, deleteSecrets } from '~/composables/useAppStorage';
+import { dismissNotification } from '~/utils/notify';
 
 export interface LastVisitedRooms {
   dm: string | null;
@@ -3847,6 +3848,9 @@ export const useMatrixStore = defineStore('matrix', {
       if (!this.client) return;
       const room = this.client.getRoom(roomId);
       if (!room) return;
+
+      // Clear any active notifications for this room
+      await dismissNotification(roomId);
 
       const lastEvent = room.timeline[room.timeline.length - 1];
       if (lastEvent) {

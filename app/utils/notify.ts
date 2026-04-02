@@ -2,6 +2,18 @@
  * Unified notification helper that handles Native OS notifications (via Tauri)
  * and falls back to standard Web Notifications API for browsers/PWAs.
  */
+
+// Helper to convert a string (like roomId) to a 32-bit integer for Tauri notification IDs
+function hashStringToInt(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash |= 0; // Convert to 32bit integer
+  }
+  return Math.abs(hash);
+}
+
 export async function notify(title: string, body: string, iconUrl?: string, roomId?: string, imageUrl?: string) {
   let store;
   try {
@@ -40,17 +52,37 @@ export async function notify(title: string, body: string, iconUrl?: string, room
       }
       
       if (permissionGranted) {
+        const id = roomId ? hashStringToInt(roomId) : undefined;
         tauriNotify({
+          id, // Consistent ID per room so we can dismiss it later
           title,
           body,
-          icon: iconUrl || undefined
-        });
+          icon: iconUrl || undefined,
+          // Attach data for the click handler
+          extra: { roomId } 
+        } as any); // Type cast as extra/data might vary by plugin version
         return;
       }
     } 
     
     // 2. Fallback to Web API (PWA/Web)
     if (typeof Notification !== 'undefined') {
+      const showWebNotification = (title: string, options: NotificationOptions) => {
+        const n = new Notification(title, options);
+        n.onclick = () => {
+          window.focus();
+          if (roomId) {
+            const router = (globalThis as any).useRouter?.();
+            if (router) {
+              router.push(`/chat/rooms/${roomId}`);
+            } else {
+              window.location.hash = `#/chat/rooms/${roomId}`; // Fallback navigation
+            }
+          }
+          n.close();
+        };
+      };
+
       if (Notification.permission === 'granted') {
         const options: NotificationOptions = { 
           body,
@@ -63,11 +95,11 @@ export async function notify(title: string, body: string, iconUrl?: string, room
         // On some platforms, deep linking data can be attached
         (options as any).data = { url: roomId ? `/chat/rooms/${roomId}` : '/chat' };
 
-        new Notification(title, options);
+        showWebNotification(title, options);
       } else if (Notification.permission !== 'denied') {
          const permission = await Notification.requestPermission();
          if (permission === 'granted') {
-            new Notification(title, { 
+            showWebNotification(title, { 
               body,
               icon: iconUrl || '/pwa-192x192.png',
               image: imageUrl,
@@ -79,5 +111,39 @@ export async function notify(title: string, body: string, iconUrl?: string, room
     }
   } catch (error) {
     console.error('[Notify Helper] Error sending notification:', error);
+  }
+}
+
+/**
+ * Dismisses any active notifications for a specific room.
+ * Handles both Tauri and Web Notification APIs.
+ */
+export async function dismissNotification(roomId: string) {
+  if (!roomId) return;
+
+  try {
+    // 1. Tauri dismissal
+    if (typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__) {
+      const { cancel } = await import('@tauri-apps/plugin-notification');
+      const id = hashStringToInt(roomId);
+      await cancel([id]);
+      console.log(`[Notify Helper] Dismissed Tauri notification for room ${roomId} (ID: ${id})`);
+    }
+
+    // 2. Web/PWA dismissal
+    if (typeof Notification !== 'undefined' && 'serviceWorker' in navigator) {
+      const registration = await navigator.serviceWorker.ready;
+      const notifications = await registration.getNotifications({ tag: roomId });
+      notifications.forEach(n => n.close());
+      
+      // Also try to find notifications not managed by SW if any
+      // Note: non-SW Notification.getNotifications exists in some browsers but is mostly deprecated or SW-only
+      if ((Notification as any).getNotifications) {
+        const nonSwNotifications = await (Notification as any).getNotifications({ tag: roomId });
+        nonSwNotifications.forEach((n: any) => n.close());
+      }
+    }
+  } catch (error) {
+    console.error('[Notify Helper] Error dismissing notification:', error);
   }
 }
