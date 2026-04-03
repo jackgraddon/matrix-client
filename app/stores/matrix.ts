@@ -30,7 +30,7 @@ export interface LastVisitedRooms {
 export interface UIState {
   memberListVisible: boolean;
   selectedUserId: string | null;
-  profileCardPos: { top: string; right: string };
+  profileCardPos: { top: string; right: string; left?: string };
   collapsedCategories: string[];
   showEmptyRooms: boolean;
   // Composer states indexed by roomId
@@ -1155,7 +1155,7 @@ export const useMatrixStore = defineStore('matrix', {
       await setPref('matrix_member_list_visible', this.ui.memberListVisible);
     },
 
-    setUISelectedUser(userId: string | null, pos?: { top: string; right: string }) {
+    setUISelectedUser(userId: string | null, pos?: { top: string; right: string; left?: string }) {
       this.ui.selectedUserId = userId;
       if (pos) {
         this.ui.profileCardPos = pos;

@@ -80,8 +80,59 @@ function getMessageSummary(content) {
 
     // Custom game state events
     if (content.game_id) {
+        if (content.type === 'cc.jackg.ruby.game.action' || content.msgtype === 'cc.jackg.ruby.game.action' || content.action) {
+            const action = content.action;
+            if (action === 'move') {
+                if (content.move) {
+                    // Chess move
+                    const pieceMap = {
+                        'p': 'Pawn', 'r': 'Rook', 'n': 'Knight', 'b': 'Bishop', 'q': 'Queen', 'k': 'King'
+                    };
+                    const pieceName = pieceMap[content.piece] || 'Piece';
+                    const to = content.to ? content.to.toUpperCase() : content.move;
+                    if (content.piece && content.to) {
+                        return `moved ${pieceName} to ${to}`;
+                    }
+                    return `moved ${content.move}`;
+                }
+                if (typeof content.position === 'number') {
+                    // Tic-Tac-Toe move
+                    return `moved at position ${content.position + 1}`;
+                }
+                return 'made a move';
+            }
+            if (action === 'accept') return 'accepted the game!';
+            if (action === 'decline') return 'declined the game.';
+            if (action === 'play') {
+                const words = content.words || [];
+                const wordText = words.length > 0 ? ` '${words.join(', ')}'` : '';
+                const score = content.score || 0;
+                return `played${wordText} for ${score} points`;
+            }
+            if (action === 'swap') {
+                return `swapped ${content.count || 'some'} tiles`;
+            }
+            if (action === 'pass') {
+                return 'passed their turn';
+            }
+            if (action === 'challenge') {
+                return 'challenged the last move!';
+            }
+            if (action === 'resolve_challenge') {
+                const result = content.result === 'accepted' ? 'ACCEPTED' : 'REJECTED';
+                return `resolved the challenge: Move was ${result}`;
+            }
+            // For reverting an illegal move
+            if (content.type === 'revert' || content.msgtype === 'revert' || action === 'revert') {
+                const words = content.words ? content.words.filter(w => w !== 'BINGO!').join(', ') : '';
+                return `reverted the illegal move ('${words}')`;
+            }
+
+            return `action: ${action}`;
+        }
+        
         if (content.type === 'cc.jackg.ruby.game.state' || content.msgtype === 'cc.jackg.ruby.game.state') return 'Game state updated';
-        if (content.type === 'cc.jackg.ruby.game.action' || content.msgtype === 'cc.jackg.ruby.game.action') return 'New game action';
+        
         return 'Game update';
     }
 
