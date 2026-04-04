@@ -185,6 +185,15 @@ class LocalStorageOidcTokenRefresher extends OidcTokenRefresher {
     if (tokens.expiry) {
       await setPref('matrix_token_expiry', tokens.expiry.getTime());
     }
+
+      // Sync to Service Worker store for background decryption
+      try {
+        const { saveMatrixAuth } = await import('~/utils/crypto-db');
+        const hsUrl = await getHomeserverUrl();
+        await saveMatrixAuth(tokens.accessToken, hsUrl);
+      } catch (err) {
+        console.warn('[MatrixStore] Failed to sync auth to SW store:', err);
+      }
   }
 }
 
@@ -1491,6 +1500,14 @@ export const useMatrixStore = defineStore('matrix', {
       await setPref('matrix_oidc_issuer', issuer);
       await setPref('matrix_oidc_id_token_claims', idTokenClaims);
 
+      // Sync to Service Worker store for background decryption
+      try {
+        const { saveMatrixAuth } = await import('~/utils/crypto-db');
+        await saveMatrixAuth(accessToken, data.homeserverUrl);
+      } catch (err) {
+        console.warn('[MatrixStore] Failed to sync auth to SW store:', err);
+      }
+
       // Initialize
       console.log('[MatrixStore] Calling initClient...');
       this.loginStatus = 'Connecting to Matrix…';
@@ -1510,6 +1527,15 @@ export const useMatrixStore = defineStore('matrix', {
       console.time('[MatrixStore] initClient (total)');
       console.log("[MatrixStore] Initializing Matrix client...", { userId, deviceId, hasAccessToken: !!accessToken });
       this.isRestoringSession = true;
+
+      // Ensure auth is synced to SW store on initialization
+      try {
+        const { saveMatrixAuth } = await import('~/utils/crypto-db');
+        const hsUrl = await getHomeserverUrl();
+        await saveMatrixAuth(accessToken, hsUrl);
+      } catch (err) {
+        console.warn('[MatrixStore] Failed to sync auth to SW store on init:', err);
+      }
 
       // Force restart client
       if (this.client) {
@@ -3411,6 +3437,14 @@ export const useMatrixStore = defineStore('matrix', {
 
         // Clear all local stores
         await this._clearPersistentStores();
+
+        // Clear SW Auth Store
+        try {
+          const { clearMatrixAuth } = await import('~/utils/crypto-db');
+          await clearMatrixAuth();
+        } catch (e) {
+          console.warn('[MatrixStore] Failed to clear SW auth on logout:', e);
+        }
 
         // Redirect to landing page
         await navigateTo('/');

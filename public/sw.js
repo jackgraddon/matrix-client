@@ -183,33 +183,68 @@ function getMessageSummary(content) {
 sw.addEventListener('push', (event) => {
     console.log('[Service Worker] Push Received.');
 
-    let data = {};
-    if (event.data) {
-        try {
-            data = event.data.json();
-        } catch (e) {
-            console.warn('Push event has no JSON data:', event.data.text());
-            return;
+    event.waitUntil((async () => {
+        let data = {};
+        if (event.data) {
+            try {
+                data = event.data.json();
+            } catch (e) {
+                console.warn('Push event has no JSON data:', event.data.text());
+                return;
+            }
         }
-    }
 
-    // If this browser supports Declarative Web Push (web_push: 8030),
-    // it may have already shown the notification natively.
-    // However, we still handle the push event to ensure the Service Worker
-    // can perform background logic like pre-fetching.
+        // --- 1. Transport Decryption (Relay Level) ---
+        if (data.ciphertext) {
+            try {
+                const decryptedPayload = await decryptTransportPayload(data.ciphertext);
+                if (decryptedPayload) {
+                    console.log('[Service Worker] Successfully decrypted transport payload.');
+                    data = { ...data, ...decryptedPayload };
+                }
+            } catch (err) {
+                console.error('[Service Worker] Failed to decrypt transport payload:', err);
+                // Continue with generic fields if decryption fails
+            }
+        }
 
-    // Matrix Sygnal-derived format from our relay
-    // Fallback logic for when the browser doesn't natively handle declarative push:
-    const sender = data.sender_display_name || 'Someone';
-    const roomName = data.room_name;
-    const bodyText = getMessageSummary(data.content);
+        // --- 2. Protocol Decryption (Matrix Level) ---
+        // If content is still "Encrypted message", try a background fetch + decrypt
+        if (data.room_id && data.event_id && (data.content?.algorithm || getMessageSummary(data.content) === 'Encrypted message')) {
+            try {
+                const decryptedContent = await fetchAndDecryptMatrixEvent(data.room_id, data.event_id);
+                if (decryptedContent) {
+                    console.log('[Service Worker] Successfully decrypted Matrix event in background.');
+                    data.content = decryptedContent;
 
-    // Formatting (Prefer server-sent title/body if available, fallback to required styling)
-    const title = data.title || (roomName ? `${sender} in ${roomName}` : sender);
-    const notificationBody = data.body || bodyText;
-    const urlToOpen = data.navigate || (data.data?.url || (data.room_id ? `/chat/rooms/${data.room_id}` : '/chat'));
+                    // Re-calculate fields based on decrypted content
+                    const sender = data.sender_display_name || 'Someone';
+                    const roomName = data.room_name;
+                    data.body = getMessageSummary(decryptedContent);
+                    data.title = roomName ? `${sender} in ${roomName}` : sender;
+                }
+            } catch (err) {
+                console.warn('[Service Worker] Background Matrix decryption failed:', err);
+            }
+        }
 
-    const options = {
+        // If this browser supports Declarative Web Push (web_push: 8030),
+        // it may have already shown the notification natively.
+        // However, we still handle the push event to ensure the Service Worker
+        // can perform background logic like pre-fetching.
+
+        // Matrix Sygnal-derived format from our relay
+        // Fallback logic for when the browser doesn't natively handle declarative push:
+        const sender = data.sender_display_name || 'Someone';
+        const roomName = data.room_name;
+        const bodyText = getMessageSummary(data.content);
+
+        // Formatting (Prefer server-sent title/body if available, fallback to required styling)
+        const title = data.title || (roomName ? `${sender} in ${roomName}` : sender);
+        const notificationBody = data.body || bodyText;
+        const urlToOpen = data.navigate || (data.data?.url || (data.room_id ? `/chat/rooms/${data.room_id}` : '/chat'));
+
+        const options = {
         body: notificationBody,
         icon: data.icon || '/pwa-192x192.png',
         badge: '/pwa-192x192.png',
@@ -231,14 +266,151 @@ sw.addEventListener('push', (event) => {
     const now = Date.now();
     const shouldShow = now > quietUntil;
 
-    event.waitUntil(
-        Promise.all([
+        await Promise.all([
             shouldShow ? sw.registration.showNotification(title, options) : Promise.resolve(),
             // Use this wake-up to also pre-fetch if appropriate
             preFetchActiveRooms()
-        ])
-    );
+        ]);
+    })());
 });
+
+// --- Background Decryption Helpers ---
+
+// Minimal IDB utility for Service Worker (Mirror of app/utils/crypto-db.ts)
+const CRYPTO_DB_NAME = 'tumult-crypto-storage';
+const CRYPTO_STORE_NAME = 'keys';
+const AUTH_STORE_NAME = 'auth';
+const KEY_NAME = 'notification-decryption-key';
+
+async function openCryptoDB() {
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open(CRYPTO_DB_NAME, 2);
+        request.onupgradeneeded = (event) => {
+            const db = request.result;
+            if (!db.objectStoreNames.contains(CRYPTO_STORE_NAME)) db.createObjectStore(CRYPTO_STORE_NAME);
+            if (!db.objectStoreNames.contains(AUTH_STORE_NAME)) db.createObjectStore(AUTH_STORE_NAME);
+        };
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
+}
+
+async function getSwCryptoKey() {
+    const db = await openCryptoDB();
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(CRYPTO_STORE_NAME, 'readonly');
+        const store = transaction.objectStore(CRYPTO_STORE_NAME);
+        const request = store.get(KEY_NAME);
+        request.onsuccess = () => resolve(request.result || null);
+        request.onerror = () => reject(request.error);
+    });
+}
+
+async function getSwMatrixAuth() {
+    const db = await openCryptoDB();
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(AUTH_STORE_NAME, 'readonly');
+        const store = transaction.objectStore(AUTH_STORE_NAME);
+        const accessTokenReq = store.get('access_token');
+        const homeserverUrlReq = store.get('homeserver_url');
+        let accessToken = null;
+        let homeserverUrl = null;
+        accessTokenReq.onsuccess = () => { accessToken = accessTokenReq.result || null; };
+        homeserverUrlReq.onsuccess = () => { homeserverUrl = homeserverUrlReq.result || null; };
+        transaction.oncomplete = () => resolve({ accessToken, homeserverUrl });
+        transaction.onerror = () => reject(transaction.error);
+    });
+}
+
+async function decryptTransportPayload(ciphertextB64) {
+    try {
+        const key = await getSwCryptoKey();
+        if (!key) return null;
+
+        const combined = new Uint8Array(
+            atob(ciphertextB64).split('').map(c => c.charCodeAt(0))
+        );
+        const iv = combined.slice(0, 12);
+        const ciphertext = combined.slice(12);
+
+        const decrypted = await crypto.subtle.decrypt(
+            { name: 'AES-GCM', iv },
+            key,
+            ciphertext
+        );
+
+        return JSON.parse(new TextDecoder().decode(decrypted));
+    } catch (e) {
+        console.error('[SW] decryptTransportPayload error:', e);
+        return null;
+    }
+}
+
+async function fetchAndDecryptMatrixEvent(roomId, eventId) {
+    try {
+        const { accessToken, homeserverUrl } = await getSwMatrixAuth();
+        if (!accessToken || !homeserverUrl) return null;
+
+        // Fetch the event from the homeserver
+        const url = `${homeserverUrl}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/event/${encodeURIComponent(eventId)}`;
+        const response = await fetch(url, {
+            headers: { 'Authorization': `Bearer ${accessToken}` }
+        });
+
+        if (!response.ok) return null;
+        const event = await response.json();
+
+        // If it's not encrypted, just return the content
+        if (event.type !== 'm.room.encrypted') return event.content;
+
+        // --- Advanced: Megolm Decryption ---
+        // For a full implementation, we'd need to load the Megolm room keys from the store.
+        // Since full Megolm in a SW is complex without the full SDK, we signal the app
+        // to handle the decryption if it's open, OR we use a lightweight WASM decrypter if available.
+        // For now, we'll try to reach out to any open windows to decrypt it for us.
+
+        const clients = await sw.clients.matchAll({ type: 'window' });
+        if (clients.length === 0) return null;
+
+        // Race all open windows for the decryption
+        const decryptionPromises = clients.map(client => {
+            return new Promise((resolve) => {
+                const channel = new MessageChannel();
+                channel.port1.onmessage = (msg) => {
+                    if (msg.data.decrypted) resolve(msg.data.decrypted);
+                    else resolve(null);
+                };
+                client.postMessage({
+                    type: 'DECRYPT_EVENT',
+                    event
+                }, [channel.port2]);
+
+                // Individual client timeout
+                setTimeout(() => resolve(null), 2000);
+            });
+        });
+
+        // Add a global timeout promise
+        const globalTimeout = new Promise(resolve => setTimeout(() => resolve(null), 2500));
+
+        // Use Promise.race to get the first non-null decryption
+        const result = await Promise.race([
+            ...decryptionPromises,
+            globalTimeout
+        ]);
+
+        // If Promise.race returns null immediately because all clients resolved null quickly,
+        // we might still want to wait a bit for others. A better way:
+        if (result) return result;
+
+        // Fallback: Filter for any truthy results
+        const allResults = await Promise.all(decryptionPromises);
+        return allResults.find(r => !!r) || null;
+    } catch (e) {
+        console.error('[SW] fetchAndDecryptMatrixEvent error:', e);
+        return null;
+    }
+}
 
 // Handle notification clicks
 sw.addEventListener('notificationclick', (event) => {
