@@ -8,16 +8,20 @@
 
 const DB_NAME = 'tumult-crypto-storage';
 const STORE_NAME = 'keys';
+const AUTH_STORE_NAME = 'auth';
 const KEY_NAME = 'notification-decryption-key';
 
 export async function openCryptoDB(): Promise<IDBDatabase> {
     return new Promise((resolve, reject) => {
-        const request = indexedDB.open(DB_NAME, 1);
+        const request = indexedDB.open(DB_NAME, 2);
 
         request.onupgradeneeded = (event) => {
             const db = (event.target as IDBOpenDBRequest).result;
             if (!db.objectStoreNames.contains(STORE_NAME)) {
                 db.createObjectStore(STORE_NAME);
+            }
+            if (!db.objectStoreNames.contains(AUTH_STORE_NAME)) {
+                db.createObjectStore(AUTH_STORE_NAME);
             }
         };
 
@@ -47,6 +51,57 @@ export async function getCryptoKey(): Promise<CryptoKey | null> {
 
         request.onsuccess = () => resolve(request.result || null);
         request.onerror = () => reject(request.error);
+    });
+}
+
+/**
+ * Auth Storage Functions
+ * Used to share credentials with the Service Worker for background decryption.
+ */
+
+export async function saveMatrixAuth(accessToken: string, homeserverUrl: string): Promise<void> {
+    const db = await openCryptoDB();
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(AUTH_STORE_NAME, 'readwrite');
+        const store = transaction.objectStore(AUTH_STORE_NAME);
+        store.put(accessToken, 'access_token');
+        store.put(homeserverUrl, 'homeserver_url');
+
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error);
+    });
+}
+
+export async function clearMatrixAuth(): Promise<void> {
+    const db = await openCryptoDB();
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(AUTH_STORE_NAME, 'readwrite');
+        const store = transaction.objectStore(AUTH_STORE_NAME);
+        store.delete('access_token');
+        store.delete('homeserver_url');
+
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error);
+    });
+}
+
+export async function getMatrixAuth(): Promise<{ accessToken: string | null, homeserverUrl: string | null }> {
+    const db = await openCryptoDB();
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(AUTH_STORE_NAME, 'readonly');
+        const store = transaction.objectStore(AUTH_STORE_NAME);
+
+        const accessTokenReq = store.get('access_token');
+        const homeserverUrlReq = store.get('homeserver_url');
+
+        let accessToken: string | null = null;
+        let homeserverUrl: string | null = null;
+
+        accessTokenReq.onsuccess = () => { accessToken = accessTokenReq.result || null; };
+        homeserverUrlReq.onsuccess = () => { homeserverUrl = homeserverUrlReq.result || null; };
+
+        transaction.oncomplete = () => resolve({ accessToken, homeserverUrl });
+        transaction.onerror = () => reject(transaction.error);
     });
 }
 

@@ -61,6 +61,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import { useNuxtApp, useHead, navigateTo } from '#app';
+import { MatrixEvent } from 'matrix-js-sdk';
 import { useColorMode } from '#imports';
 import { useMatrixStore } from '~/stores/matrix';
 import { Toaster } from '~/components/ui/sonner';
@@ -248,6 +249,31 @@ onMounted(async () => {
   window.addEventListener('mousemove', resetIdleTimer);
   window.addEventListener('keydown', resetIdleTimer);
   resetIdleTimer(); // Initial start
+
+  // Service Worker Decryption Handler
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', async (event) => {
+      if (event.data?.type === 'DECRYPT_EVENT') {
+        const { event: matrixEventData } = event.data;
+        if (!store.client) {
+            console.warn('[App] Service worker requested decryption but client not initialized');
+            event.ports[0]?.postMessage({ decrypted: null });
+            return;
+        }
+
+        try {
+          console.log('[App] Decrypting Matrix event for Service Worker:', matrixEventData.event_id);
+          const sdkEvent = new MatrixEvent(matrixEventData);
+          await sdkEvent.attemptDecryption(store.client.getCrypto() as any);
+          const content = sdkEvent.getClearContent();
+          event.ports[0]?.postMessage({ decrypted: content });
+        } catch (e) {
+          console.error('[App] Background decryption failed:', e);
+          event.ports[0]?.postMessage({ decrypted: null });
+        }
+      }
+    });
+  }
 
   // Debug: Looping console log for active user presence
   // let debugInterval: ReturnType<typeof setInterval>;

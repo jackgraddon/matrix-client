@@ -62,12 +62,12 @@ export default defineEventHandler(async (event) => {
             const bodyText = getMessageSummary(notification.content);
 
             // Match frontend title: 'User in Room' or just 'User' for DMs
-            const title = roomName ? `${sender} in ${roomName}` : sender;
-            const notificationBody = bodyText;
+            let title = roomName ? `${sender} in ${roomName}` : sender;
+            let notificationBody = bodyText;
             const urlToOpen = notification.room_id ? `/chat/rooms/${notification.room_id}` : '/chat';
 
             // Hybrid Payload: Supports both Declarative Web Push and Imperative Service Worker fallback
-            const payload = JSON.stringify({
+            const payloadData: any = {
                 // Declarative Keys (2026 Standard)
                 web_push: 8030,
                 title: title,
@@ -87,7 +87,36 @@ export default defineEventHandler(async (event) => {
                     eventId: notification.event_id,
                     url: urlToOpen
                 }
-            });
+            };
+
+            // --- Zero-Knowledge Transport Encryption ---
+            // If the device provided an 'ek', we encrypt the sensitive fields
+            // so that APNs/FCM cannot see the message content or sender.
+            if (device.data?.ek) {
+                try {
+                    const sensitive = {
+                        title,
+                        body: notificationBody,
+                        sender_display_name: notification.sender_display_name,
+                        room_name: notification.room_name,
+                        content: notification.content
+                    };
+
+                    payloadData.ciphertext = await encryptPayload(sensitive, device.data.ek);
+
+                    // Mask the declarative fields for the transport provider
+                    payloadData.title = 'New Message';
+                    payloadData.body = 'Contents are encrypted';
+
+                    // Update local variables for logging transparency
+                    title = `[Encrypted] ${notification.event_id}`;
+                    notificationBody = '[Encrypted]';
+                } catch (e: any) {
+                    console.error('[Push Relay] Encryption failed:', e.message);
+                }
+            }
+
+            const payload = JSON.stringify(payloadData);
 
             try {
                 const result = await webpush.sendNotification(subscription, payload);
@@ -126,6 +155,33 @@ export default defineEventHandler(async (event) => {
 
     return { rejected: [] };
 });
+
+// Helper to encrypt payload using Web Crypto (Node.js implementation)
+async function encryptPayload(data: any, jwk: any) {
+    const { webcrypto } = await import('node:crypto');
+    const key = await (webcrypto as any).subtle.importKey(
+        'jwk',
+        jwk,
+        { name: 'AES-GCM', length: 256 },
+        false,
+        ['encrypt']
+    );
+
+    const iv = (webcrypto as any).getRandomValues(new Uint8Array(12));
+    const encoded = new TextEncoder().encode(JSON.stringify(data));
+    const ciphertext = await (webcrypto as any).subtle.encrypt(
+        { name: 'AES-GCM', iv },
+        key,
+        encoded
+    );
+
+    const combined = new Uint8Array(iv.length + ciphertext.byteLength);
+    combined.set(iv);
+    combined.set(new Uint8Array(ciphertext), iv.length);
+
+    // Return as base64 for JSON payload
+    return Buffer.from(combined).toString('base64');
+}
 
 // Helper to extract a readable summary of the message (Mirror of SW logic for server-side declarative push)
 function getMessageSummary(content: any) {
