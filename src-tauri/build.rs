@@ -3,6 +3,22 @@ use std::fs;
 use std::path::PathBuf;
 
 fn main() {
+    // Apply patch to rsrpc submodule if it exists
+    let manifest_dir = std::path::PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
+    let patch_file = manifest_dir.join("..").join("rsrpc.patch");
+    let rsrpc_dir = manifest_dir.join("rsrpc");
+
+    if patch_file.exists() && rsrpc_dir.exists() {
+        println!("cargo:warning=Applying rsrpc.patch...");
+        let _ = std::process::Command::new("patch")
+            .arg("-p1")
+            .arg("--forward")
+            .arg("-i")
+            .arg(&patch_file)
+            .current_dir(&rsrpc_dir)
+            .status();
+    }
+
     println!("cargo:rerun-if-changed=rsrpc/src");
     println!("cargo:rerun-if-changed=rsrpc/Cargo.toml");
 
