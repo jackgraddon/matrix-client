@@ -83,7 +83,7 @@ const tracks = ref<BaseItemDto[]>([]);
 
 const imageUrl = computed(() => {
   if (album.value?.ImageTags?.Primary) {
-    return `${jellyfinStore.serverUrl}/Items/${album.value.Id}/Images/Primary?tag=${album.value.ImageTags.Primary}&maxWidth=500`;
+    return `${jellyfinStore.serverUrl}/Items/${album.value.Id}/Images/Primary?tag=${album.value.ImageTags.Primary}&maxWidth=500&api_key=${jellyfinStore.accessToken}`;
   }
   return null;
 });

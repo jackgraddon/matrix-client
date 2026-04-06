@@ -6,7 +6,7 @@
                     variant="ghost" 
                     size="icon" 
                     class="md:hidden" 
-                    @click="store.toggleSidebar(false)"
+                    @click="matrixStore.toggleSidebar(false)"
                 >
                     <Icon name="solar:close-circle-linear" />
                 </UiButton>
@@ -19,7 +19,7 @@
                 v-if="activeSpaceId && isLinkActive('/chat/spaces')"
                 variant="ghost" 
                 size="icon-sm" 
-                @click="store.openSpaceSettingsModal(activeSpaceId)"
+                @click="matrixStore.openSpaceSettingsModal(activeSpaceId)"
                 title="Space Settings"
             > 
                 <Icon name="solar:settings-minimalistic-bold-duotone"/>
@@ -30,7 +30,7 @@
                 <!-- Sidebar Home actions -->
                 <template v-if="isLinkActive('/chat')">
                     <div class="flex flex-col gap-2">
-                        <UiButton variant="default" @click="store.openGlobalSearchModal()" class="w-full">
+                        <UiButton variant="default" @click="matrixStore.openGlobalSearchModal()" class="w-full">
                             <Icon name="solar:add-circle-line-duotone" class="h-4 w-4" />
                             Find or start a chat
                         </UiButton>
@@ -38,7 +38,7 @@
                         <UiButton
                             v-if="jellyfinStore.isAuthenticated"
                             variant="secondary"
-                            @click="() => { navigateTo('/chat/music'); store.toggleSidebar(false); }"
+                            @click="() => { navigateTo('/chat/music'); matrixStore.toggleSidebar(false); }"
                             class="w-full justify-start gap-2"
                         >
                             <Icon name="solar:music-note-bold-duotone" class="h-4 w-4 text-[#AA5CC3]" />
@@ -47,12 +47,12 @@
                     </div>
 
                     <!-- Invitations Section -->
-                    <div v-if="store.invites.length > 0" class="mt-4 flex flex-col gap-2">
+                    <div v-if="matrixStore.invites.length > 0" class="mt-4 flex flex-col gap-2">
                         <div class="px-2 mb-1">
-                            <span class="text-[10px] font-bold uppercase text-muted-foreground tracking-wider">Invitations ({{ store.invites.length }})</span>
+                            <span class="text-[10px] font-bold uppercase text-muted-foreground tracking-wider">Invitations ({{ matrixStore.invites.length }})</span>
                         </div>
                         <div 
-                            v-for="invite in store.invites" 
+                            v-for="invite in matrixStore.invites"
                             :key="invite.roomId"
                             role="button"
                             class="flex items-center gap-2 px-2 py-2.5 rounded-md hover:bg-muted cursor-pointer transition-colors group"
@@ -75,7 +75,7 @@
                 <!-- Sidebar DM List -->
                 <template v-if="isLinkActive('/chat/dms')">
                     <!-- Skeleton Loader for Background Sync -->
-                    <div v-if="!store.isFullySynced && friends.length === 0" class="flex flex-col gap-2">
+                    <div v-if="!matrixStore.isFullySynced && friends.length === 0" class="flex flex-col gap-2">
                         <div v-for="i in 5" :key="i" class="flex items-center gap-2 px-2 h-9 w-full rounded-md animate-pulse bg-accent/20">
                             <div class="h-6 w-6 rounded-full bg-accent/30 shrink-0"></div>
                             <div class="h-4 bg-accent/30 rounded w-24"></div>
@@ -88,16 +88,16 @@
                             role="button"
                             class="inline-flex items-center justify-start px-2 h-10 w-full rounded-md text-sm font-medium transition-colors cursor-pointer hover:bg-muted group relative"
                             :class="[(isLinkActive(`/chat/dms/${friend.roomId}`) || voiceStore.activeRoomId === friend.roomId) ? 'bg-secondary text-secondary-foreground' : '']"
-                            @contextmenu.capture="store.openRoomContextMenu(friend.roomId)"
-                            v-long-press="() => { if (store.ui.hapticFeedbackEnabled) trigger('medium'); store.openRoomContextMenu(friend.roomId); }"
+                            @contextmenu.capture="matrixStore.openRoomContextMenu(friend.roomId)"
+                            v-long-press="() => { if (matrixStore.ui.hapticFeedbackEnabled) trigger('medium'); matrixStore.openRoomContextMenu(friend.roomId); }"
                             @click="() => {
-                                if (isVoiceChannel(store.client?.getRoom(friend.roomId))) {
-                                    voiceStore.joinVoiceRoom(store.client!.getRoom(friend.roomId)!);
+                                if (isVoiceChannel(matrixStore.client?.getRoom(friend.roomId))) {
+                                    voiceStore.joinVoiceRoom(matrixStore.client!.getRoom(friend.roomId)!);
                                 } else {
                                     navigateTo(`/chat/dms/${friend.roomId}`);
                                 }
-                                store.toggleSidebar(false);
-                                store.ui.memberListVisible = false;
+                                matrixStore.toggleSidebar(false);
+                                matrixStore.ui.memberListVisible = false;
                             }"
                         >
                             <MatrixAvatar
@@ -110,7 +110,7 @@
                             
                             <div class="ml-auto flex items-center gap-1">
                                 <!-- If it's a voice DM, add a button to open text chat -->
-                                <NuxtLink v-if="isVoiceChannel(store.client?.getRoom(friend.roomId))" :to="`/chat/dms/${friend.roomId}`" @click.stop>
+                                <NuxtLink v-if="isVoiceChannel(matrixStore.client?.getRoom(friend.roomId))" :to="`/chat/dms/${friend.roomId}`" @click.stop>
                                     <UiButton variant="ghost" size="icon" class="h-6 w-6 text-muted-foreground hover:text-foreground shrink-0">
                                         <Icon name="solar:chat-line-linear" class="h-4 w-4" />
                                     </UiButton>
@@ -131,7 +131,7 @@
                 <!-- Sidebar Room List -->
                 <template v-if="isLinkActive('/chat/rooms')">
                     <!-- Skeleton Loader for Background Sync -->
-                    <div v-if="!store.isFullySynced && rooms.length === 0" class="flex flex-col gap-2">
+                    <div v-if="!matrixStore.isFullySynced && rooms.length === 0" class="flex flex-col gap-2">
                         <div v-for="i in 5" :key="i" class="flex items-center gap-2 px-2 h-9 w-full rounded-md animate-pulse bg-accent/20">
                             <div class="h-6 w-6 rounded-full bg-accent/30 shrink-0"></div>
                             <div class="h-4 bg-accent/30 rounded w-32"></div>
@@ -144,16 +144,16 @@
                             role="button"
                             class="inline-flex items-center justify-start px-2 h-10 w-full rounded-md text-sm font-medium transition-colors cursor-pointer hover:bg-muted group relative"
                             :class="[(isLinkActive(`/chat/rooms/${room.roomId}`) || voiceStore.activeRoomId === room.roomId) ? 'bg-secondary text-secondary-foreground' : '']"
-                            @contextmenu.capture="store.openRoomContextMenu(room.roomId)"
-                            v-long-press="() => { if (store.ui.hapticFeedbackEnabled) trigger('medium'); store.openRoomContextMenu(room.roomId); }"
+                            @contextmenu.capture="matrixStore.openRoomContextMenu(room.roomId)"
+                            v-long-press="() => { if (matrixStore.ui.hapticFeedbackEnabled) trigger('medium'); matrixStore.openRoomContextMenu(room.roomId); }"
                             @click="() => {
-                                if (isVoiceChannel(store.client?.getRoom(room.roomId))) {
-                                    voiceStore.joinVoiceRoom(store.client!.getRoom(room.roomId)!);
+                                if (isVoiceChannel(matrixStore.client?.getRoom(room.roomId))) {
+                                    voiceStore.joinVoiceRoom(matrixStore.client!.getRoom(room.roomId)!);
                                 } else {
                                     navigateTo(`/chat/rooms/${room.roomId}`);
                                 }
-                                store.toggleSidebar(false);
-                                store.ui.memberListVisible = false;
+                                matrixStore.toggleSidebar(false);
+                                matrixStore.ui.memberListVisible = false;
                             }"
                         >
                             <MatrixAvatar
@@ -166,7 +166,7 @@
 
                             <div class="ml-auto flex items-center gap-1">
                                 <!-- If it's a voice room, add a button to open text chat -->
-                                <NuxtLink v-if="isVoiceChannel(store.client?.getRoom(room.roomId))" :to="`/chat/rooms/${room.roomId}`" @click.stop>
+                                <NuxtLink v-if="isVoiceChannel(matrixStore.client?.getRoom(room.roomId))" :to="`/chat/rooms/${room.roomId}`" @click.stop>
                                     <UiButton variant="ghost" size="icon" class="h-6 w-6 text-muted-foreground hover:text-foreground shrink-0">
                                         <Icon name="solar:chat-line-linear" class="h-4 w-4" />
                                     </UiButton>
@@ -194,8 +194,8 @@
                             :class="[(page.path === '/chat/settings' ? route.path === '/chat/settings' : isLinkActive(page.path)) ? 'bg-secondary text-secondary-foreground' : '']"
                             @click="() => {
                                 navigateTo(page.path);
-                                store.toggleSidebar(false);
-                                store.ui.memberListVisible = false;
+                                matrixStore.toggleSidebar(false);
+                                matrixStore.ui.memberListVisible = false;
                             }"
                         >
                             <Icon :name="page.icon" class="h-4 w-4 mr-2 text-muted-foreground" />
@@ -216,7 +216,7 @@
                             role="button"
                             class="inline-flex items-center justify-start px-2 h-10 w-full rounded-md text-sm font-medium transition-colors cursor-pointer hover:bg-muted"
                             :class="[route.path === item.path ? 'bg-secondary text-secondary-foreground' : '']"
-                            @click="() => { navigateTo(item.path); store.toggleSidebar(false); }"
+                            @click="() => { navigateTo(item.path); matrixStore.toggleSidebar(false); }"
                         >
                             <Icon :name="item.icon" class="h-4 w-4 mr-2 text-muted-foreground" />
                             <span class="truncate">{{ item.label }}</span>
@@ -231,11 +231,20 @@
                             v-for="playlist in playlists"
                             :key="playlist.Id"
                             role="button"
-                            class="inline-flex items-center justify-start px-2 h-10 w-full rounded-md text-sm font-medium transition-colors cursor-pointer hover:bg-muted"
-                            @click="() => { navigateTo(`/chat/music/playlist/${playlist.Id}`); store.toggleSidebar(false); }"
+                            class="group inline-flex items-center justify-start px-2 h-10 w-full rounded-md text-sm font-medium transition-colors cursor-pointer hover:bg-muted relative"
+                            @click="() => { navigateTo(`/chat/music/playlist/${playlist.Id}`); matrixStore.toggleSidebar(false); }"
                         >
-                            <Icon name="solar:playlist-minimalistic-bold-duotone" class="h-4 w-4 mr-2 text-muted-foreground" />
-                            <span class="truncate">{{ playlist.Name }}</span>
+                            <Icon name="solar:playlist-minimalistic-bold-duotone" class="h-4 w-4 mr-2 text-muted-foreground shrink-0 group-hover:hidden" />
+                            <UiButton
+                                variant="ghost"
+                                size="icon-sm"
+                                class="h-6 w-6 mr-1 p-0 hidden group-hover:flex shrink-0 hover:bg-accent/50 active:scale-95"
+                                @click.stop="quickPlayPlaylist(playlist)"
+                                title="Play Playlist"
+                            >
+                                <Icon name="solar:play-bold" class="h-4 w-4 text-[#AA5CC3]" />
+                            </UiButton>
+                            <span class="truncate flex-1">{{ playlist.Name }}</span>
                         </div>
                     </div>
                 </template>
@@ -245,7 +254,7 @@
                     <!-- Return to Lobby Button -->
                     <UiButton 
                         :variant="isLobby ? 'default' : 'secondary'" 
-                        @click="() => { navigateTo(`/chat/spaces/${activeSpaceId}`); store.toggleSidebar(false); store.ui.memberListVisible = false; }" 
+                        @click="() => { navigateTo(`/chat/spaces/${activeSpaceId}`); matrixStore.toggleSidebar(false); matrixStore.ui.memberListVisible = false; }"
                         class="w-full mb-2 justify-start gap-2"
                     >
                         <Icon name="solar:home-2-bold" class="h-4 w-4" />
@@ -253,7 +262,7 @@
                     </UiButton>
 
                     <!-- Skeleton Loader for Background Sync -->
-                    <div v-if="!store.isFullySynced && draggableCategories.length === 0" class="flex flex-col gap-4">
+                    <div v-if="!matrixStore.isFullySynced && draggableCategories.length === 0" class="flex flex-col gap-4">
                         <div v-for="i in 3" :key="i" class="flex flex-col gap-2 px-2">
                             <div class="h-3 bg-accent/20 rounded w-16 mb-2"></div>
                             <div v-for="j in 3" :key="j" class="flex items-center gap-2 h-8 w-full rounded-md bg-accent/10">
@@ -323,7 +332,7 @@
                 <div class="flex flex-col min-w-0">
                     <span class="text-[10px] font-bold text-green-500 uppercase tracking-wider">Active Call</span>
                     <!-- Use a safe getter or fallback name -->
-                    <span class="text-xs font-semibold truncate">{{ store.client?.getRoom(voiceStore.activeRoomId)?.name || 'Voice Room' }}</span>
+                    <span class="text-xs font-semibold truncate">{{ matrixStore.client?.getRoom(voiceStore.activeRoomId)?.name || 'Voice Room' }}</span>
                 </div>
                 <UiButton 
                     variant="destructive" 
@@ -338,7 +347,7 @@
 
             <!-- Profile & Settings Row -->
             <div class="flex items-center justify-between gap-2 w-full p-2">
-                <UserProfile :user="store.user" class="min-w-0 flex-1" size="full" />
+                <UserProfile :user="matrixStore.user" class="min-w-0 flex-1" size="full" />
                 <UiButton variant="ghost" size="icon-sm" class="shrink-0" @click="navigateTo('/chat/settings')">
                     <Icon name="solar:settings-linear" class="h-5 w-5" />
                 </UiButton>
@@ -414,9 +423,9 @@ const settingsGroups = computed(() => {
         }));
 });
 
-const store = useMatrixStore();
+const matrixStore = useMatrixStore();
 const { trigger } = useWebHaptics({
-    debug: store.ui.hapticsDebugEnabled
+    debug: matrixStore.ui.hapticsDebugEnabled
 });
 const voiceStore = useVoiceStore();
 const musicStore = useMusicStore();
@@ -452,6 +461,47 @@ async function loadPlaylists() {
     }
 }
 
+async function quickPlayPlaylist(playlist: any) {
+    try {
+        const data = await jellyfinFetch('/Items', {
+            method: 'GET',
+            query: {
+                ParentId: playlist.Id,
+                IncludeItemTypes: ['Audio'],
+                Recursive: true,
+                Fields: ['ArtistItems', 'PrimaryImageAspectRatio', 'Album']
+            }
+        });
+
+        if (data && 'Items' in data && Array.isArray(data.Items) && data.Items.length > 0) {
+            const songs = data.Items.map((item: any) => {
+                const streamUrl = `${jellyfinStore.serverUrl}/Audio/${item.Id}/stream?static=true&api_key=${jellyfinStore.accessToken}`;
+                const coverUrl = item.ImageTags?.Primary
+                    ? `${jellyfinStore.serverUrl}/Items/${item.Id}/Images/Primary?tag=${item.ImageTags.Primary}&maxWidth=100&api_key=${jellyfinStore.accessToken}`
+                    : undefined;
+
+                return {
+                    id: item.Id,
+                    title: item.Name,
+                    artist: item.ArtistItems?.[0]?.Name || 'Unknown Artist',
+                    album: item.Album || undefined,
+                    coverUrl,
+                    streamUrl
+                };
+            }).filter(s => !!s.id);
+
+            if (songs.length > 0) {
+                musicStore.playSong(songs[0]);
+                if (songs.length > 1) {
+                    musicStore.addToQueue(songs.slice(1));
+                }
+            }
+        }
+    } catch (e) {
+        console.error('[Sidebar] Failed to quick play playlist:', e);
+    }
+}
+
 watch(() => jellyfinStore.isAuthenticated, (isAuth) => {
     if (isAuth) loadPlaylists();
 }, { immediate: true });
@@ -467,7 +517,7 @@ const routeName = computed(() => {
     if (isLinkActive('/chat/settings')) return 'Settings';
     if (isLinkActive('/chat/music')) return 'Music';
     if (isLinkActive('/chat/spaces') && activeSpaceId.value) {
-        const space = store.client?.getRoom(activeSpaceId.value);
+        const space = matrixStore.client?.getRoom(activeSpaceId.value);
         return space?.name || activeSpaceId.value;
     }
     return '';
@@ -497,8 +547,8 @@ const mapRoom = (room: Room): MappedRoom => {
     ? room.timeline[room.timeline.length - 1] 
     : null;
 
-  const count = room.getUnreadNotificationCount(store.unreadCountType) ?? 0;
-  const manual = store.manualUnread[room.roomId] ? 1 : 0;
+  const count = room.getUnreadNotificationCount(matrixStore.unreadCountType) ?? 0;
+  const manual = matrixStore.manualUnread[room.roomId] ? 1 : 0;
   
   return {
     roomId: room.roomId,
@@ -518,17 +568,17 @@ const isEmptyRoom = (room: Room): boolean => {
 };
 
 const friends = computed(() => {
-  if (!store.client) return [];
+  if (!matrixStore.client) return [];
   // Register dependency on activeVoiceCall and unreadTrigger for updates
   voiceStore.activeRoomId;
-  store.unreadTrigger;
+  matrixStore.unreadTrigger;
   
-  const { directMessages } = store.hierarchy;
-  const directEvent = store.client.getAccountData(EventType.Direct);
+  const { directMessages } = matrixStore.hierarchy;
+  const directEvent = matrixStore.client.getAccountData(EventType.Direct);
   const directContent: Record<string, string[]> = directEvent ? directEvent.getContent() as Record<string, string[]> : {};
 
   // Filter out empty rooms unless the setting is enabled
-  const filteredDMs = store.ui.showEmptyRooms
+  const filteredDMs = matrixStore.ui.showEmptyRooms
     ? directMessages
     : directMessages.filter(room => !isEmptyRoom(room));
 
@@ -541,15 +591,15 @@ const friends = computed(() => {
       .find(([, ids]) => ids.includes(room.roomId))?.[0];
       
     // 2. Fallback: find the first member that isn't us
-    if (!dmUserId && store.client) {
-        const myUserId = store.client.getUserId();
+    if (!dmUserId && matrixStore.client) {
+        const myUserId = matrixStore.client.getUserId();
         const otherMember = room.getJoinedMembers().find(m => m.userId !== myUserId);
         dmUserId = otherMember?.userId;
     }
 
     let avatarUrl = mapped.avatarUrl;
-    if (store.client && dmUserId) {
-        const user = store.client.getUser(dmUserId);
+    if (matrixStore.client && dmUserId) {
+        const user = matrixStore.client.getUser(dmUserId);
         if (user?.avatarUrl) {
             avatarUrl = user.avatarUrl;
         }
@@ -560,14 +610,14 @@ const friends = computed(() => {
 });
 
 const rooms = computed(() => {
-  if (!store.client) return [];
+  if (!matrixStore.client) return [];
   // Register dependency on activeVoiceCall and unreadTrigger for updates
   voiceStore.activeRoomId;
-  store.unreadTrigger;
+  matrixStore.unreadTrigger;
   
-  const { orphanRooms } = store.hierarchy;
+  const { orphanRooms } = matrixStore.hierarchy;
   // Filter out empty rooms unless the setting is enabled
-  const filtered = store.ui.showEmptyRooms
+  const filtered = matrixStore.ui.showEmptyRooms
     ? orphanRooms
     : orphanRooms.filter(room => !isEmptyRoom(room));
   return filtered.map(mapRoom).sort((a, b) => b.lastActive - a.lastActive);
@@ -581,26 +631,26 @@ const activeSpaceId = computed(() => {
 // Trigger space hierarchy fetching when a space becomes active
 watch(activeSpaceId, (newSpaceId) => {
   if (newSpaceId && isLinkActive('/chat/spaces')) {
-    store.fetchSpaceHierarchy(newSpaceId);
+    matrixStore.fetchSpaceHierarchy(newSpaceId);
   }
 }, { immediate: true });
 
-const collapsedCategories = computed(() => new Set(store.ui.collapsedCategories));
+const collapsedCategories = computed(() => new Set(matrixStore.ui.collapsedCategories));
 
 const isCategoryEditMode = ref(false);
 
 const navigateToInvite = (room: Room) => {
-  const myUserId = store.client?.getUserId();
+  const myUserId = matrixStore.client?.getUserId();
   const myMember = room.getMember(myUserId!);
   const isDirect = myMember?.events.member?.getContent().is_direct;
   const path = isDirect ? `/chat/dms/${room.roomId}` : `/chat/rooms/${room.roomId}`;
-  store.toggleSidebar(false);
-  store.ui.memberListVisible = false;
+  matrixStore.toggleSidebar(false);
+  matrixStore.ui.memberListVisible = false;
   navigateTo(path);
 };
 
 const toggleCategory = (categoryId: string) => {
-  store.toggleUICategory(categoryId);
+  matrixStore.toggleUICategory(categoryId);
 };
 
 const isCategoryCollapsed = (categoryId: string) => collapsedCategories.value.has(categoryId);
@@ -609,7 +659,7 @@ const buildSpaceHierarchy = (spaceId: string, visited: Set<string> = new Set()):
   if (visited.has(spaceId)) return null;
   visited.add(spaceId);
 
-  const space = store.client!.getRoom(spaceId);
+  const space = matrixStore.client!.getRoom(spaceId);
   if (!space) return null;
 
   const directRooms: Room[] = [];
@@ -620,12 +670,12 @@ const buildSpaceHierarchy = (spaceId: string, visited: Set<string> = new Set()):
     const content = event.getContent();
     if (content && Array.isArray(content.via) && content.via.length > 0) {
       const roomId = event.getStateKey() as string;
-      const room = store.client!.getRoom(roomId);
+      const room = matrixStore.client!.getRoom(roomId);
       if (room) {
         // Filter out empty rooms unless the setting is enabled
         if (room.isSpaceRoom()) {
           subSpaces.push(room);
-        } else if (store.ui.showEmptyRooms || !isEmptyRoom(room) || isVoiceChannel(room)) {
+        } else if (matrixStore.ui.showEmptyRooms || !isEmptyRoom(room) || isVoiceChannel(room)) {
           // Always show voice channels in spaces to avoid hiding active calls
           directRooms.push(room);
         }
@@ -651,12 +701,12 @@ const buildSpaceHierarchy = (spaceId: string, visited: Set<string> = new Set()):
 
 const spaceCategories = computed(() => {
   // Access hierarchy for reactivity trigger
-  store.hierarchy;
+  matrixStore.hierarchy;
   // Register dependency on activeVoiceCall and unreadTrigger for updates
   voiceStore.activeRoomId;
-  store.unreadTrigger;
+  matrixStore.unreadTrigger;
   
-  if (!store.client || !activeSpaceId.value) return [];
+  if (!matrixStore.client || !activeSpaceId.value) return [];
   
   const rootHierarchy = buildSpaceHierarchy(activeSpaceId.value);
   if (!rootHierarchy) return [];
@@ -683,7 +733,7 @@ const spaceCategories = computed(() => {
 
 const draggableCategories = computed({
     get: () => {
-        const order = activeSpaceId.value ? store.ui.uiOrder.categories[activeSpaceId.value] : [];
+        const order = activeSpaceId.value ? matrixStore.ui.uiOrder.categories[activeSpaceId.value] : [];
         if (!order || order.length === 0) return spaceCategories.value;
         
         return [...spaceCategories.value].sort((a, b) => {
@@ -697,7 +747,7 @@ const draggableCategories = computed({
     },
     set: (val) => {
         if (activeSpaceId.value) {
-            store.updateCategoryOrder(activeSpaceId.value, val.map(c => c.id));
+            matrixStore.updateCategoryOrder(activeSpaceId.value, val.map(c => c.id));
         }
     }
 });

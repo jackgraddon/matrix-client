@@ -23,8 +23,19 @@
         v-if="item.Type === 'Audio' || item.Type === 'MusicAlbum' || item.Type === 'Playlist'"
         class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2"
       >
-        <UiButton size="icon" variant="secondary" class="rounded-full shadow-lg scale-90 group-hover:scale-100 transition-transform" @click.stop="play(item)">
-          <Icon name="solar:play-bold" class="h-6 w-6 ml-0.5 text-[#AA5CC3]" />
+        <UiButton
+          size="icon"
+          variant="secondary"
+          class="rounded-full shadow-lg scale-90 group-hover:scale-100 transition-transform active:scale-95"
+          @click.stop="() => { if (!isShuffling) play(item); }"
+          @mousedown="startHoldTimer(item)"
+          @mouseup="clearHoldTimer"
+          @mouseleave="clearHoldTimer"
+          @touchstart.passive="startHoldTimer(item)"
+          @touchend="clearHoldTimer"
+          title="Play (Hold to Shuffle)"
+        >
+          <Icon :name="isShuffling ? 'solar:shuffle-bold' : 'solar:play-bold'" class="h-6 w-6 ml-0.5 text-[#AA5CC3]" />
         </UiButton>
         <UiButton v-if="item.Type === 'Audio'" size="icon-sm" variant="secondary" class="rounded-full shadow-lg scale-90 group-hover:scale-100 transition-transform" @click.stop="addToQueue" title="Add to Queue">
           <Icon name="solar:list-plus-bold" class="h-4 w-4 text-[#AA5CC3]" />
@@ -44,6 +55,7 @@
 import type { BaseItemDto } from '~/types/jellyfin';
 import { useJellyfinStore } from '~/stores/jellyfin';
 import { useMusicStore } from '~/stores/music';
+import { useJellyfin } from '~/composables/useJellyfin';
 
 const props = defineProps<{
   item: BaseItemDto;
@@ -51,10 +63,14 @@ const props = defineProps<{
 
 const jellyfinStore = useJellyfinStore();
 const musicStore = useMusicStore();
+const { fetcher } = useJellyfin();
+
+let holdTimer: any = null;
+const isShuffling = ref(false);
 
 const imageUrl = computed(() => {
   if (props.item.ImageTags?.Primary) {
-    return `${jellyfinStore.serverUrl}/Items/${props.item.Id}/Images/Primary?tag=${props.item.ImageTags.Primary}&maxWidth=300`;
+    return `${jellyfinStore.serverUrl}/Items/${props.item.Id}/Images/Primary?tag=${props.item.ImageTags.Primary}&maxWidth=300&api_key=${jellyfinStore.accessToken}`;
   }
   return null;
 });
@@ -83,24 +99,36 @@ function handleClick() {
   }
 }
 
-async function play(item: BaseItemDto) {
+async function play(item: BaseItemDto, shuffle = false) {
   if (item.Type === 'Audio') {
     const song = mapToSong(item);
     if (song) musicStore.playSong(song);
-  } else if (item.Type === 'MusicAlbum' || item.Type === 'Playlist') {
-    const { fetcher } = useJellyfin();
+  } else if (item.Type === 'MusicAlbum' || item.Type === 'Playlist' || item.Type === 'Artist') {
     try {
+      const query: any = {
+        IncludeItemTypes: ['Audio'],
+        Recursive: true,
+        Fields: ['ArtistItems', 'PrimaryImageAspectRatio', 'Album']
+      };
+
+      if (item.Type === 'Artist') {
+        query.ArtistIds = [item.Id];
+      } else {
+        query.ParentId = item.Id;
+      }
+
       const data = await fetcher('/Items', {
         method: 'GET',
-        query: {
-          ParentId: item.Id,
-          IncludeItemTypes: ['Audio'],
-          Recursive: true,
-          Fields: ['ArtistItems', 'PrimaryImageAspectRatio', 'Album']
-        }
+        query
       });
+
       if (data && 'Items' in data && Array.isArray(data.Items) && data.Items.length > 0) {
-        const songs = data.Items.map(t => mapToSong(t)).filter((s): s is any => !!s);
+        let songs = data.Items.map(t => mapToSong(t)).filter((s): s is any => !!s);
+
+        if (shuffle) {
+          songs = songs.sort(() => Math.random() - 0.5);
+        }
+
         if (songs.length > 0) {
           musicStore.playSong(songs[0]);
           if (songs.length > 1) {
@@ -114,21 +142,43 @@ async function play(item: BaseItemDto) {
   }
 }
 
+function startHoldTimer(item: BaseItemDto) {
+  holdTimer = setTimeout(() => {
+    isShuffling.value = true;
+    play(item, true);
+    setTimeout(() => { isShuffling.value = false; }, 1000);
+    holdTimer = null;
+  }, 600);
+}
+
+function clearHoldTimer() {
+  if (holdTimer) {
+    clearTimeout(holdTimer);
+    holdTimer = null;
+  }
+}
+
 async function addToQueue() {
   if (props.item.Type === 'Audio') {
     const song = mapToSong(props.item);
     if (song) musicStore.addToQueue(song);
-  } else if (props.item.Type === 'MusicAlbum' || props.item.Type === 'Playlist') {
-    const { fetcher } = useJellyfin();
+  } else if (props.item.Type === 'MusicAlbum' || props.item.Type === 'Playlist' || props.item.Type === 'Artist') {
     try {
+      const query: any = {
+        IncludeItemTypes: ['Audio'],
+        Recursive: true,
+        Fields: ['ArtistItems', 'PrimaryImageAspectRatio', 'Album']
+      };
+
+      if (props.item.Type === 'Artist') {
+        query.ArtistIds = [props.item.Id];
+      } else {
+        query.ParentId = props.item.Id;
+      }
+
       const data = await fetcher('/Items', {
         method: 'GET',
-        query: {
-          ParentId: props.item.Id,
-          IncludeItemTypes: ['Audio'],
-          Recursive: true,
-          Fields: ['ArtistItems', 'PrimaryImageAspectRatio', 'Album']
-        }
+        query
       });
       if (data && 'Items' in data && Array.isArray(data.Items)) {
         const songs = data.Items.map(t => mapToSong(t)).filter((s): s is any => !!s);

@@ -16,9 +16,42 @@
             <Icon name="solar:user-bold" class="h-32 w-32 text-muted-foreground/30" />
           </div>
         </div>
-        <div class="flex-1 space-y-2 pb-4">
-          <h1 class="text-6xl font-black tracking-tighter text-foreground">{{ artist?.Name }}</h1>
-          <p v-if="artist?.ProductionYear" class="text-xl text-muted-foreground font-medium">Since {{ artist.ProductionYear }}</p>
+        <div class="flex-1 space-y-6 pb-4">
+          <div class="space-y-1">
+            <h1 class="text-6xl font-black tracking-tighter text-foreground">{{ artist?.Name }}</h1>
+            <p v-if="artist?.ProductionYear" class="text-xl text-muted-foreground font-medium">Since {{ artist.ProductionYear }}</p>
+          </div>
+          <div class="flex items-center gap-3">
+            <UiButton
+              class="rounded-full px-8 h-12 bg-[#AA5CC3] hover:bg-[#AA5CC3]/90 text-white font-bold gap-2 shadow-lg transition-transform active:scale-95"
+              @click="() => { if (!isShuffling) playAll(false); }"
+              @mousedown="startHoldTimer"
+              @mouseup="clearHoldTimer"
+              @mouseleave="clearHoldTimer"
+              @touchstart.passive="startHoldTimer"
+              @touchend="clearHoldTimer"
+            >
+              <Icon :name="isShuffling ? 'solar:shuffle-bold' : 'solar:play-bold'" class="h-6 w-6" />
+              {{ isShuffling ? 'Shuffling...' : 'Play' }}
+            </UiButton>
+            <UiButton
+              variant="secondary"
+              class="rounded-full px-8 h-12 font-bold gap-2 transition-transform active:scale-95"
+              @click="playAll(true)"
+            >
+              <Icon name="solar:shuffle-bold" class="h-6 w-6" />
+              Shuffle
+            </UiButton>
+            <UiButton
+              variant="ghost"
+              size="icon"
+              class="rounded-full h-12 w-12 border border-border/50"
+              @click="addAllToQueue"
+              title="Add all to queue"
+            >
+              <Icon name="solar:list-plus-bold" class="h-6 w-6" />
+            </UiButton>
+          </div>
         </div>
       </div>
 
@@ -98,19 +131,21 @@ const artist = ref<BaseItemDto | null>(null);
 const topSongs = ref<BaseItemDto[]>([]);
 const albums = ref<BaseItemDto[]>([]);
 const latestAlbum = computed(() => albums.value[0]);
+const isShuffling = ref(false);
+let holdTimer: any = null;
 
 const loading = reactive({ artist: false, topSongs: false, albums: false });
 
 const imageUrl = computed(() => {
   if (artist.value?.ImageTags?.Primary) {
-    return `${jellyfinStore.serverUrl}/Items/${artist.value.Id}/Images/Primary?tag=${artist.value.ImageTags.Primary}&maxWidth=500`;
+    return `${jellyfinStore.serverUrl}/Items/${artist.value.Id}/Images/Primary?tag=${artist.value.ImageTags.Primary}&maxWidth=500&api_key=${jellyfinStore.accessToken}`;
   }
   return null;
 });
 
 const backgroundUrl = computed(() => {
   if (artist.value?.ImageTags?.Backdrop) {
-    return `${jellyfinStore.serverUrl}/Items/${artist.value.Id}/Images/Backdrop?tag=${artist.value.ImageTags.Backdrop}&maxWidth=1920`;
+    return `${jellyfinStore.serverUrl}/Items/${artist.value.Id}/Images/Backdrop?tag=${artist.value.ImageTags.Backdrop}&maxWidth=1920&api_key=${jellyfinStore.accessToken}`;
   }
   return null;
 });
@@ -162,14 +197,14 @@ async function loadArtist() {
 
 function getSongImageUrl(item: BaseItemDto) {
   if (item.ImageTags?.Primary) {
-    return `${jellyfinStore.serverUrl}/Items/${item.Id}/Images/Primary?tag=${item.ImageTags.Primary}&maxWidth=100`;
+    return `${jellyfinStore.serverUrl}/Items/${item.Id}/Images/Primary?tag=${item.ImageTags.Primary}&maxWidth=100&api_key=${jellyfinStore.accessToken}`;
   }
   return null;
 }
 
 function getAlbumImageUrl(item: BaseItemDto) {
   if (item.ImageTags?.Primary) {
-    return `${jellyfinStore.serverUrl}/Items/${item.Id}/Images/Primary?tag=${item.ImageTags.Primary}&maxWidth=400`;
+    return `${jellyfinStore.serverUrl}/Items/${item.Id}/Images/Primary?tag=${item.ImageTags.Primary}&maxWidth=400&api_key=${jellyfinStore.accessToken}`;
   }
   return null;
 }
@@ -182,11 +217,11 @@ function formatDuration(ticks?: number | null) {
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
-function play(item: BaseItemDto) {
-  if (!item.Id || !item.Name) return;
+function mapToSong(item: BaseItemDto) {
+  if (!item.Id || !item.Name) return null;
   const streamUrl = `${jellyfinStore.serverUrl}/Audio/${item.Id}/stream?static=true&api_key=${jellyfinStore.accessToken}`;
 
-  musicStore.playSong({
+  return {
     id: item.Id,
     title: item.Name,
     artist: item.ArtistItems?.[0]?.Name || artist.value?.Name || 'Unknown Artist',
@@ -194,7 +229,80 @@ function play(item: BaseItemDto) {
     albumArtist: item.AlbumArtist || undefined,
     coverUrl: getSongImageUrl(item) || undefined,
     streamUrl
-  });
+  };
+}
+
+function play(item: BaseItemDto) {
+  const song = mapToSong(item);
+  if (song) musicStore.playSong(song);
+}
+
+async function playAll(shuffle = false) {
+  try {
+    const data = await fetcher('/Items', {
+      method: 'GET',
+      query: {
+        ArtistIds: [artistId],
+        IncludeItemTypes: ['Audio'],
+        Recursive: true,
+        Fields: ['ArtistItems', 'PrimaryImageAspectRatio', 'Album']
+      }
+    });
+
+    if (data && 'Items' in data && Array.isArray(data.Items) && data.Items.length > 0) {
+      let songsToPlay = data.Items.map(t => mapToSong(t)).filter((s): s is any => !!s);
+
+      if (shuffle) {
+        songsToPlay = songsToPlay.sort(() => Math.random() - 0.5);
+      }
+
+      musicStore.playSong(songsToPlay[0]);
+      if (songsToPlay.length > 1) {
+        musicStore.addToQueue(songsToPlay.slice(1));
+      }
+    }
+  } catch (e) {
+    console.error('[Artist] Failed to play all tracks:', e);
+  }
+}
+
+function startHoldTimer() {
+  holdTimer = setTimeout(() => {
+    isShuffling.value = true;
+    playAll(true);
+    setTimeout(() => { isShuffling.value = false; }, 1000);
+    holdTimer = null;
+  }, 600);
+}
+
+function clearHoldTimer() {
+  if (holdTimer) {
+    clearTimeout(holdTimer);
+    holdTimer = null;
+  }
+}
+
+async function addAllToQueue() {
+  try {
+    const data = await fetcher('/Items', {
+      method: 'GET',
+      query: {
+        ArtistIds: [artistId],
+        IncludeItemTypes: ['Audio'],
+        Recursive: true,
+        Fields: ['ArtistItems', 'PrimaryImageAspectRatio', 'Album']
+      }
+    });
+
+    if (data && 'Items' in data && Array.isArray(data.Items)) {
+      const songs = data.Items.map(t => mapToSong(t)).filter((s): s is any => !!s);
+      if (songs.length > 0) {
+        musicStore.addToQueue(songs);
+      }
+    }
+  } catch (e) {
+    console.error('[Artist] Failed to add all to queue:', e);
+  }
 }
 
 onMounted(() => {

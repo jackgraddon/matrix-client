@@ -46,6 +46,7 @@
 import { toast } from 'vue-sonner';
 import { useJellyfinStore } from '~/stores/jellyfin';
 import { useJellyfin } from '~/composables/useJellyfin';
+import { useMatrixStore } from '~/stores/matrix';
 
 const props = defineProps<{
   open: boolean;

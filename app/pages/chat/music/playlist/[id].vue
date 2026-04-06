@@ -11,10 +11,41 @@
       <div class="flex-1 space-y-2 pb-4">
         <span class="text-xs font-bold uppercase tracking-wider text-[#AA5CC3]">Playlist</span>
         <h1 class="text-5xl font-black tracking-tighter text-foreground">{{ playlist?.Name }}</h1>
-        <div class="flex items-center gap-2 text-muted-foreground font-medium">
+        <div class="flex items-center gap-2 text-muted-foreground font-medium pb-4">
           <span>By {{ jellyfinStore.clientName }} User</span>
           <span>•</span>
           <span>{{ tracks.length }} tracks</span>
+        </div>
+        <div class="flex items-center gap-3">
+          <UiButton
+            class="rounded-full px-8 h-12 bg-[#AA5CC3] hover:bg-[#AA5CC3]/90 text-white font-bold gap-2 shadow-lg transition-transform active:scale-95"
+            @click="() => { if (!isShuffling) playAll(false); }"
+            @mousedown="startHoldTimer"
+            @mouseup="clearHoldTimer"
+            @mouseleave="clearHoldTimer"
+            @touchstart.passive="startHoldTimer"
+            @touchend="clearHoldTimer"
+          >
+            <Icon :name="isShuffling ? 'solar:shuffle-bold' : 'solar:play-bold'" class="h-6 w-6" />
+            {{ isShuffling ? 'Shuffling...' : 'Play' }}
+          </UiButton>
+          <UiButton
+            variant="secondary"
+            class="rounded-full px-8 h-12 font-bold gap-2 transition-transform active:scale-95"
+            @click="playAll(true)"
+          >
+            <Icon name="solar:shuffle-bold" class="h-6 w-6" />
+            Shuffle
+          </UiButton>
+          <UiButton
+            variant="ghost"
+            size="icon"
+            class="rounded-full h-12 w-12 border border-border/50"
+            @click="addAllToQueue"
+            title="Add all to queue"
+          >
+            <Icon name="solar:list-plus-bold" class="h-6 w-6" />
+          </UiButton>
         </div>
       </div>
     </div>
@@ -70,10 +101,12 @@ const musicStore = useMusicStore();
 const playlistId = route.params.id as string;
 const playlist = ref<BaseItemDto | null>(null);
 const tracks = ref<BaseItemDto[]>([]);
+const isShuffling = ref(false);
+let holdTimer: any = null;
 
 const imageUrl = computed(() => {
   if (playlist.value?.ImageTags?.Primary) {
-    return `${jellyfinStore.serverUrl}/Items/${playlist.value.Id}/Images/Primary?tag=${playlist.value.ImageTags.Primary}&maxWidth=500`;
+    return `${jellyfinStore.serverUrl}/Items/${playlist.value.Id}/Images/Primary?tag=${playlist.value.ImageTags.Primary}&maxWidth=500&api_key=${jellyfinStore.accessToken}`;
   }
   return null;
 });
@@ -100,7 +133,7 @@ async function loadPlaylist() {
 
 function getSongImageUrl(item: BaseItemDto) {
   if (item.ImageTags?.Primary) {
-    return `${jellyfinStore.serverUrl}/Items/${item.Id}/Images/Primary?tag=${item.ImageTags.Primary}&maxWidth=100`;
+    return `${jellyfinStore.serverUrl}/Items/${item.Id}/Images/Primary?tag=${item.ImageTags.Primary}&maxWidth=100&api_key=${jellyfinStore.accessToken}`;
   }
   return null;
 }
@@ -116,6 +149,43 @@ function formatDuration(ticks?: number | null) {
 function play(item: BaseItemDto) {
   const song = mapToSong(item);
   if (song) musicStore.playSong(song);
+}
+
+function playAll(shuffle = false) {
+  if (tracks.value.length === 0) return;
+
+  let songsToPlay = tracks.value.map(t => mapToSong(t)).filter((s): s is any => !!s);
+  if (shuffle) {
+    songsToPlay = songsToPlay.sort(() => Math.random() - 0.5);
+  }
+
+  musicStore.playSong(songsToPlay[0]);
+  if (songsToPlay.length > 1) {
+    musicStore.addToQueue(songsToPlay.slice(1));
+  }
+}
+
+function startHoldTimer() {
+  holdTimer = setTimeout(() => {
+    isShuffling.value = true;
+    playAll(true);
+    setTimeout(() => { isShuffling.value = false; }, 1000);
+    holdTimer = null;
+  }, 600);
+}
+
+function clearHoldTimer() {
+  if (holdTimer) {
+    clearTimeout(holdTimer);
+    holdTimer = null;
+  }
+}
+
+function addAllToQueue() {
+  const songs = tracks.value.map(t => mapToSong(t)).filter((s): s is any => !!s);
+  if (songs.length > 0) {
+    musicStore.addToQueue(songs);
+  }
 }
 
 function addToQueue(item: BaseItemDto) {
