@@ -20,6 +20,7 @@ export const useMusicStore = defineStore('music', {
     queue: [] as SongMetadata[],
     history: [] as SongMetadata[],
     currentTime: 0,
+    duration: 0,
     volume: 1,
     audioElement: null as HTMLAudioElement | null,
   }),
@@ -32,6 +33,10 @@ export const useMusicStore = defineStore('music', {
 
       this.audioElement.addEventListener('timeupdate', () => {
         this.currentTime = this.audioElement?.currentTime || 0;
+      });
+
+      this.audioElement.addEventListener('durationchange', () => {
+        this.duration = this.audioElement?.duration || 0;
       });
 
       this.audioElement.addEventListener('ended', () => {

@@ -61,7 +61,10 @@ const imageUrl = computed(() => {
 
 const subText = computed(() => {
   if (props.item.Type === 'Artist') return 'Artist';
-  if (props.item.Type === 'MusicAlbum') return props.item.ProductionYear ? `${props.item.ProductionYear}` : 'Album';
+  if (props.item.Type === 'MusicAlbum') {
+    const artist = props.item.AlbumArtist || props.item.ArtistItems?.[0]?.Name || 'Unknown Artist';
+    return `${artist}${props.item.ProductionYear ? ` • ${props.item.ProductionYear}` : ''}`;
+  }
   return props.item.ArtistItems?.[0]?.Name || props.item.AlbumArtist || 'Unknown Artist';
 });
 

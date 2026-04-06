@@ -104,7 +104,7 @@
             :style="{ width: `${progress}%` }"
           ></div>
         </div>
-        <span v-if="musicStore.isExpanded" class="text-[10px] text-muted-foreground w-8 tabular-nums">{{ formatTime(duration) }}</span>
+        <span v-if="musicStore.isExpanded" class="text-[10px] text-muted-foreground w-8 tabular-nums">{{ formatTime(musicStore.duration) }}</span>
       </div>
 
       <!-- Extended Controls (Only when expanded) -->
@@ -129,10 +129,9 @@ import MusicQueue from './MusicQueue.vue';
 
 const musicStore = useMusicStore();
 
-const duration = computed(() => musicStore.audioElement?.duration || 0);
 const progress = computed(() => {
-  if (!duration.value) return 0;
-  return (musicStore.currentTime / duration.value) * 100;
+  if (!musicStore.duration) return 0;
+  return (musicStore.currentTime / musicStore.duration) * 100;
 });
 
 function formatTime(seconds: number) {
@@ -143,10 +142,10 @@ function formatTime(seconds: number) {
 }
 
 function handleSeek(e: MouseEvent) {
-  if (!musicStore.audioElement) return;
+  if (!musicStore.audioElement || !musicStore.duration) return;
   const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
   const percent = (e.clientX - rect.left) / rect.width;
-  const time = percent * duration.value;
+  const time = percent * musicStore.duration;
   musicStore.seek(time);
 }
 </script>

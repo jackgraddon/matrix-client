@@ -55,9 +55,19 @@ const recentlyPlayed = ref<BaseItemDto[]>([]);
 async function loadHome() {
   if (!jellyfinStore.isAuthenticated) return;
 
+  const cacheKey = `music_home_${jellyfinStore.userId}`;
+  const cached = jellyfinStore.getCached(cacheKey, 10 * 60 * 1000); // 10 minute cache for home
+  if (cached) {
+    mostPlayed.value = cached.mostPlayed;
+    explore.value = cached.explore;
+    recentlyAdded.value = cached.recentlyAdded;
+    recentlyPlayed.value = cached.recentlyPlayed;
+    return;
+  }
+
   // Most Played
   loading.mostPlayed = true;
-  fetcher('/Items', {
+  const p1 = fetcher('/Items', {
     method: 'GET',
     query: {
       IncludeItemTypes: ['Audio'],
@@ -73,7 +83,7 @@ async function loadHome() {
 
   // Explore (Random)
   loading.explore = true;
-  fetcher('/Items', {
+  const p2 = fetcher('/Items', {
     method: 'GET',
     query: {
       IncludeItemTypes: ['Audio'],
@@ -88,7 +98,7 @@ async function loadHome() {
 
   // Recently Added
   loading.recentlyAdded = true;
-  fetcher('/Items', {
+  const p3 = fetcher('/Items', {
     method: 'GET',
     query: {
       IncludeItemTypes: ['Audio'],
@@ -104,7 +114,7 @@ async function loadHome() {
 
   // Recently Played (using Users/Items with SortBy PlayDate)
   loading.recentlyPlayed = true;
-  fetcher(`/Users/${jellyfinStore.userId}/Items`, {
+  const p4 = fetcher(`/Users/${jellyfinStore.userId}/Items`, {
     method: 'GET',
     query: {
       IncludeItemTypes: ['Audio'],
@@ -117,6 +127,16 @@ async function loadHome() {
   }).then(data => {
     if (data && 'Items' in data) recentlyPlayed.value = data.Items as BaseItemDto[];
   }).finally(() => loading.recentlyPlayed = false);
+
+  // Once all done, cache the result
+  Promise.all([p1, p2, p3, p4]).then(() => {
+    jellyfinStore.setCached(cacheKey, {
+      mostPlayed: mostPlayed.value,
+      explore: explore.value,
+      recentlyAdded: recentlyAdded.value,
+      recentlyPlayed: recentlyPlayed.value
+    });
+  });
 }
 
 onMounted(() => {
