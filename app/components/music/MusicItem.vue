@@ -23,11 +23,11 @@
         v-if="item.Type === 'Audio' || item.Type === 'MusicAlbum' || item.Type === 'Playlist'"
         class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2"
       >
-        <UiButton size="icon" variant="secondary" class="rounded-full shadow-lg scale-90 group-hover:scale-100 transition-transform" @click.stop="handleClick">
+        <UiButton size="icon" variant="secondary" class="rounded-full shadow-lg scale-90 group-hover:scale-100 transition-transform" @click.stop="play(item)">
           <Icon name="solar:play-bold" class="h-6 w-6 ml-0.5 text-[#AA5CC3]" />
         </UiButton>
         <UiButton v-if="item.Type === 'Audio'" size="icon-sm" variant="secondary" class="rounded-full shadow-lg scale-90 group-hover:scale-100 transition-transform" @click.stop="addToQueue" title="Add to Queue">
-          <Icon name="solar:list-line-duotone" class="h-4 w-4 text-[#AA5CC3]" />
+          <Icon name="solar:list-plus-bold" class="h-4 w-4 text-[#AA5CC3]" />
         </UiButton>
       </div>
     </div>
@@ -70,8 +70,11 @@ const subText = computed(() => {
 
 function handleClick() {
   if (props.item.Type === 'Audio') {
-    play(props.item);
-  } else if (props.item.Type === 'Artist') {
+    // Navigate to the album the song is in if available
+    if (props.item.AlbumId) {
+      navigateTo(`/chat/music/albums/${props.item.AlbumId}`);
+    }
+  } else if (props.item.Type === 'Artist' || props.item.Type === 'MusicArtist') {
     navigateTo(`/chat/music/artists/${props.item.Id}`);
   } else if (props.item.Type === 'MusicAlbum') {
     navigateTo(`/chat/music/albums/${props.item.Id}`);
@@ -80,14 +83,63 @@ function handleClick() {
   }
 }
 
-function play(item: BaseItemDto) {
-  const song = mapToSong(item);
-  if (song) musicStore.playSong(song);
+async function play(item: BaseItemDto) {
+  if (item.Type === 'Audio') {
+    const song = mapToSong(item);
+    if (song) musicStore.playSong(song);
+  } else if (item.Type === 'MusicAlbum' || item.Type === 'Playlist') {
+    const { fetcher } = useJellyfin();
+    try {
+      const data = await fetcher('/Items', {
+        method: 'GET',
+        query: {
+          ParentId: item.Id,
+          IncludeItemTypes: ['Audio'],
+          Recursive: true,
+          Fields: ['ArtistItems', 'PrimaryImageAspectRatio', 'Album']
+        }
+      });
+      if (data && 'Items' in data && Array.isArray(data.Items) && data.Items.length > 0) {
+        const songs = data.Items.map(t => mapToSong(t)).filter((s): s is any => !!s);
+        if (songs.length > 0) {
+          musicStore.playSong(songs[0]);
+          if (songs.length > 1) {
+            musicStore.addToQueue(songs.slice(1));
+          }
+        }
+      }
+    } catch (e) {
+      console.error('[MusicItem] Failed to play collection:', e);
+    }
+  }
 }
 
-function addToQueue() {
-  const song = mapToSong(props.item);
-  if (song) musicStore.addToQueue(song);
+async function addToQueue() {
+  if (props.item.Type === 'Audio') {
+    const song = mapToSong(props.item);
+    if (song) musicStore.addToQueue(song);
+  } else if (props.item.Type === 'MusicAlbum' || props.item.Type === 'Playlist') {
+    const { fetcher } = useJellyfin();
+    try {
+      const data = await fetcher('/Items', {
+        method: 'GET',
+        query: {
+          ParentId: props.item.Id,
+          IncludeItemTypes: ['Audio'],
+          Recursive: true,
+          Fields: ['ArtistItems', 'PrimaryImageAspectRatio', 'Album']
+        }
+      });
+      if (data && 'Items' in data && Array.isArray(data.Items)) {
+        const songs = data.Items.map(t => mapToSong(t)).filter((s): s is any => !!s);
+        if (songs.length > 0) {
+          musicStore.addToQueue(songs);
+        }
+      }
+    } catch (e) {
+      console.error('[MusicItem] Failed to add collection to queue:', e);
+    }
+  }
 }
 
 function mapToSong(item: BaseItemDto) {

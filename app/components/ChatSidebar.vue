@@ -39,8 +39,9 @@
                             v-if="jellyfinStore.isAuthenticated"
                             variant="secondary"
                             @click="() => { navigateTo('/chat/music'); store.toggleSidebar(false); }"
+                            class="w-full justify-start gap-2"
                         >
-                            <Icon name="solar:music-note-bold-duotone"/>
+                            <Icon name="solar:music-note-bold-duotone" class="h-4 w-4 text-[#AA5CC3]" />
                             Music Library
                         </UiButton>
                     </div>

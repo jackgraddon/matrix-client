@@ -136,6 +136,124 @@ async function loadHome() {
       recentlyAdded: recentlyAdded.value,
       recentlyPlayed: recentlyPlayed.value
     });
+
+    // Prefetch other sections in background
+    prefetchOtherSections();
+  });
+}
+
+async function prefetchOtherSections() {
+  // Use a small delay to prioritize home rendering
+  setTimeout(() => {
+    prefetchArtists();
+    prefetchAlbums();
+    prefetchSongs();
+  }, 1000);
+}
+
+async function prefetchArtists() {
+  const cacheKey = `music_artists_${jellyfinStore.userId}`;
+  if (jellyfinStore.getCached(cacheKey)) return;
+
+  const p1 = fetcher('/Artists', {
+    method: 'GET',
+    query: {
+      Recursive: true,
+      SortBy: ['PlayCount'],
+      SortOrder: 'Descending',
+      Limit: 12,
+      Fields: ['PrimaryImageAspectRatio']
+    }
+  });
+
+  const p2 = fetcher('/Artists', {
+    method: 'GET',
+    query: {
+      Recursive: true,
+      SortBy: ['SortName'],
+      SortOrder: 'Ascending',
+      Limit: 100,
+      Fields: ['PrimaryImageAspectRatio']
+    }
+  });
+
+  Promise.all([p1, p2]).then(([d1, d2]: any) => {
+    jellyfinStore.setCached(cacheKey, {
+      topArtists: d1.Items,
+      allArtists: d2.Items
+    });
+  });
+}
+
+async function prefetchAlbums() {
+  const cacheKey = `music_albums_${jellyfinStore.userId}`;
+  if (jellyfinStore.getCached(cacheKey)) return;
+
+  const p1 = fetcher('/Items', {
+    method: 'GET',
+    query: {
+      IncludeItemTypes: ['MusicAlbum'],
+      Recursive: true,
+      SortBy: ['PlayCount'],
+      SortOrder: 'Descending',
+      Limit: 12,
+      Fields: ['ArtistItems', 'AlbumArtist', 'PrimaryImageAspectRatio']
+    }
+  });
+
+  const p2 = fetcher('/Items', {
+    method: 'GET',
+    query: {
+      IncludeItemTypes: ['MusicAlbum'],
+      Recursive: true,
+      SortBy: ['SortName'],
+      SortOrder: 'Ascending',
+      Limit: 100,
+      Fields: ['ArtistItems', 'AlbumArtist', 'PrimaryImageAspectRatio']
+    }
+  });
+
+  Promise.all([p1, p2]).then(([d1, d2]: any) => {
+    jellyfinStore.setCached(cacheKey, {
+      topAlbums: d1.Items,
+      allAlbums: d2.Items
+    });
+  });
+}
+
+async function prefetchSongs() {
+  const cacheKey = `music_songs_${jellyfinStore.userId}`;
+  if (jellyfinStore.getCached(cacheKey)) return;
+
+  const p1 = fetcher('/Items', {
+    method: 'GET',
+    query: {
+      IncludeItemTypes: ['Audio'],
+      Recursive: true,
+      SortBy: ['PlayCount'],
+      SortOrder: 'Descending',
+      Limit: 12,
+      Fields: ['ArtistItems', 'PrimaryImageAspectRatio']
+    }
+  });
+
+  const p2 = fetcher('/Items', {
+    method: 'GET',
+    query: {
+      IncludeItemTypes: ['Audio'],
+      Recursive: true,
+      SortBy: ['SortName'],
+      SortOrder: 'Ascending',
+      Limit: 100,
+      Fields: ['ArtistItems', 'PrimaryImageAspectRatio']
+    }
+  });
+
+  Promise.all([p1, p2]).then(([d1, d2]: any) => {
+    jellyfinStore.setCached(cacheKey, {
+      topSongs: d1.Items,
+      allSongs: d2.Items
+    });
   });
 }
 

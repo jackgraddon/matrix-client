@@ -20,6 +20,16 @@
           <span>•</span>
           <span>{{ tracks.length }} songs</span>
         </div>
+        <div class="flex items-center gap-3 pt-4">
+           <UiButton @click="playAll" class="bg-[#AA5CC3] hover:bg-[#AA5CC3]/90 text-white gap-2">
+             <Icon name="solar:play-bold" class="h-4 w-4" />
+             Play All
+           </UiButton>
+           <UiButton variant="secondary" @click="addAllToQueue" class="gap-2">
+             <Icon name="solar:list-plus-bold" class="h-4 w-4" />
+             Add to Queue
+           </UiButton>
+        </div>
       </div>
     </div>
 
@@ -47,7 +57,7 @@
           <span class="text-xs text-muted-foreground font-medium tabular-nums px-4">{{ formatDuration(track.RunTimeTicks) }}</span>
 
           <UiButton variant="ghost" size="icon-sm" class="opacity-0 group-hover:opacity-100 h-8 w-8" @click.stop="addToQueue(track)">
-             <Icon name="solar:list-line-duotone" class="h-4 w-4 text-muted-foreground hover:text-[#AA5CC3]" />
+             <Icon name="solar:list-plus-bold" class="h-4 w-4 text-muted-foreground hover:text-[#AA5CC3]" />
           </UiButton>
         </div>
       </div>
@@ -116,6 +126,24 @@ function play(item: BaseItemDto) {
 function addToQueue(item: BaseItemDto) {
   const song = mapToSong(item);
   if (song) musicStore.addToQueue(song);
+}
+
+function playAll() {
+  if (tracks.value.length === 0) return;
+  const songs = tracks.value.map(t => mapToSong(t)).filter((s): s is any => !!s);
+  if (songs.length > 0) {
+    musicStore.playSong(songs[0]);
+    if (songs.length > 1) {
+      musicStore.addToQueue(songs.slice(1));
+    }
+  }
+}
+
+function addAllToQueue() {
+  const songs = tracks.value.map(t => mapToSong(t)).filter((s): s is any => !!s);
+  if (songs.length > 0) {
+    musicStore.addToQueue(songs);
+  }
 }
 
 function mapToSong(item: BaseItemDto) {
