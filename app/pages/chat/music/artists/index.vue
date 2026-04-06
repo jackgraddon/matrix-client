@@ -52,6 +52,7 @@ async function loadArtists() {
       Recursive: true,
       SortBy: ['SortName'],
       SortOrder: 'Ascending',
+      Limit: 100, // Reasonable limit for initial load
       Fields: ['PrimaryImageAspectRatio']
     }
   }).then(data => {

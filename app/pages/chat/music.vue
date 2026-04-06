@@ -1,5 +1,5 @@
 <template>
-  <div class="flex flex-col h-full">
+  <div class="flex flex-col h-full bg-background">
     <header class="flex items-center h-12 p-2 border-b border-border shrink-0">
       <UiButton variant="ghost" size="icon" class="md:hidden" @click="matrixStore.toggleSidebar(true)">
         <Icon name="solar:hamburger-menu-linear" />

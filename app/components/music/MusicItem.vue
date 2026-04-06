@@ -1,6 +1,7 @@
 <template>
   <div
-    class="group relative flex flex-col gap-2 p-2 rounded-lg hover:bg-accent/50 transition-all cursor-pointer"
+    class="group relative flex flex-col gap-2 p-2 rounded-lg hover:bg-accent/50 transition-all cursor-pointer content-visibility-auto"
+    style="contain-intrinsic-size: 0 240px;"
     @click="handleClick"
   >
     <div class="aspect-square rounded-lg overflow-hidden bg-muted shadow-sm relative">

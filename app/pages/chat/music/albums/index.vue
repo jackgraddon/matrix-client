@@ -54,6 +54,7 @@ async function loadAlbums() {
       Recursive: true,
       SortBy: ['SortName'],
       SortOrder: 'Ascending',
+      Limit: 100,
       Fields: ['ArtistItems', 'AlbumArtist', 'PrimaryImageAspectRatio']
     }
   }).then(data => {

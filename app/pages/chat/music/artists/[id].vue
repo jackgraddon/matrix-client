@@ -120,7 +120,12 @@ async function loadArtist() {
 
   loading.artist = true;
   fetcher(`/Users/${jellyfinStore.userId}/Items/${artistId}`, { method: 'GET' })
-    .then(data => artist.value = data as BaseItemDto)
+    .then(data => {
+      artist.value = data as BaseItemDto;
+    })
+    .catch(err => {
+      console.error('[Artist] Failed to load artist:', err);
+    })
     .finally(() => loading.artist = false);
 
   loading.topSongs = true;
