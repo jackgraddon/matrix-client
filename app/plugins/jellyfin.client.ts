@@ -7,14 +7,16 @@ export default defineNuxtPlugin(() => {
 
   const jellyfinFetch = $fetch.create({
     retry: 0,
-    async onRequest({ options }) {
+    async onRequest({ request, options }) {
       // Dynamically set baseURL if not already set on this request
-      // We also check if the url is a full URL. If not, prepend baseURL.
-      if (jellyfinStore.serverUrl && !options.url.startsWith('http')) {
+      // options.url can be undefined in some fetch versions, 'request' contains the path
+      const path = typeof request === 'string' ? request : '';
+
+      if (jellyfinStore.serverUrl && !path.startsWith('http')) {
         options.baseURL = jellyfinStore.serverUrl;
       }
 
-      console.log(`[Jellyfin] Requesting: ${options.baseURL || ''}${options.url}`);
+      console.log(`[Jellyfin] Requesting: ${options.baseURL || ''}${path}`);
 
       // Add authentication headers
       options.headers = {
