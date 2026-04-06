@@ -1,6 +1,6 @@
 <template>
-  <UiDialog :open="open" @update:open="$emit('update:open', $event)">
-    <UiDialogContent class="sm:max-w-[425px]">
+  <UiDialog :open="open" @update:open="(val: boolean) => $emit('update:open', val)">
+    <UiDialogContent class="sm:max-w-[425px]" @interact-outside="(e: any) => e.preventDefault()">
       <UiDialogHeader>
         <UiDialogTitle>Link Jellyfin Account</UiDialogTitle>
         <UiDialogDescription>
