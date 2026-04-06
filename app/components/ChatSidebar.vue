@@ -39,8 +39,9 @@
                             v-if="jellyfinStore.isAuthenticated"
                             variant="secondary"
                             @click="() => { navigateTo('/chat/music'); store.toggleSidebar(false); }"
+                            class="w-full justify-start gap-2"
                         >
-                            <Icon name="solar:music-note-bold-duotone" />
+                            <Icon name="solar:music-note-bold-duotone" class="h-4 w-4 text-[#AA5CC3]" />
                             Music Library
                         </UiButton>
                     </div>
@@ -203,6 +204,42 @@
                     </div>
                 </template>
 
+                <!-- Sidebar Music Nav -->
+                <template v-if="isLinkActive('/chat/music')">
+                    <div class="flex flex-col gap-1 mb-4">
+                        <div class="px-2 mb-1">
+                            <span class="text-[10px] font-bold uppercase text-muted-foreground tracking-wider">Library</span>
+                        </div>
+                        <div
+                            v-for="item in musicNav"
+                            :key="item.path"
+                            role="button"
+                            class="inline-flex items-center justify-start px-2 h-10 w-full rounded-md text-sm font-medium transition-colors cursor-pointer hover:bg-muted"
+                            :class="[route.path === item.path ? 'bg-secondary text-secondary-foreground' : '']"
+                            @click="() => { navigateTo(item.path); store.toggleSidebar(false); }"
+                        >
+                            <Icon :name="item.icon" class="h-4 w-4 mr-2 text-muted-foreground" />
+                            <span class="truncate">{{ item.label }}</span>
+                        </div>
+                    </div>
+
+                    <div v-if="playlists.length > 0" class="flex flex-col gap-1 mb-4">
+                        <div class="px-2 mb-1">
+                            <span class="text-[10px] font-bold uppercase text-muted-foreground tracking-wider">Playlists</span>
+                        </div>
+                        <div
+                            v-for="playlist in playlists"
+                            :key="playlist.Id"
+                            role="button"
+                            class="inline-flex items-center justify-start px-2 h-10 w-full rounded-md text-sm font-medium transition-colors cursor-pointer hover:bg-muted"
+                            @click="() => { navigateTo(`/chat/music/playlist/${playlist.Id}`); store.toggleSidebar(false); }"
+                        >
+                            <Icon name="solar:playlist-minimalistic-bold-duotone" class="h-4 w-4 mr-2 text-muted-foreground" />
+                            <span class="truncate">{{ playlist.Name }}</span>
+                        </div>
+                    </div>
+                </template>
+
                 <!-- Sidebar Space Categories List -->
                 <template v-if="isLinkActive('/chat/spaces') && activeSpaceId">
                     <!-- Return to Lobby Button -->
@@ -319,6 +356,7 @@ import { isVoiceChannel } from '~/utils/room';
 import { useMatrixStore } from '~/stores/matrix';
 import { useVoiceStore } from '~/stores/voice';
 import { useJellyfinStore } from '~/stores/jellyfin';
+import { useJellyfin } from '~/composables/useJellyfin';
 import { useWebHaptics } from 'web-haptics/vue';
 import Playbar from '~/components/Playbar.vue';
 
@@ -381,6 +419,40 @@ const { trigger } = useWebHaptics({
 });
 const voiceStore = useVoiceStore();
 const jellyfinStore = useJellyfinStore();
+const { fetcher: jellyfinFetch } = useJellyfin();
+
+const musicNav = [
+    { label: 'Home', icon: 'solar:home-2-bold-duotone', path: '/chat/music' },
+    { label: 'Favorites', icon: 'solar:heart-bold-duotone', path: '/chat/music/favorites' },
+    { label: 'Artists', icon: 'solar:users-group-rounded-bold-duotone', path: '/chat/music/artists' },
+    { label: 'Albums', icon: 'solar:album-bold-duotone', path: '/chat/music/albums' },
+    { label: 'Songs', icon: 'solar:music-note-bold-duotone', path: '/chat/music/songs' },
+];
+
+const playlists = ref<any[]>([]);
+
+async function loadPlaylists() {
+    if (!jellyfinStore.isAuthenticated) return;
+    try {
+        const data = await jellyfinFetch('/Items', {
+            method: 'GET',
+            query: {
+                IncludeItemTypes: ['Playlist'],
+                Recursive: true,
+                Fields: ['PrimaryImageAspectRatio']
+            }
+        });
+        if (data && 'Items' in data) {
+            playlists.value = data.Items as any[];
+        }
+    } catch (e) {
+        console.error('[Sidebar] Failed to load playlists:', e);
+    }
+}
+
+watch(() => jellyfinStore.isAuthenticated, (isAuth) => {
+    if (isAuth) loadPlaylists();
+}, { immediate: true });
 
 const isLobby = computed(() => {
     const segments = route.path.split('/').filter(Boolean);
@@ -391,6 +463,7 @@ const routeName = computed(() => {
     if (isLinkActive('/chat/dms')) return 'Direct Messages';
     if (isLinkActive('/chat/rooms')) return 'Rooms';
     if (isLinkActive('/chat/settings')) return 'Settings';
+    if (isLinkActive('/chat/music')) return 'Music';
     if (isLinkActive('/chat/spaces') && activeSpaceId.value) {
         const space = store.client?.getRoom(activeSpaceId.value);
         return space?.name || activeSpaceId.value;
