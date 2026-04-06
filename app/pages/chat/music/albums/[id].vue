@@ -1,7 +1,7 @@
 <template>
   <div class="flex flex-col h-full overflow-y-auto">
     <!-- Album Header -->
-    <div class="relative p-8 pt-16 flex flex-col md:flex-row gap-8 items-end bg-gradient-to-b from-accent/30 to-background shrink-0">
+    <div class="relative p-8 pt-16 flex flex-col md:flex-row gap-8 items-end bg-gradient-to-b from-accent/30 to-transparent shrink-0">
       <div class="h-64 w-64 shrink-0 rounded-lg overflow-hidden shadow-2xl border border-border/50 bg-muted">
         <img v-if="imageUrl" :src="imageUrl" class="h-full w-full object-cover" alt="" />
         <div v-else class="h-full w-full flex items-center justify-center">
