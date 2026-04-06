@@ -7,6 +7,17 @@
           Enter your Jellyfin server details to link your account.
         </UiDialogDescription>
       </UiDialogHeader>
+
+      <div v-if="loginError" class="py-2">
+        <UiAlert variant="destructive">
+          <Icon name="solar:danger-bold" class="h-4 w-4" />
+          <UiAlertTitle>Connection Error</UiAlertTitle>
+          <UiAlertDescription>
+            {{ loginError }}
+          </UiAlertDescription>
+        </UiAlert>
+      </div>
+
       <div class="grid gap-4 py-4">
         <div class="grid gap-2">
           <UiLabel for="serverUrl">Server URL</UiLabel>
@@ -23,7 +34,7 @@
       </div>
       <UiDialogFooter>
         <UiButton :disabled="loading" @click="login">
-          <Icon v-if="loading" name="solar:re-record-bold-duotone" class="mr-2 h-4 w-4 animate-spin" />
+          <Icon v-if="loading" name="lucide:loader-2" class="mr-2 h-4 w-4 animate-spin" />
           {{ loading ? 'Connecting...' : 'Link Account' }}
         </UiButton>
       </UiDialogFooter>
@@ -49,13 +60,15 @@ const serverUrl = ref('');
 const username = ref('');
 const password = ref('');
 const loading = ref(false);
+const loginError = ref<string | null>(null);
 
 const jellyfinStore = useJellyfinStore();
 const { fetcher } = useJellyfin();
 
 async function login() {
+  loginError.value = null;
   if (!serverUrl.value || !username.value || !password.value) {
-    toast.error('Please fill in all fields');
+    loginError.value = 'Please fill in all fields';
     return;
   }
 
@@ -110,11 +123,11 @@ async function login() {
       emit('update:open', false);
     } else {
       console.warn('[Jellyfin] Auth response missing expected tokens:', authData);
-      throw new Error('Authentication response was invalid. Please check your credentials.');
+      loginError.value = 'Authentication response was invalid. Please check your credentials and server URL.';
     }
   } catch (e: any) {
     console.error('Jellyfin login failed:', e);
-    toast.error('Failed to link Jellyfin account', { description: e.message });
+    loginError.value = e.message || 'An unexpected error occurred during login.';
   } finally {
     loading.value = false;
   }

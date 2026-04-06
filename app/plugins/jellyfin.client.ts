@@ -9,11 +9,12 @@ export default defineNuxtPlugin(() => {
     retry: 0,
     async onRequest({ options }) {
       // Dynamically set baseURL if not already set on this request
-      if (!options.baseURL && jellyfinStore.serverUrl) {
+      // We also check if the url is a full URL. If not, prepend baseURL.
+      if (jellyfinStore.serverUrl && !options.url.startsWith('http')) {
         options.baseURL = jellyfinStore.serverUrl;
       }
 
-      console.log(`[Jellyfin] Requesting: ${options.baseURL}${options.url}`);
+      console.log(`[Jellyfin] Requesting: ${options.baseURL || ''}${options.url}`);
 
       // Add authentication headers
       options.headers = {
