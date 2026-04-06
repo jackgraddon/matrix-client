@@ -66,6 +66,7 @@
               :key="song.Id"
               class="flex items-center gap-4 p-2 rounded-md hover:bg-accent/50 group cursor-pointer transition-colors"
               @click="play(song)"
+              @contextmenu.capture="matrixStore.openMusicItemContextMenu(song)"
             >
               <span class="w-6 text-sm text-muted-foreground text-center font-medium group-hover:hidden">{{ index + 1 }}</span>
               <Icon name="solar:play-bold" class="w-6 h-6 text-[#AA5CC3] hidden group-hover:block" />
@@ -118,6 +119,7 @@ import { useRoute } from 'vue-router';
 import { useJellyfin } from '~/composables/useJellyfin';
 import { useJellyfinStore } from '~/stores/jellyfin';
 import { useMusicStore } from '~/stores/music';
+import { useMatrixStore } from '~/stores/matrix';
 import type { BaseItemDto } from '~/types/jellyfin';
 import MusicSection from '~/components/music/MusicSection.vue';
 
@@ -125,6 +127,7 @@ const route = useRoute();
 const { fetcher } = useJellyfin();
 const jellyfinStore = useJellyfinStore();
 const musicStore = useMusicStore();
+const matrixStore = useMatrixStore();
 
 const artistId = route.params.id as string;
 const artist = ref<BaseItemDto | null>(null);
@@ -173,7 +176,7 @@ async function loadArtist() {
       SortBy: ['PlayCount'],
       SortOrder: 'Descending',
       Limit: 10,
-      Fields: ['ArtistItems', 'PrimaryImageAspectRatio']
+      Fields: ['ArtistItems', 'PrimaryImageAspectRatio', 'UserData']
     }
   }).then(data => {
     if (data && 'Items' in data) topSongs.value = data.Items as BaseItemDto[];
@@ -188,7 +191,7 @@ async function loadArtist() {
       Recursive: true,
       SortBy: ['ProductionYear'],
       SortOrder: 'Descending',
-      Fields: ['ArtistItems', 'PrimaryImageAspectRatio']
+      Fields: ['ArtistItems', 'PrimaryImageAspectRatio', 'UserData']
     }
   }).then(data => {
     if (data && 'Items' in data) albums.value = data.Items as BaseItemDto[];
@@ -245,7 +248,7 @@ async function playAll(shuffle = false) {
         ArtistIds: [artistId],
         IncludeItemTypes: ['Audio'],
         Recursive: true,
-        Fields: ['ArtistItems', 'PrimaryImageAspectRatio', 'Album']
+        Fields: ['ArtistItems', 'PrimaryImageAspectRatio', 'UserData', 'Album']
       }
     });
 
@@ -290,7 +293,7 @@ async function addAllToQueue() {
         ArtistIds: [artistId],
         IncludeItemTypes: ['Audio'],
         Recursive: true,
-        Fields: ['ArtistItems', 'PrimaryImageAspectRatio', 'Album']
+        Fields: ['ArtistItems', 'PrimaryImageAspectRatio', 'UserData', 'Album']
       }
     });
 

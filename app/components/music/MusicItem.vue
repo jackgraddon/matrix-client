@@ -3,6 +3,7 @@
     class="group relative flex flex-col gap-2 p-2 rounded-lg hover:bg-accent/50 transition-all cursor-pointer content-visibility-auto"
     style="contain-intrinsic-size: 0 240px;"
     @click="handleClick"
+    @contextmenu.capture="matrixStore.openMusicItemContextMenu(item)"
   >
     <div class="aspect-square rounded-lg overflow-hidden bg-muted shadow-sm relative">
       <img
@@ -63,6 +64,7 @@ const props = defineProps<{
 
 const jellyfinStore = useJellyfinStore();
 const musicStore = useMusicStore();
+const matrixStore = useMatrixStore();
 const { fetcher } = useJellyfin();
 
 let holdTimer: any = null;
@@ -108,7 +110,7 @@ async function play(item: BaseItemDto, shuffle = false) {
       const query: any = {
         IncludeItemTypes: ['Audio'],
         Recursive: true,
-        Fields: ['ArtistItems', 'PrimaryImageAspectRatio', 'Album']
+        Fields: ['ArtistItems', 'PrimaryImageAspectRatio', 'UserData', 'Album']
       };
 
       if (item.Type === 'Artist') {
@@ -167,7 +169,7 @@ async function addToQueue() {
       const query: any = {
         IncludeItemTypes: ['Audio'],
         Recursive: true,
-        Fields: ['ArtistItems', 'PrimaryImageAspectRatio', 'Album']
+        Fields: ['ArtistItems', 'PrimaryImageAspectRatio', 'UserData', 'Album']
       };
 
       if (props.item.Type === 'Artist') {

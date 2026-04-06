@@ -47,7 +47,7 @@ async function loadArtists() {
       SortBy: ['PlayCount'],
       SortOrder: 'Descending',
       Limit: 12,
-      Fields: ['PrimaryImageAspectRatio']
+      Fields: ['PrimaryImageAspectRatio', 'UserData']
     }
   }).then(data => {
     if (data && 'Items' in data) topArtists.value = data.Items as BaseItemDto[];
@@ -61,7 +61,7 @@ async function loadArtists() {
       SortBy: ['SortName'],
       SortOrder: 'Ascending',
       Limit: 100, // Reasonable limit for initial load
-      Fields: ['PrimaryImageAspectRatio']
+      Fields: ['PrimaryImageAspectRatio', 'UserData']
     }
   }).then(data => {
     if (data && 'Items' in data) allArtists.value = data.Items as BaseItemDto[];

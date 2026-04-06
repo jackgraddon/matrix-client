@@ -58,6 +58,7 @@
           :key="track.Id"
           class="flex items-center gap-4 p-2 rounded-md hover:bg-accent/50 group cursor-pointer transition-colors"
           @click="play(track)"
+          @contextmenu.capture="matrixStore.openMusicItemContextMenu(track)"
         >
           <span class="w-8 text-sm text-muted-foreground text-center font-medium group-hover:hidden">{{ index + 1 }}</span>
           <div class="w-8 h-8 flex items-center justify-center hidden group-hover:flex">
@@ -91,12 +92,14 @@ import { useRoute } from 'vue-router';
 import { useJellyfin } from '~/composables/useJellyfin';
 import { useJellyfinStore } from '~/stores/jellyfin';
 import { useMusicStore } from '~/stores/music';
+import { useMatrixStore } from '~/stores/matrix';
 import type { BaseItemDto } from '~/types/jellyfin';
 
 const route = useRoute();
 const { fetcher } = useJellyfin();
 const jellyfinStore = useJellyfinStore();
 const musicStore = useMusicStore();
+const matrixStore = useMatrixStore();
 
 const playlistId = route.params.id as string;
 const playlist = ref<BaseItemDto | null>(null);
@@ -124,7 +127,7 @@ async function loadPlaylist() {
     query: {
       ParentId: playlistId,
       IncludeItemTypes: ['Audio'],
-      Fields: ['ArtistItems', 'PrimaryImageAspectRatio', 'Album']
+      Fields: ['ArtistItems', 'PrimaryImageAspectRatio', 'UserData', 'Album']
     }
   }).then(data => {
     if (data && 'Items' in data) tracks.value = data.Items as BaseItemDto[];

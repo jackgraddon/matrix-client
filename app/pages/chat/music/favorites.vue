@@ -58,7 +58,7 @@ async function loadFavorites() {
         Filters: ['IsFavorite'],
         IncludeItemTypes: ['MusicAlbum', 'Audio'],
         Recursive: true,
-        Fields: ['ArtistItems', 'AlbumArtist', 'PrimaryImageAspectRatio']
+        Fields: ['ArtistItems', 'AlbumArtist', 'PrimaryImageAspectRatio', 'UserData']
       }
     });
 

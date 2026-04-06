@@ -450,7 +450,7 @@ async function loadPlaylists() {
             query: {
                 IncludeItemTypes: ['Playlist'],
                 Recursive: true,
-                Fields: ['PrimaryImageAspectRatio']
+                Fields: ['PrimaryImageAspectRatio', 'UserData']
             }
         });
         if (data && 'Items' in data) {
@@ -469,7 +469,7 @@ async function quickPlayPlaylist(playlist: any) {
                 ParentId: playlist.Id,
                 IncludeItemTypes: ['Audio'],
                 Recursive: true,
-                Fields: ['ArtistItems', 'PrimaryImageAspectRatio', 'Album']
+                Fields: ['ArtistItems', 'PrimaryImageAspectRatio', 'UserData', 'Album']
             }
         });
 

@@ -48,7 +48,7 @@ async function loadAlbums() {
       SortBy: ['PlayCount'],
       SortOrder: 'Descending',
       Limit: 12,
-      Fields: ['ArtistItems', 'AlbumArtist', 'PrimaryImageAspectRatio']
+      Fields: ['ArtistItems', 'AlbumArtist', 'PrimaryImageAspectRatio', 'UserData']
     }
   }).then(data => {
     if (data && 'Items' in data) topAlbums.value = data.Items as BaseItemDto[];
@@ -63,7 +63,7 @@ async function loadAlbums() {
       SortBy: ['SortName'],
       SortOrder: 'Ascending',
       Limit: 100,
-      Fields: ['ArtistItems', 'AlbumArtist', 'PrimaryImageAspectRatio']
+      Fields: ['ArtistItems', 'AlbumArtist', 'PrimaryImageAspectRatio', 'UserData']
     }
   }).then(data => {
     if (data && 'Items' in data) allAlbums.value = data.Items as BaseItemDto[];

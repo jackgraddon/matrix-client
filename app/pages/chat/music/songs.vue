@@ -48,7 +48,7 @@ async function loadSongs() {
       SortBy: ['PlayCount'],
       SortOrder: 'Descending',
       Limit: 12,
-      Fields: ['ArtistItems', 'PrimaryImageAspectRatio']
+      Fields: ['ArtistItems', 'PrimaryImageAspectRatio', 'UserData']
     }
   }).then(data => {
     if (data && 'Items' in data) topSongs.value = data.Items as BaseItemDto[];
@@ -63,7 +63,7 @@ async function loadSongs() {
       SortBy: ['SortName'],
       SortOrder: 'Ascending',
       Limit: 100,
-      Fields: ['ArtistItems', 'PrimaryImageAspectRatio']
+      Fields: ['ArtistItems', 'PrimaryImageAspectRatio', 'UserData']
     }
   }).then(data => {
     if (data && 'Items' in data) allSongs.value = data.Items as BaseItemDto[];

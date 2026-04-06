@@ -52,7 +52,7 @@ export interface UIState {
   hapticsDebugEnabled: boolean;
   sidebarOpen: boolean;
   contextMenu: {
-    type: 'room' | 'message' | 'global' | null;
+    type: 'room' | 'message' | 'music-item' | 'global' | null;
     data: any;
   };
   _contextMenuHandled: boolean;
@@ -1279,6 +1279,11 @@ export const useMatrixStore = defineStore('matrix', {
 
     openMessageContextMenu(msg: any) {
       this.setContextMenu('message', { msg });
+      this.ui._contextMenuHandled = true;
+    },
+
+    openMusicItemContextMenu(item: any) {
+      this.setContextMenu('music-item', { item });
       this.ui._contextMenuHandled = true;
     },
 

@@ -79,6 +79,14 @@ export const useMusicStore = defineStore('music', {
       }
     },
 
+    addToStartOfQueue(songs: SongMetadata | SongMetadata[]) {
+      if (Array.isArray(songs)) {
+        this.queue.unshift(...songs);
+      } else {
+        this.queue.unshift(songs);
+      }
+    },
+
     togglePlay() {
       if (!this.audioElement) return;
       if (this.isPlaying) {

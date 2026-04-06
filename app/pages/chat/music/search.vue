@@ -69,7 +69,7 @@ async function performSearch() {
         SearchTerm: q.value,
         IncludeItemTypes: ['Artist', 'MusicAlbum', 'Audio'],
         Recursive: true,
-        Fields: ['ArtistItems', 'AlbumArtist', 'PrimaryImageAspectRatio']
+        Fields: ['ArtistItems', 'AlbumArtist', 'PrimaryImageAspectRatio', 'UserData']
       }
     });
 

@@ -75,7 +75,7 @@ async function loadHome() {
       SortBy: ['PlayCount'],
       SortOrder: 'Descending',
       Limit: 12,
-      Fields: ['ArtistItems', 'PrimaryImageAspectRatio']
+      Fields: ['ArtistItems', 'PrimaryImageAspectRatio', 'UserData']
     }
   }).then(data => {
     if (data && 'Items' in data) mostPlayed.value = data.Items as BaseItemDto[];
@@ -90,7 +90,7 @@ async function loadHome() {
       Recursive: true,
       SortBy: ['Random'],
       Limit: 12,
-      Fields: ['ArtistItems', 'PrimaryImageAspectRatio']
+      Fields: ['ArtistItems', 'PrimaryImageAspectRatio', 'UserData']
     }
   }).then(data => {
     if (data && 'Items' in data) explore.value = data.Items as BaseItemDto[];
@@ -106,7 +106,7 @@ async function loadHome() {
       SortBy: ['DateCreated'],
       SortOrder: 'Descending',
       Limit: 12,
-      Fields: ['ArtistItems', 'PrimaryImageAspectRatio']
+      Fields: ['ArtistItems', 'PrimaryImageAspectRatio', 'UserData']
     }
   }).then(data => {
     if (data && 'Items' in data) recentlyAdded.value = data.Items as BaseItemDto[];
@@ -122,7 +122,7 @@ async function loadHome() {
       SortBy: ['PlayDate'],
       SortOrder: 'Descending',
       Limit: 12,
-      Fields: ['ArtistItems', 'PrimaryImageAspectRatio']
+      Fields: ['ArtistItems', 'PrimaryImageAspectRatio', 'UserData']
     }
   }).then(data => {
     if (data && 'Items' in data) recentlyPlayed.value = data.Items as BaseItemDto[];
@@ -162,7 +162,7 @@ async function prefetchArtists() {
       SortBy: ['PlayCount'],
       SortOrder: 'Descending',
       Limit: 12,
-      Fields: ['PrimaryImageAspectRatio']
+      Fields: ['PrimaryImageAspectRatio', 'UserData']
     }
   });
 
@@ -173,7 +173,7 @@ async function prefetchArtists() {
       SortBy: ['SortName'],
       SortOrder: 'Ascending',
       Limit: 100,
-      Fields: ['PrimaryImageAspectRatio']
+      Fields: ['PrimaryImageAspectRatio', 'UserData']
     }
   });
 
@@ -197,7 +197,7 @@ async function prefetchAlbums() {
       SortBy: ['PlayCount'],
       SortOrder: 'Descending',
       Limit: 12,
-      Fields: ['ArtistItems', 'AlbumArtist', 'PrimaryImageAspectRatio']
+      Fields: ['ArtistItems', 'AlbumArtist', 'PrimaryImageAspectRatio', 'UserData']
     }
   });
 
@@ -209,7 +209,7 @@ async function prefetchAlbums() {
       SortBy: ['SortName'],
       SortOrder: 'Ascending',
       Limit: 100,
-      Fields: ['ArtistItems', 'AlbumArtist', 'PrimaryImageAspectRatio']
+      Fields: ['ArtistItems', 'AlbumArtist', 'PrimaryImageAspectRatio', 'UserData']
     }
   });
 
@@ -233,7 +233,7 @@ async function prefetchSongs() {
       SortBy: ['PlayCount'],
       SortOrder: 'Descending',
       Limit: 12,
-      Fields: ['ArtistItems', 'PrimaryImageAspectRatio']
+      Fields: ['ArtistItems', 'PrimaryImageAspectRatio', 'UserData']
     }
   });
 
@@ -245,7 +245,7 @@ async function prefetchSongs() {
       SortBy: ['SortName'],
       SortOrder: 'Ascending',
       Limit: 100,
-      Fields: ['ArtistItems', 'PrimaryImageAspectRatio']
+      Fields: ['ArtistItems', 'PrimaryImageAspectRatio', 'UserData']
     }
   });
 
