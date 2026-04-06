@@ -107,6 +107,7 @@ export default defineNuxtConfig({
         '@tauri-apps/plugin-autostart',
         '@tauri-apps/plugin-notification',
         '@tauri-apps/plugin-updater',
+        '@tauri-apps/plugin-http',
         'clsx',
         'tailwind-merge'
       ],

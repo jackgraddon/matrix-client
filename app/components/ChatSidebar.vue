@@ -29,10 +29,22 @@
             <div class="flex flex-col gap-2 flex-1">
                 <!-- Sidebar Home actions -->
                 <template v-if="isLinkActive('/chat')">
-                    <UiButton variant="default" @click="store.openGlobalSearchModal()" class="w-full">
-                        <Icon name="solar:add-circle-line-duotone" class="h-4 w-4" />
-                        Find or start a chat
-                    </UiButton>
+                    <div class="flex flex-col gap-2">
+                        <UiButton variant="default" @click="store.openGlobalSearchModal()" class="w-full">
+                            <Icon name="solar:add-circle-line-duotone" class="h-4 w-4" />
+                            Find or start a chat
+                        </UiButton>
+
+                        <UiButton
+                            v-if="jellyfinStore.isAuthenticated"
+                            variant="secondary"
+                            @click="() => { navigateTo('/chat/music'); store.toggleSidebar(false); }"
+                            class="w-full justify-start gap-2"
+                        >
+                            <Icon name="solar:music-note-bold-duotone" class="h-4 w-4 text-[#AA5CC3]" />
+                            Music Library
+                        </UiButton>
+                    </div>
 
                     <!-- Invitations Section -->
                     <div v-if="store.invites.length > 0" class="mt-4 flex flex-col gap-2">
@@ -267,6 +279,9 @@
         </nav>
 
         <footer class="p-2 h-fit w-full flex flex-col gap-2 cursor-pointer overflow-hidden">
+            <!-- Jellyfin Playbar -->
+            <Playbar />
+
             <!-- Active Call Bar -->
             <div v-if="voiceStore.activeRoomId" class="p-2 bg-green-500/10 rounded-md flex items-center justify-between gap-2 overflow-hidden shadow-sm animate-in fade-in slide-in-from-bottom-2">
                 <div class="flex flex-col min-w-0">
@@ -304,7 +319,9 @@ import ChatSidebarCategory from '~/components/ChatSidebarCategory.vue';
 import { isVoiceChannel } from '~/utils/room';
 import { useMatrixStore } from '~/stores/matrix';
 import { useVoiceStore } from '~/stores/voice';
+import { useJellyfinStore } from '~/stores/jellyfin';
 import { useWebHaptics } from 'web-haptics/vue';
+import Playbar from '~/components/Playbar.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -364,6 +381,7 @@ const { trigger } = useWebHaptics({
     debug: store.ui.hapticsDebugEnabled
 });
 const voiceStore = useVoiceStore();
+const jellyfinStore = useJellyfinStore();
 
 const isLobby = computed(() => {
     const segments = route.path.split('/').filter(Boolean);

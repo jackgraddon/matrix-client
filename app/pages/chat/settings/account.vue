@@ -59,14 +59,29 @@
     <div>
       <h2 class="text-lg font-semibold tracking-tight">Account Linking</h2>
       <p class="text-sm text-muted-foreground">Link your account to other services.</p>
+      <div v-if="jellyfinStore.isAuthenticated" class="flex items-center gap-4 p-4 rounded-md border bg-accent/50">
+        <div class="h-10 w-10 flex items-center justify-center rounded-full bg-[#AA5CC3]">
+          <Icon name="simple-icons:jellyfin" class="text-white h-6 w-6" />
+        </div>
+        <div class="flex-1 min-w-0">
+          <p class="text-sm font-semibold truncate">Jellyfin</p>
+          <p class="text-xs text-muted-foreground truncate">{{ jellyfinStore.serverUrl }}</p>
+        </div>
+        <UiButton variant="outline" size="sm" @click="jellyfinStore.logout">
+          Unlink
+        </UiButton>
+      </div>
       <UiButton
-        @click="link('jellyfin')"
+        v-else
+        @click="isJellyfinModalOpen = true"
         class="bg-[#AA5CC3] text-white hover:bg-[#AA5CC3]/90"
       >
         <Icon name="simple-icons:jellyfin" />
-        Jellyfin
+        Link Jellyfin
       </UiButton>
     </div>
+
+    <JellyfinLoginModal v-model:open="isJellyfinModalOpen" />
 
     <div>
       <h2 class="text-lg font-semibold tracking-tight">Bridging</h2>
@@ -103,10 +118,14 @@ definePageMeta({
 
 import { toast } from 'vue-sonner';
 import { Preset, EventType } from 'matrix-js-sdk';
+import { useJellyfinStore } from '~/stores/jellyfin';
+import JellyfinLoginModal from '~/components/JellyfinLoginModal.vue';
 
 const store = useMatrixStore();
+const jellyfinStore = useJellyfinStore();
 
 const manualStatusInput = ref(store.customStatus || '');
+const isJellyfinModalOpen = ref(false);
 
 function updateStatus() {
   store.setCustomStatus(manualStatusInput.value);
