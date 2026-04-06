@@ -14,6 +14,7 @@ import { getOidcConfig, registerClient, getLoginUrl, completeLoginFlow, getHomes
 import { MsgType, EventType, IndexedDBStore, IndexedDBCryptoStore, MemoryStore, LocalStorageCryptoStore } from 'matrix-js-sdk';
 import { useRouter } from '#app';
 import { useVoiceStore } from './voice';
+import { useJellyfinStore } from './jellyfin';
 import { MatrixRTCSessionManagerEvents } from 'matrix-js-sdk/lib/matrixrtc/MatrixRTCSessionManager';
 import { MatrixRTCSessionEvent } from 'matrix-js-sdk/lib/matrixrtc/MatrixRTCSession';
 import { isVoiceChannel } from '~/utils/room';
@@ -303,6 +304,7 @@ export const useMatrixStore = defineStore('matrix', {
     startMinimized: false,
     activityStatus: null as string | null,
     activityDetails: null as any | null,
+    musicActivity: null as { title: string; artist: string; album?: string; isRunning: boolean } | null,
     pushNotificationsEnabled: true,
     showContentInNotifications: true,
     customPushEndpoint: null as string | null,
@@ -683,6 +685,16 @@ export const useMatrixStore = defineStore('matrix', {
         if (sanitize(act.name)) return act;
       }
 
+      // 1.5 Local Music Activity
+      if (isSelf && this.musicActivity?.isRunning) {
+        return {
+          name: `${this.musicActivity.title} by ${this.musicActivity.artist}`,
+          details: this.musicActivity.album,
+          is_running: true,
+          type: 'music'
+        };
+      }
+
       // 2. Synced account data (self other sessions)
       if (isSelf && this.remoteActivityDetails[targetUserId]?.is_running) {
         const remote = this.remoteActivityDetails[targetUserId];
@@ -733,6 +745,9 @@ export const useMatrixStore = defineStore('matrix', {
 
     async initStorage() {
       // Load all persisted prefs into Pinia state on startup
+      const jellyfinStore = useJellyfinStore();
+      await jellyfinStore.init();
+
       this.pushNotificationsEnabled = await getPref('push_notifications_enabled', true);
       this.showContentInNotifications = await getPref('show_content_in_notifications', true);
       this.customPushEndpoint = await getPref('custom_push_endpoint', null);
@@ -1048,6 +1063,11 @@ export const useMatrixStore = defineStore('matrix', {
       this.refreshPresence();
     },
 
+    setMusicActivity(activity: { title: string; artist: string; album?: string; isRunning: boolean } | null) {
+      this.musicActivity = activity;
+      this.refreshPresence();
+    },
+
     async goOffline() {
       if (this.client && this.isAuthenticated) {
         console.log('[MatrixStore] Sending offline flare...');
@@ -1103,6 +1123,15 @@ export const useMatrixStore = defineStore('matrix', {
             is_running: true,
           });
         }
+      } else if (!status_msg && this.musicActivity?.isRunning) {
+        status_msg = `Listening to ${this.musicActivity.title} by ${this.musicActivity.artist}`;
+        // Enrich with JSON if we want more detail for other Tumult clients
+        status_msg = JSON.stringify({
+          playing: `${this.musicActivity.title} by ${this.musicActivity.artist}`,
+          details: this.musicActivity.album || 'Music',
+          is_running: true,
+          type: 'music'
+        });
       }
 
       // Check if state has actually changed
@@ -2099,6 +2128,7 @@ export const useMatrixStore = defineStore('matrix', {
         if (event.getType() === 'cc.jackg.ruby.pinned_spaces') this.updatePinnedSpaces();
         if (event.getType() === 'cc.jackg.ruby.ui_order') this.loadUIOrderFromAccountData();
         if (event.getType() === 'cc.jackg.tumult.activity_details') this.loadRichActivityFromAccountData();
+        if (event.getType() === 'cc.tumult.jellyfin.config') this.loadJellyfinConfigFromAccountData();
       });
       // Listen for parent/child changes
       this.client.on(sdk.RoomStateEvent.Events, (event) => {
@@ -2184,6 +2214,7 @@ export const useMatrixStore = defineStore('matrix', {
       this.updatePinnedSpaces();
       this.loadUIOrderFromAccountData();
       this.loadRichActivityFromAccountData();
+      this.loadJellyfinConfigFromAccountData();
       this.updateDirectMessageMap();
       this.updateHierarchy();
     },
@@ -2214,6 +2245,38 @@ export const useMatrixStore = defineStore('matrix', {
             rooms: content.rooms || {}
           };
           await setPref('matrix_ui_order', this.ui.uiOrder);
+        }
+      }
+    },
+
+    async loadJellyfinConfigFromAccountData() {
+      if (!this.client) return;
+      const jellyfinStore = useJellyfinStore();
+      if (jellyfinStore.isAuthenticated) return;
+
+      // 1. Try Matrix Secret Storage (SSSS) first
+      try {
+        const crypto = this.client.getCrypto();
+        if (crypto && this.isSecretStorageReady) {
+          const secret = await crypto.getSecret('cc.tumult.jellyfin.config');
+          if (secret) {
+            console.log('[MatrixStore] Loading Jellyfin credentials from Secret Storage');
+            const config = JSON.parse(secret);
+            await jellyfinStore.setCredentials(config.serverUrl, config.accessToken, config.userId);
+            return;
+          }
+        }
+      } catch (e) {
+        console.warn('[MatrixStore] Failed to load Jellyfin credentials from Secret Storage:', e);
+      }
+
+      // 2. Fallback to standard Account Data
+      const event = (this.client as any).getAccountData('cc.tumult.jellyfin.config');
+      if (event) {
+        const content = event.getContent();
+        if (content && typeof content === 'object') {
+          console.log('[MatrixStore] Loading Jellyfin credentials from Account Data fallback');
+          await jellyfinStore.setCredentials(content.serverUrl, content.accessToken, content.userId);
         }
       }
     },
