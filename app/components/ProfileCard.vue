@@ -10,9 +10,9 @@
       Example description
     </div>
 
-    <!-- Game Activity -->
+    <!-- Activity -->
     <div class="mb-4">
-      <GameCard :userId="userid" />
+      <ActivityStatus :user-id="userid" variant="large" :show-basic-presence="false" />
     </div>
 
     <div class="flex items-center gap-2 mt-auto">

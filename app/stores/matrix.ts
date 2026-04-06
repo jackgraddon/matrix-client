@@ -723,6 +723,7 @@ export const useMatrixStore = defineStore('matrix', {
           try {
             const parsed = JSON.parse(presenceMsg);
             if (parsed.playing && parsed.is_running) {
+              const type = parsed.type || (parsed.playing.includes(' by ') ? 'music' : 'game');
               return {
                 name: parsed.playing,
                 details: parsed.details,
@@ -733,7 +734,7 @@ export const useMatrixStore = defineStore('matrix', {
                 startTimestamp: parsed.startTimestamp,
                 duration: parsed.duration,
                 coverUrl: parsed.coverUrl,
-                type: parsed.type || 'game',
+                type: type,
                 is_running: true,
               };
             }
