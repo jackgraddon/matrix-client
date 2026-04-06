@@ -9,6 +9,7 @@ export default defineNuxtPlugin(() => {
     get baseURL() {
       return jellyfinStore.serverUrl || '';
     },
+    retry: 0,
     async onRequest({ options }) {
       // Add authentication headers
       options.headers = {

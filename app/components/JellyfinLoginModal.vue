@@ -71,9 +71,9 @@ async function login() {
         Username: username.value,
         Pw: password.value,
       }
-    });
+    }) as any;
 
-    if (authData && 'AccessToken' in authData) {
+    if (authData && typeof authData === 'object' && 'AccessToken' in authData) {
       const config = {
         serverUrl: jellyfinStore.serverUrl,
         accessToken: authData.AccessToken,
