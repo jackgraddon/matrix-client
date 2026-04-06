@@ -1,0 +1,104 @@
+diff --git a/src/process/mod.rs b/src/process/mod.rs
+index 21fd104..2a74ded 100644
+--- a/src/process/mod.rs
++++ b/src/process/mod.rs
+@@ -39,6 +39,20 @@ pub struct DetectedGame {
+     pub start_time: i64,
+ }
+
++/// Stopped game info
++#[derive(Debug, Clone)]
++pub struct StoppedGame {
++    pub id: String,
++    pub pid: Pid,
++}
++
++/// Result of a process scan
++#[derive(Debug, Clone, Default)]
++pub struct ScanResult {
++    pub detected: Vec<DetectedGame>,
++    pub stopped: Vec<StoppedGame>,
++}
++
+ impl ProcessScanner {
+     pub fn new(db_url: String, enable_updates: bool) -> Self {
+         Self {
+@@ -78,7 +92,7 @@ impl ProcessScanner {
+     }
+
+     /// Scan for running games
+-    pub async fn scan(&self) -> Vec<DetectedGame> {
++    pub async fn scan(&self) -> ScanResult {
+         // Refresh database periodically (every hour) if enabled
+         if self.enable_updates {
+             if let Some(last_update) = *self.last_db_update.read().await {
+@@ -141,23 +155,31 @@ impl ProcessScanner {
+         }
+
+         // Find games that stopped
+-        let stopped: Vec<String> = cache
++        let mut stopped: Vec<StoppedGame> = Vec::new();
++        let stopped_ids: Vec<String> = cache
+             .timestamps
+             .keys()
+             .filter(|id| !current_ids.contains(id))
+             .cloned()
+             .collect();
+
+-        for id in stopped {
++        for id in stopped_ids {
+             if let Some(name) = cache.names.get(&id) {
+                 info!("Lost game: {}", name);
+             }
++
++            let pid = cache.pids.get(&id).copied().unwrap_or(0);
++            stopped.push(StoppedGame {
++                id: id.clone(),
++                pid,
++            });
++
+             cache.timestamps.remove(&id);
+             cache.names.remove(&id);
+             cache.pids.remove(&id);
+         }
+
+-        detected
++        ScanResult { detected, stopped }
+     }
+
+     /// Get PID for a stopped game
+diff --git a/src/server.rs b/src/server.rs
+index 116ea55..9920710 100644
+--- a/src/server.rs
++++ b/src/server.rs
+@@ -327,9 +327,10 @@ impl RpcServer {
+         info!("Process scanner started (interval: {:?})", interval);
+
+         loop {
+-            let detected = self.process_scanner.scan().await;
++            let result = self.process_scanner.scan().await;
+
+-            for game in detected {
++            // Handle detected games
++            for game in result.detected {
+                 // Create activity message for detected game
+                 let msg = ActivityMessage {
+                     activity: Some(Activity {
+@@ -347,6 +348,17 @@ impl RpcServer {
+                 self.bridge.send_activity(msg).await;
+             }
+
++            // Handle stopped games
++            for game in result.stopped {
++                // Clear activity for stopped game
++                let msg = ActivityMessage {
++                    activity: None,
++                    pid: game.pid,
++                    socket_id: game.id.clone(),
++                };
++                self.bridge.send_activity(msg).await;
++            }
++
+             tokio::time::sleep(interval).await;
+         }
+     }
