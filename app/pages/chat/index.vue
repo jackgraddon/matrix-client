@@ -13,30 +13,6 @@
       <h1 class="text-3xl font-bold tracking-tight">Home</h1>
     </div>
 
-    <!-- Jellyfin Music Entry -->
-    <div v-if="jellyfinStore.isAuthenticated" class="space-y-4">
-      <h2 class="text-xl font-semibold tracking-tight text-[#AA5CC3]">Music</h2>
-      <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        <NuxtLink to="/chat/music" class="block group">
-          <UiCard class="h-full border-[#AA5CC3]/30 transition-all hover:bg-[#AA5CC3]/5 hover:border-[#AA5CC3]">
-            <UiCardHeader class="flex flex-row items-center gap-4 space-y-0 pb-4">
-              <div class="h-12 w-12 flex items-center justify-center rounded-full bg-[#AA5CC3]">
-                <Icon name="solar:music-note-bold" class="text-white h-6 w-6" />
-              </div>
-              <div class="flex flex-col overflow-hidden">
-                <UiCardTitle class="text-base font-medium truncate">
-                  My Music Library
-                </UiCardTitle>
-                <UiCardDescription class="text-xs truncate">
-                  Listen to your Jellyfin collection
-                </UiCardDescription>
-              </div>
-            </UiCardHeader>
-          </UiCard>
-        </NuxtLink>
-      </div>
-    </div>
-
     <!-- Recent DMs -->
     <div class="space-y-4">
       <h2 class="text-xl font-semibold tracking-tight">Recent Direct Messages</h2>

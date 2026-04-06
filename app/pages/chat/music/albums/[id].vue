@@ -47,7 +47,7 @@
           <span class="text-xs text-muted-foreground font-medium tabular-nums px-4">{{ formatDuration(track.RunTimeTicks) }}</span>
 
           <UiButton variant="ghost" size="icon-sm" class="opacity-0 group-hover:opacity-100 h-8 w-8" @click.stop="addToQueue(track)">
-             <Icon name="solar:list-plus-bold" class="h-4 w-4 text-muted-foreground hover:text-[#AA5CC3]" />
+             <Icon name="solar:list-line-duotone" class="h-4 w-4 text-muted-foreground hover:text-[#AA5CC3]" />
           </UiButton>
         </div>
       </div>

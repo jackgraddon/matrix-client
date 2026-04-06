@@ -27,7 +27,7 @@
           <Icon name="solar:play-bold" class="h-6 w-6 ml-0.5 text-[#AA5CC3]" />
         </UiButton>
         <UiButton v-if="item.Type === 'Audio'" size="icon-sm" variant="secondary" class="rounded-full shadow-lg scale-90 group-hover:scale-100 transition-transform" @click.stop="addToQueue" title="Add to Queue">
-          <Icon name="solar:list-plus-bold" class="h-4 w-4 text-[#AA5CC3]" />
+          <Icon name="solar:list-line-duotone" class="h-4 w-4 text-[#AA5CC3]" />
         </UiButton>
       </div>
     </div>
