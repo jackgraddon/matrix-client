@@ -3,11 +3,18 @@
     <!-- Game Activity -->
     <template v-if="displayActivity?.is_running && displayActivity?.name">
       <div v-if="variant === 'small'" class="flex items-center gap-1.5 text-xs font-medium text-muted-foreground min-w-0 w-full">
-        <Icon name="solar:gamepad-bold" class="w-4 h-4 text-emerald-500 shrink-0" />
-        <span class="truncate min-w-0">Playing <span class="text-foreground">{{ displayActivity.name }}</span></span>
+        <Icon
+          :name="displayActivity.type === 'music' ? 'solar:music-note-bold' : 'solar:gamepad-bold'"
+          class="w-4 h-4 shrink-0"
+          :class="[displayActivity.type === 'music' ? 'text-[#AA5CC3]' : 'text-emerald-500']"
+        />
+        <span class="truncate min-w-0">
+          {{ displayActivity.type === 'music' ? 'Listening to' : 'Playing' }}
+          <span class="text-foreground">{{ displayActivity.name }}</span>
+        </span>
       </div>
 
-      <GameCard v-else-if="variant === 'large'" :user-id="userId" />
+      <GameCard v-else-if="variant === 'large' && displayActivity.type !== 'music'" :user-id="userId" />
     </template>
 
     <!-- Custom Status -->
