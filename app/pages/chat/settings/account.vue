@@ -59,7 +59,7 @@
     <div>
       <h2 class="text-lg font-semibold tracking-tight">Account Linking</h2>
       <p class="text-sm text-muted-foreground mb-4">Link your account to other services.</p>
-      <div v-if="jellyfinStore.isAuthenticated" class="flex items-center gap-4 p-4 rounded-md border bg-accent/50 max-w-md">
+      <div class="flex items-center gap-4 p-4 rounded-md border max-w-md">
         <div class="h-10 w-10 flex items-center justify-center rounded-full bg-[#AA5CC3] shrink-0">
           <Icon name="simple-icons:jellyfin" class="text-white h-6 w-6" />
         </div>
@@ -67,18 +67,13 @@
           <p class="text-sm font-semibold truncate">Jellyfin</p>
           <p class="text-xs text-muted-foreground truncate">{{ jellyfinStore.serverUrl }}</p>
         </div>
-        <UiButton variant="outline" size="sm" @click="jellyfinStore.logout">
+        <UiButton v-if="jellyfinStore.isAuthenticated" variant="outline" @click="jellyfinStore.logout">
           Unlink
         </UiButton>
+        <UiButton v-else variant="default" @click="isJellyfinModalOpen = true">
+          Link Jellyfin
+        </UiButton>
       </div>
-      <UiButton
-        v-else
-        @click="isJellyfinModalOpen = true"
-        class="bg-[#AA5CC3] text-white hover:bg-[#AA5CC3]/90"
-      >
-        <Icon name="simple-icons:jellyfin" />
-        Link Jellyfin
-      </UiButton>
     </div>
 
     <JellyfinLoginModal :open="isJellyfinModalOpen" @update:open="(val) => isJellyfinModalOpen = val" />
