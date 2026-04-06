@@ -75,7 +75,7 @@ async function loadLibrary() {
   if (!jellyfinStore.isAuthenticated) return;
   loading.value = true;
   try {
-    const { data, error } = await fetcher('/Items', {
+    const data = await fetcher('/Items', {
       method: 'GET',
       query: {
         IncludeItemTypes: ['Audio'],
@@ -86,10 +86,8 @@ async function loadLibrary() {
       }
     });
 
-    if (error.value) throw new Error(error.value.message || 'Failed to load library');
-
-    if (data.value && 'Items' in data.value) {
-      items.value = data.value.Items as BaseItemDto[];
+    if (data && 'Items' in data) {
+      items.value = data.Items as BaseItemDto[];
     }
   } catch (e) {
     console.error('Failed to load library:', e);
@@ -106,7 +104,7 @@ async function search() {
 
   loading.value = true;
   try {
-    const { data, error } = await fetcher('/Items', {
+    const data = await fetcher('/Items', {
       method: 'GET',
       query: {
         SearchTerm: searchQuery.value,
@@ -116,10 +114,8 @@ async function search() {
       }
     });
 
-    if (error.value) throw new Error(error.value.message || 'Failed to search library');
-
-    if (data.value && 'Items' in data.value) {
-      items.value = data.value.Items as BaseItemDto[];
+    if (data && 'Items' in data) {
+      items.value = data.Items as BaseItemDto[];
     }
   } catch (e) {
     console.error('Failed to search library:', e);

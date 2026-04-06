@@ -1,6 +1,6 @@
 <template>
   <UiDialog :open="open" @update:open="(val: boolean) => $emit('update:open', val)">
-    <UiDialogContent class="sm:max-w-[425px]" @interact-outside="(e: any) => e.preventDefault()">
+    <UiDialogContent class="sm:max-w-[425px]" @interactOutside="(e: any) => e.preventDefault()">
       <UiDialogHeader>
         <UiDialogTitle>Link Jellyfin Account</UiDialogTitle>
         <UiDialogDescription>
@@ -65,7 +65,7 @@ async function login() {
     jellyfinStore.serverUrl = serverUrl.value.replace(/\/$/, '');
 
     // 2. Authenticate
-    const { data, error } = await fetcher('/Users/AuthenticateByName', {
+    const authData = await fetcher('/Users/AuthenticateByName', {
       method: 'POST',
       body: {
         Username: username.value,
@@ -73,12 +73,7 @@ async function login() {
       }
     });
 
-    if (error.value) {
-      throw new Error(error.value.message || 'Authentication failed');
-    }
-
-    if (data.value && 'AccessToken' in data.value) {
-      const authData = data.value as any;
+    if (authData && 'AccessToken' in authData) {
       const config = {
         serverUrl: jellyfinStore.serverUrl,
         accessToken: authData.AccessToken,
