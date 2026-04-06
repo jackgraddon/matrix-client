@@ -31,8 +31,16 @@ const allArtists = ref<BaseItemDto[]>([]);
 async function loadArtists() {
   if (!jellyfinStore.isAuthenticated) return;
 
+  const cacheKey = `music_artists_${jellyfinStore.userId}`;
+  const cached = jellyfinStore.getCached(cacheKey);
+  if (cached) {
+    topArtists.value = cached.topArtists;
+    allArtists.value = cached.allArtists;
+    return;
+  }
+
   loading.top = true;
-  fetcher('/Artists', {
+  const p1 = fetcher('/Artists', {
     method: 'GET',
     query: {
       Recursive: true,
@@ -46,7 +54,7 @@ async function loadArtists() {
   }).finally(() => loading.top = false);
 
   loading.all = true;
-  fetcher('/Artists', {
+  const p2 = fetcher('/Artists', {
     method: 'GET',
     query: {
       Recursive: true,
@@ -58,6 +66,13 @@ async function loadArtists() {
   }).then(data => {
     if (data && 'Items' in data) allArtists.value = data.Items as BaseItemDto[];
   }).finally(() => loading.all = false);
+
+  Promise.all([p1, p2]).then(() => {
+    jellyfinStore.setCached(cacheKey, {
+      topArtists: topArtists.value,
+      allArtists: allArtists.value
+    });
+  });
 }
 
 onMounted(() => {

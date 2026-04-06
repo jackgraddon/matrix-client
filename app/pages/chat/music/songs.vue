@@ -31,8 +31,16 @@ const allSongs = ref<BaseItemDto[]>([]);
 async function loadSongs() {
   if (!jellyfinStore.isAuthenticated) return;
 
+  const cacheKey = `music_songs_${jellyfinStore.userId}`;
+  const cached = jellyfinStore.getCached(cacheKey);
+  if (cached) {
+    topSongs.value = cached.topSongs;
+    allSongs.value = cached.allSongs;
+    return;
+  }
+
   loading.top = true;
-  fetcher('/Items', {
+  const p1 = fetcher('/Items', {
     method: 'GET',
     query: {
       IncludeItemTypes: ['Audio'],
@@ -47,7 +55,7 @@ async function loadSongs() {
   }).finally(() => loading.top = false);
 
   loading.all = true;
-  fetcher('/Items', {
+  const p2 = fetcher('/Items', {
     method: 'GET',
     query: {
       IncludeItemTypes: ['Audio'],
@@ -60,6 +68,13 @@ async function loadSongs() {
   }).then(data => {
     if (data && 'Items' in data) allSongs.value = data.Items as BaseItemDto[];
   }).finally(() => loading.all = false);
+
+  Promise.all([p1, p2]).then(() => {
+    jellyfinStore.setCached(cacheKey, {
+      topSongs: topSongs.value,
+      allSongs: allSongs.value
+    });
+  });
 }
 
 onMounted(() => {

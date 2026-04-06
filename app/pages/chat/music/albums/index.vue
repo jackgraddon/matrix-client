@@ -31,8 +31,16 @@ const allAlbums = ref<BaseItemDto[]>([]);
 async function loadAlbums() {
   if (!jellyfinStore.isAuthenticated) return;
 
+  const cacheKey = `music_albums_${jellyfinStore.userId}`;
+  const cached = jellyfinStore.getCached(cacheKey);
+  if (cached) {
+    topAlbums.value = cached.topAlbums;
+    allAlbums.value = cached.allAlbums;
+    return;
+  }
+
   loading.top = true;
-  fetcher('/Items', {
+  const p1 = fetcher('/Items', {
     method: 'GET',
     query: {
       IncludeItemTypes: ['MusicAlbum'],
@@ -47,7 +55,7 @@ async function loadAlbums() {
   }).finally(() => loading.top = false);
 
   loading.all = true;
-  fetcher('/Items', {
+  const p2 = fetcher('/Items', {
     method: 'GET',
     query: {
       IncludeItemTypes: ['MusicAlbum'],
@@ -60,6 +68,13 @@ async function loadAlbums() {
   }).then(data => {
     if (data && 'Items' in data) allAlbums.value = data.Items as BaseItemDto[];
   }).finally(() => loading.all = false);
+
+  Promise.all([p1, p2]).then(() => {
+    jellyfinStore.setCached(cacheKey, {
+      topAlbums: topAlbums.value,
+      allAlbums: allAlbums.value
+    });
+  });
 }
 
 onMounted(() => {

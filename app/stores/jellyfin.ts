@@ -9,6 +9,7 @@ export interface JellyfinState {
   clientName: string;
   deviceName: string;
   version: string;
+  cache: Record<string, { data: any, timestamp: number }>;
 }
 
 export const useJellyfinStore = defineStore('jellyfin', {
@@ -20,6 +21,7 @@ export const useJellyfinStore = defineStore('jellyfin', {
     clientName: 'Tumult',
     deviceName: 'Tumult Desktop',
     version: '0.1.0',
+    cache: {},
   }),
 
   getters: {
@@ -60,10 +62,33 @@ export const useJellyfinStore = defineStore('jellyfin', {
       await setSecret('jellyfin_user_id', userId);
     },
 
+    getCached(key: string, maxAgeMs = 5 * 60 * 1000) {
+      const entry = this.cache[key];
+      if (!entry) return null;
+      const age = Date.now() - entry.timestamp;
+      if (age > maxAgeMs) {
+        delete this.cache[key];
+        return null;
+      }
+      return entry.data;
+    },
+
+    setCached(key: string, data: any) {
+      this.cache[key] = {
+        data,
+        timestamp: Date.now()
+      };
+    },
+
+    clearCache() {
+      this.cache = {};
+    },
+
     async logout() {
       this.serverUrl = null;
       this.accessToken = null;
       this.userId = null;
+      this.clearCache();
 
       await deleteSecret('jellyfin_server_url');
       await deleteSecret('jellyfin_access_token');
