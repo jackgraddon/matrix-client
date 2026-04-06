@@ -14,7 +14,7 @@
     </div>
 
     <!-- Jellyfin Music Entry -->
-    <!-- <div v-if="jellyfinStore.isAuthenticated" class="space-y-4">
+    <div v-if="jellyfinStore.isAuthenticated" class="space-y-4">
       <h2 class="text-xl font-semibold tracking-tight text-[#AA5CC3]">Music</h2>
       <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <NuxtLink to="/chat/music" class="block group">
@@ -35,7 +35,7 @@
           </UiCard>
         </NuxtLink>
       </div>
-    </div> -->
+    </div>
 
     <!-- Recent DMs -->
     <div class="space-y-4">
