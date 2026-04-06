@@ -6,11 +6,15 @@ export default defineNuxtPlugin(() => {
   const { $isTauri } = useNuxtApp();
 
   const jellyfinFetch = $fetch.create({
-    get baseURL() {
-      return jellyfinStore.serverUrl || '';
-    },
     retry: 0,
     async onRequest({ options }) {
+      // Dynamically set baseURL if not already set on this request
+      if (!options.baseURL && jellyfinStore.serverUrl) {
+        options.baseURL = jellyfinStore.serverUrl;
+      }
+
+      console.log(`[Jellyfin] Requesting: ${options.baseURL}${options.url}`);
+
       // Add authentication headers
       options.headers = {
         ...options.headers,

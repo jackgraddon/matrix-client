@@ -23,7 +23,7 @@
       </div>
       <UiDialogFooter>
         <UiButton :disabled="loading" @click="login">
-          <Icon v-if="loading" name="solar:spinner-bold" class="mr-2 h-4 w-4 animate-spin" />
+          <Icon v-if="loading" name="solar:re-record-bold-duotone" class="mr-2 h-4 w-4 animate-spin" />
           {{ loading ? 'Connecting...' : 'Link Account' }}
         </UiButton>
       </UiDialogFooter>
@@ -108,6 +108,9 @@ async function login() {
       toast.success('Jellyfin account linked successfully');
       emit('success');
       emit('update:open', false);
+    } else {
+      console.warn('[Jellyfin] Auth response missing expected tokens:', authData);
+      throw new Error('Authentication response was invalid. Please check your credentials.');
     }
   } catch (e: any) {
     console.error('Jellyfin login failed:', e);
