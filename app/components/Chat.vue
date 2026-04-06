@@ -580,13 +580,7 @@
             placeholder="Type a message..."
             rows="1" 
             class="min-h-10 max-h-[200px] resize-none border-0 focus-visible:ring-0 py-2.5 flex-1 text-base"
-            @keydown.enter.exact="(e) => {
-              const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-              if (!isMobile) {
-                e.preventDefault();
-                sendMessage();
-              }
-            }"
+            @keydown.enter.exact="handleEnterKey"
             @input="autoResize"
             @paste="handlePaste"
           />
@@ -1469,6 +1463,18 @@ async function handleTypingInput() {
             store.client.sendTyping(room.value.roomId, false, 0);
         }
     }, TYPING_TIMEOUT);
+}
+
+function handleEnterKey(e: KeyboardEvent) {
+  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  
+  // Always block the default newline when Enter is pressed alone
+  e.preventDefault();
+  
+  if (!isMobile) {
+    sendMessage();
+  }
+  // On mobile, it stops here. No newline, no message sent!
 }
 
 // --- Send message ---
