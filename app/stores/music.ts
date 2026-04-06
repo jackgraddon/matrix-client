@@ -23,6 +23,7 @@ export const useMusicStore = defineStore('music', {
     duration: 0,
     volume: 1,
     audioElement: null as HTMLAudioElement | null,
+    startTime: null as number | null,
   }),
 
   actions: {
@@ -66,6 +67,7 @@ export const useMusicStore = defineStore('music', {
       }
 
       this.currentSong = song;
+      this.startTime = Date.now();
       this.audioElement.src = song.streamUrl;
       this.audioElement.play();
       this.updateMediaSession();
@@ -166,6 +168,9 @@ export const useMusicStore = defineStore('music', {
           title: this.currentSong.title,
           artist: this.currentSong.artist,
           album: this.currentSong.album,
+          coverUrl: this.currentSong.coverUrl,
+          duration: this.duration,
+          startTime: this.startTime || undefined,
           isRunning: true
         });
       } else {

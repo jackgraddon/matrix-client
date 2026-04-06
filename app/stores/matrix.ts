@@ -304,7 +304,7 @@ export const useMatrixStore = defineStore('matrix', {
     startMinimized: false,
     activityStatus: null as string | null,
     activityDetails: null as any | null,
-    musicActivity: null as { title: string; artist: string; album?: string; isRunning: boolean } | null,
+    musicActivity: null as { title: string; artist: string; album?: string; coverUrl?: string; duration?: number; startTime?: number; isRunning: boolean } | null,
     pushNotificationsEnabled: true,
     showContentInNotifications: true,
     customPushEndpoint: null as string | null,
@@ -690,6 +690,9 @@ export const useMatrixStore = defineStore('matrix', {
         return {
           name: `${this.musicActivity.title} by ${this.musicActivity.artist}`,
           details: this.musicActivity.album,
+          coverUrl: this.musicActivity.coverUrl,
+          duration: this.musicActivity.duration,
+          startTimestamp: this.musicActivity.startTime || Date.now(),
           is_running: true,
           type: 'music'
         };
@@ -728,6 +731,9 @@ export const useMatrixStore = defineStore('matrix', {
                 iconHash: parsed.iconHash,
                 smallIconHash: parsed.smallIconHash,
                 startTimestamp: parsed.startTimestamp,
+                duration: parsed.duration,
+                coverUrl: parsed.coverUrl,
+                type: parsed.type || 'game',
                 is_running: true,
               };
             }
@@ -1063,7 +1069,7 @@ export const useMatrixStore = defineStore('matrix', {
       this.refreshPresence();
     },
 
-    setMusicActivity(activity: { title: string; artist: string; album?: string; isRunning: boolean } | null) {
+    setMusicActivity(activity: { title: string; artist: string; album?: string; coverUrl?: string; duration?: number; startTime?: number; isRunning: boolean } | null) {
       this.musicActivity = activity;
       this.refreshPresence();
     },
@@ -1124,7 +1130,15 @@ export const useMatrixStore = defineStore('matrix', {
           });
         }
       } else if (!status_msg && this.musicActivity?.isRunning) {
-        status_msg = `Listening to ${this.musicActivity.title} by ${this.musicActivity.artist}`;
+        status_msg = JSON.stringify({
+          playing: `${this.musicActivity.title} by ${this.musicActivity.artist}`,
+          details: this.musicActivity.album ?? null,
+          duration: this.musicActivity.duration ?? null,
+          coverUrl: this.musicActivity.coverUrl ?? null,
+          startTimestamp: this.musicActivity.startTime || Date.now(),
+          type: 'music',
+          is_running: true,
+        });
       }
 
       // Check if state has actually changed

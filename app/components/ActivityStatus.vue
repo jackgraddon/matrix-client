@@ -14,7 +14,10 @@
         </span>
       </div>
 
-      <GameCard v-else-if="variant === 'large' && displayActivity.type !== 'music'" :user-id="userId" />
+      <template v-else-if="variant === 'large'">
+        <MusicCard v-if="displayActivity.type === 'music'" :user-id="userId" />
+        <GameCard v-else :user-id="userId" />
+      </template>
     </template>
 
     <!-- Custom Status -->
@@ -37,6 +40,8 @@
 
 <script setup lang="ts">
 import { computed, ref, onMounted, watch, onUnmounted } from 'vue';
+import MusicCard from '~/components/MusicCard.vue';
+import GameCard from '~/components/GameCard.vue';
 
 const props = withDefaults(defineProps<{
   userId?: string | null;
