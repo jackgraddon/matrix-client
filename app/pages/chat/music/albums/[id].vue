@@ -1,7 +1,7 @@
 <template>
   <div class="flex flex-col h-full overflow-y-auto">
     <!-- Album Header -->
-    <div class="relative p-8 pt-16 flex flex-col md:flex-row gap-8 items-end bg-gradient-to-b from-accent/30 to-transparent shrink-0">
+    <div class="relative p-8 pt-16 flex flex-col md:flex-row gap-8 items-end bg-gradient-to-b from-accent/30 to-background shrink-0">
       <div class="h-64 w-64 shrink-0 rounded-lg overflow-hidden shadow-2xl border border-border/50 bg-muted">
         <img v-if="imageUrl" :src="imageUrl" class="h-full w-full object-cover" alt="" />
         <div v-else class="h-full w-full flex items-center justify-center">
@@ -33,7 +33,9 @@
           @click="play(track)"
         >
           <span class="w-8 text-sm text-muted-foreground text-center font-medium group-hover:hidden">{{ index + 1 }}</span>
-          <Icon name="solar:play-bold" class="w-8 h-8 text-[#AA5CC3] hidden group-hover:block" />
+          <div class="w-8 h-8 flex items-center justify-center hidden group-hover:flex">
+             <Icon name="solar:play-bold" class="w-6 h-6 text-[#AA5CC3]" />
+          </div>
 
           <div class="flex-1 min-w-0">
             <p class="text-sm font-semibold truncate" :class="[musicStore.currentSong?.id === track.Id ? 'text-[#AA5CC3]' : 'text-foreground']">
@@ -43,6 +45,10 @@
           </div>
 
           <span class="text-xs text-muted-foreground font-medium tabular-nums px-4">{{ formatDuration(track.RunTimeTicks) }}</span>
+
+          <UiButton variant="ghost" size="icon-sm" class="opacity-0 group-hover:opacity-100 h-8 w-8" @click.stop="addToQueue(track)">
+             <Icon name="solar:list-plus-bold" class="h-4 w-4 text-muted-foreground hover:text-[#AA5CC3]" />
+          </UiButton>
         </div>
       </div>
     </div>
@@ -103,17 +109,27 @@ function formatDuration(ticks?: number | null) {
 }
 
 function play(item: BaseItemDto) {
-  if (!item.Id || !item.Name) return;
+  const song = mapToSong(item);
+  if (song) musicStore.playSong(song);
+}
+
+function addToQueue(item: BaseItemDto) {
+  const song = mapToSong(item);
+  if (song) musicStore.addToQueue(song);
+}
+
+function mapToSong(item: BaseItemDto) {
+  if (!item.Id || !item.Name) return null;
   const streamUrl = `${jellyfinStore.serverUrl}/Audio/${item.Id}/stream?static=true&api_key=${jellyfinStore.accessToken}`;
 
-  musicStore.playSong({
+  return {
     id: item.Id,
     title: item.Name,
     artist: item.ArtistItems?.[0]?.Name || album.value?.Name || 'Unknown Artist',
     album: album.value?.Name || undefined,
     coverUrl: imageUrl.value || undefined,
     streamUrl
-  });
+  };
 }
 
 onMounted(() => {

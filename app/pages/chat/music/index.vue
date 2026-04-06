@@ -102,17 +102,20 @@ async function loadHome() {
     if (data && 'Items' in data) recentlyAdded.value = data.Items as BaseItemDto[];
   }).finally(() => loading.recentlyAdded = false);
 
-  // Recently Played
+  // Recently Played (using Users/Items with SortBy PlayDate)
   loading.recentlyPlayed = true;
-  fetcher('/Users/' + jellyfinStore.userId + '/Items/Latest', {
+  fetcher(`/Users/${jellyfinStore.userId}/Items`, {
     method: 'GET',
     query: {
       IncludeItemTypes: ['Audio'],
+      Recursive: true,
+      SortBy: ['PlayDate'],
+      SortOrder: 'Descending',
       Limit: 12,
       Fields: ['ArtistItems', 'PrimaryImageAspectRatio']
     }
   }).then(data => {
-    if (Array.isArray(data)) recentlyPlayed.value = data as BaseItemDto[];
+    if (data && 'Items' in data) recentlyPlayed.value = data.Items as BaseItemDto[];
   }).finally(() => loading.recentlyPlayed = false);
 }
 

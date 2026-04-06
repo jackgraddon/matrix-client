@@ -15,8 +15,10 @@ export interface SongMetadata {
 export const useMusicStore = defineStore('music', {
   state: () => ({
     isPlaying: false,
+    isExpanded: false, // For the sidebar queue expansion
     currentSong: null as SongMetadata | null,
     queue: [] as SongMetadata[],
+    history: [] as SongMetadata[],
     currentTime: 0,
     volume: 1,
     audioElement: null as HTMLAudioElement | null,
@@ -45,16 +47,31 @@ export const useMusicStore = defineStore('music', {
         this.isPlaying = false;
         this.updatePresence();
       });
+
+      this.updateMediaSession();
     },
 
-    playSong(song: SongMetadata) {
+    playSong(song: SongMetadata, addToHistory = true) {
       this.initAudio();
       if (!this.audioElement) return;
+
+      if (this.currentSong && addToHistory) {
+        this.history.push(this.currentSong);
+        if (this.history.length > 50) this.history.shift();
+      }
 
       this.currentSong = song;
       this.audioElement.src = song.streamUrl;
       this.audioElement.play();
       this.updateMediaSession();
+    },
+
+    addToQueue(songs: SongMetadata | SongMetadata[]) {
+      if (Array.isArray(songs)) {
+        this.queue.push(...songs);
+      } else {
+        this.queue.push(songs);
+      }
     },
 
     togglePlay() {
@@ -76,6 +93,46 @@ export const useMusicStore = defineStore('music', {
       }
     },
 
+    playPrevious() {
+      if (this.currentTime > 3) {
+        this.seek(0);
+        return;
+      }
+
+      if (this.history.length > 0) {
+        const prevSong = this.history.pop()!;
+        // When playing previous, we add the current song back to the START of the queue
+        if (this.currentSong) {
+          this.queue.unshift(this.currentSong);
+        }
+        this.playSong(prevSong, false);
+      } else {
+        this.seek(0);
+      }
+    },
+
+    shuffleQueue() {
+      for (let i = this.queue.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [this.queue[i], this.queue[j]] = [this.queue[j]!, this.queue[i]!];
+      }
+    },
+
+    reorderQueue(oldIndex: number, newIndex: number) {
+      const movedItem = this.queue.splice(oldIndex, 1)[0];
+      if (movedItem) {
+        this.queue.splice(newIndex, 0, movedItem);
+      }
+    },
+
+    removeFromQueue(index: number) {
+      this.queue.splice(index, 1);
+    },
+
+    clearQueue() {
+      this.queue = [];
+    },
+
     setVolume(value: number) {
       this.volume = value;
       if (this.audioElement) {
@@ -83,10 +140,15 @@ export const useMusicStore = defineStore('music', {
       }
     },
 
+    seek(time: number) {
+      if (this.audioElement) {
+        this.audioElement.currentTime = time;
+      }
+    },
+
     updatePresence() {
       const matrixStore = useMatrixStore();
       if (this.isPlaying && this.currentSong) {
-        // Set Matrix Rich Activity
         matrixStore.setMusicActivity({
           title: this.currentSong.title,
           artist: this.currentSong.artist,
@@ -118,7 +180,6 @@ export const useMusicStore = defineStore('music', {
       navigator.mediaSession.setActionHandler('play', () => this.togglePlay());
       navigator.mediaSession.setActionHandler('pause', () => this.togglePlay());
       navigator.mediaSession.setActionHandler('nexttrack', () => this.playNext());
-      // prevtrack could be added if we had a history
     }
   }
 });

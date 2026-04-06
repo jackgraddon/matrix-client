@@ -1125,13 +1125,6 @@ export const useMatrixStore = defineStore('matrix', {
         }
       } else if (!status_msg && this.musicActivity?.isRunning) {
         status_msg = `Listening to ${this.musicActivity.title} by ${this.musicActivity.artist}`;
-        // Enrich with JSON if we want more detail for other Tumult clients
-        status_msg = JSON.stringify({
-          playing: `${this.musicActivity.title} by ${this.musicActivity.artist}`,
-          details: this.musicActivity.album || 'Music',
-          is_running: true,
-          type: 'music'
-        });
       }
 
       // Check if state has actually changed

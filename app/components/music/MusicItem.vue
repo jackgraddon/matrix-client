@@ -21,10 +21,13 @@
 
       <div
         v-if="item.Type === 'Audio' || item.Type === 'MusicAlbum' || item.Type === 'Playlist'"
-        class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+        class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2"
       >
-        <UiButton size="icon" variant="secondary" class="rounded-full shadow-lg scale-90 group-hover:scale-100 transition-transform">
+        <UiButton size="icon" variant="secondary" class="rounded-full shadow-lg scale-90 group-hover:scale-100 transition-transform" @click.stop="handleClick">
           <Icon name="solar:play-bold" class="h-6 w-6 ml-0.5 text-[#AA5CC3]" />
+        </UiButton>
+        <UiButton v-if="item.Type === 'Audio'" size="icon-sm" variant="secondary" class="rounded-full shadow-lg scale-90 group-hover:scale-100 transition-transform" @click.stop="addToQueue" title="Add to Queue">
+          <Icon name="solar:list-plus-bold" class="h-4 w-4 text-[#AA5CC3]" />
         </UiButton>
       </div>
     </div>
@@ -70,15 +73,25 @@ function handleClick() {
   } else if (props.item.Type === 'MusicAlbum') {
     navigateTo(`/chat/music/albums/${props.item.Id}`);
   } else if (props.item.Type === 'Playlist') {
-    navigateTo(`/chat/music/playlists/${props.item.Id}`);
+    navigateTo(`/chat/music/playlist/${props.item.Id}`);
   }
 }
 
 function play(item: BaseItemDto) {
-  if (!item.Id || !item.Name) return;
+  const song = mapToSong(item);
+  if (song) musicStore.playSong(song);
+}
+
+function addToQueue() {
+  const song = mapToSong(props.item);
+  if (song) musicStore.addToQueue(song);
+}
+
+function mapToSong(item: BaseItemDto) {
+  if (!item.Id || !item.Name) return null;
   const streamUrl = `${jellyfinStore.serverUrl}/Audio/${item.Id}/stream?static=true&api_key=${jellyfinStore.accessToken}`;
 
-  musicStore.playSong({
+  return {
     id: item.Id,
     title: item.Name,
     artist: item.ArtistItems?.[0]?.Name || 'Unknown Artist',
@@ -86,6 +99,6 @@ function play(item: BaseItemDto) {
     albumArtist: item.AlbumArtist || undefined,
     coverUrl: imageUrl.value || undefined,
     streamUrl
-  });
+  };
 }
 </script>

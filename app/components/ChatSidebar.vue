@@ -1,6 +1,6 @@
 <template>
-    <aside class="flex h-full flex-col w-full md:w-[250px] shrink-0">
-        <header class="flex items-center h-12 p-2 justify-between">
+    <aside class="flex h-full flex-col w-full md:w-[250px] shrink-0 overflow-hidden">
+        <header v-if="!musicStore.isExpanded" class="flex items-center h-12 p-2 justify-between">
             <div class="flex items-center gap-2 overflow-hidden">
                 <UiButton 
                     variant="ghost" 
@@ -25,7 +25,7 @@
                 <Icon name="solar:settings-minimalistic-bold-duotone"/>
             </UiButton>
         </header>
-        <nav class="grow flex-1 flex flex-col p-2 gap-2 overflow-y-auto">
+        <nav v-if="!musicStore.isExpanded" class="grow flex-1 flex flex-col p-2 gap-2 overflow-y-auto">
             <div class="flex flex-col gap-2 flex-1">
                 <!-- Sidebar Home actions -->
                 <template v-if="isLinkActive('/chat')">
@@ -39,8 +39,9 @@
                             v-if="jellyfinStore.isAuthenticated"
                             variant="secondary"
                             @click="() => { navigateTo('/chat/music'); store.toggleSidebar(false); }"
+                            class="w-full justify-start gap-2"
                         >
-                            <Icon name="solar:music-note-bold-duotone" />
+                            <Icon name="solar:music-note-bold-duotone" class="h-4 w-4 text-[#AA5CC3]" />
                             Music Library
                         </UiButton>
                     </div>
@@ -313,7 +314,7 @@
             </div>
         </nav>
 
-        <footer class="p-2 h-fit w-full flex flex-col gap-2 cursor-pointer overflow-hidden">
+        <footer class="p-2 w-full flex flex-col gap-2 cursor-pointer overflow-hidden transition-all duration-300" :class="[musicStore.isExpanded ? 'h-full flex-1' : 'h-fit']">
             <!-- Jellyfin Playbar -->
             <Playbar />
 
@@ -354,6 +355,7 @@ import ChatSidebarCategory from '~/components/ChatSidebarCategory.vue';
 import { isVoiceChannel } from '~/utils/room';
 import { useMatrixStore } from '~/stores/matrix';
 import { useVoiceStore } from '~/stores/voice';
+import { useMusicStore } from '~/stores/music';
 import { useJellyfinStore } from '~/stores/jellyfin';
 import { useJellyfin } from '~/composables/useJellyfin';
 import { useWebHaptics } from 'web-haptics/vue';
@@ -417,6 +419,7 @@ const { trigger } = useWebHaptics({
     debug: store.ui.hapticsDebugEnabled
 });
 const voiceStore = useVoiceStore();
+const musicStore = useMusicStore();
 const jellyfinStore = useJellyfinStore();
 const { fetcher: jellyfinFetch } = useJellyfin();
 
