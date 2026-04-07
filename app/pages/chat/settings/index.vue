@@ -124,11 +124,11 @@
 
       <div class="flex items-center justify-between rounded-lg border p-4">
         <div class="flex items-center gap-3">
-          <Icon name="solar:vibration-bold" class="h-5 w-5 text-muted-foreground" />
+          <Icon :name="isHapticsSupported ? 'solar:vibration-bold' : 'solar:volume-loud-bold'" class="h-5 w-5 text-muted-foreground" />
           <div class="space-y-0.5">
-            <p class="text-sm font-medium">Haptic Feedback</p>
+            <p class="text-sm font-medium">{{ isHapticsSupported ? 'Touch Feedback' : 'Click Feedback' }}</p>
             <p class="text-xs text-muted-foreground">
-              Provide subtle vibrations for interactions (Mobile)
+              {{ isHapticsSupported ? 'Provide subtle vibrations for interactions' : 'Provide audio feedback for interactions' }}
             </p>
           </div>
         </div>
@@ -189,6 +189,18 @@ const startMinimized = computed({
   set: (val: boolean) => store.setStartMinimized(val),
 });
 
+const isHapticsSupported = ref(false);
+
+const checkHapticsSupport = async () => {
+    try {
+        const { WebHaptics } = await import('web-haptics');
+        const haptics = new WebHaptics();
+        isHapticsSupported.value = haptics.isSupported();
+    } catch (e) {
+        isHapticsSupported.value = false;
+    }
+};
+
 const isChecking = ref(false);
 const isInstalling = ref(false);
 const updateInfo = shallowRef<any>(null);
@@ -237,6 +249,7 @@ const installUpdate = async () => {
 
 onMounted(() => {
     window.addEventListener('tumult-check-updates', checkForUpdates);
+    checkHapticsSupport();
 });
 
 onUnmounted(() => {
