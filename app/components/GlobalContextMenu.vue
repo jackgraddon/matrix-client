@@ -125,6 +125,41 @@
         </UiContextMenuItem>
       </template>
 
+      <!-- Music Item Context Menu Content -->
+      <template v-else-if="store.ui.contextMenu.type === 'music-item'">
+        <template v-if="musicItem">
+          <UiContextMenuItem @click="toggleMusicFavorite" class="cursor-pointer">
+            <Icon :name="musicItem.UserData?.IsFavorite ? 'solar:heart-bold' : 'solar:heart-linear'" class="mr-2 h-4 w-4" :class="{'text-red-500': musicItem.UserData?.IsFavorite}" />
+            {{ musicItem.UserData?.IsFavorite ? 'Remove from Favorites' : 'Favorite' }}
+          </UiContextMenuItem>
+
+          <UiContextMenuSeparator />
+
+          <UiContextMenuItem v-if="musicItem.AlbumId || musicItem.Type === 'MusicAlbum'" @click="navigateTo(`/chat/music/albums/${musicItem.AlbumId || musicItem.Id}`)" class="cursor-pointer">
+            <Icon name="solar:album-bold" class="mr-2 h-4 w-4" />
+            Go to Album
+          </UiContextMenuItem>
+          <UiContextMenuItem v-if="musicItem.ArtistItems?.[0]?.Id || musicItem.Type === 'Artist' || musicItem.Type === 'MusicArtist'" @click="navigateTo(`/chat/music/artists/${musicItem.ArtistItems?.[0]?.Id || musicItem.Id}`)" class="cursor-pointer">
+            <Icon name="solar:user-bold" class="mr-2 h-4 w-4" />
+            Go to Artist
+          </UiContextMenuItem>
+
+          <UiContextMenuSeparator v-if="musicItem.Type === 'Audio'" />
+
+          <UiContextMenuItem v-if="musicItem.Type === 'Audio'" @click="addMusicToStartOfQueue" class="cursor-pointer">
+            <Icon name="solar:list-arrow-up-bold" class="mr-2 h-4 w-4" />
+            Add to Start of Queue
+          </UiContextMenuItem>
+          <UiContextMenuItem v-if="musicItem.Type === 'Audio'" @click="addMusicToEndOfQueue" class="cursor-pointer">
+            <Icon name="solar:list-arrow-down-bold" class="mr-2 h-4 w-4" />
+            Add to End of Queue
+          </UiContextMenuItem>
+        </template>
+        <template v-else>
+          <UiContextMenuItem disabled>Loading item...</UiContextMenuItem>
+        </template>
+      </template>
+
       <!-- Global App Context Menu -->
       <template v-else>
         <UiContextMenuItem inset @click="reloadPage" class="cursor-pointer">
@@ -148,6 +183,9 @@
 <script setup lang="ts">
 import { computed, ref, toRaw } from 'vue';
 import { useMatrixStore } from '~/stores/matrix';
+import { useMusicStore } from '~/stores/music';
+import { useJellyfinStore } from '~/stores/jellyfin';
+import { useJellyfin } from '~/composables/useJellyfin';
 import { useWebHaptics } from 'web-haptics/vue';
 import { toast } from 'vue-sonner';
 import { EventType } from 'matrix-js-sdk';
@@ -155,6 +193,9 @@ import EmojiPicker from 'vue3-emoji-picker';
 import 'vue3-emoji-picker/css';
 
 const store = useMatrixStore();
+const musicStore = useMusicStore();
+const jellyfinStore = useJellyfinStore();
+const { fetcher: jellyfinFetch } = useJellyfin();
 const { trigger } = useWebHaptics({
   debug: store.ui.hapticsDebugEnabled
 });
@@ -325,4 +366,65 @@ const confirmDeleteMessage = () => {
     onConfirm: () => store.redactEvent(msg.roomId, msg.eventId)
   });
 };
+
+// --- Music Context Logic ---
+const musicItem = computed(() => store.ui.contextMenu.type === 'music-item' ? store.ui.contextMenu.data?.item : null);
+
+async function toggleMusicFavorite() {
+  if (!musicItem.value || !jellyfinStore.isAuthenticated) return;
+
+  const isFavorite = musicItem.value.UserData?.IsFavorite;
+  try {
+    await jellyfinFetch(`/Users/${jellyfinStore.userId}/FavoriteItems/${musicItem.value.Id}`, {
+      method: isFavorite ? 'DELETE' : 'POST'
+    });
+
+    // Optimistic UI update for the context menu
+    if (musicItem.value.UserData) {
+      musicItem.value.UserData.IsFavorite = !isFavorite;
+    }
+
+    toast.success(isFavorite ? 'Removed from favorites' : 'Added to favorites');
+  } catch (e) {
+    console.error('[MusicContextMenu] Failed to toggle favorite:', e);
+    toast.error('Failed to update favorite status');
+  }
+}
+
+function mapToSong(item: any) {
+  if (!item.Id || !item.Name) return null;
+  const streamUrl = `${jellyfinStore.serverUrl}/Audio/${item.Id}/stream?static=true&api_key=${jellyfinStore.accessToken}`;
+  const coverUrl = item.ImageTags?.Primary
+    ? `${jellyfinStore.serverUrl}/Items/${item.Id}/Images/Primary?tag=${item.ImageTags.Primary}&maxWidth=100&api_key=${jellyfinStore.accessToken}`
+    : undefined;
+
+  return {
+    id: item.Id,
+    title: item.Name,
+    artist: item.ArtistItems?.[0]?.Name || 'Unknown Artist',
+    album: item.Album || undefined,
+    coverUrl,
+    streamUrl
+  };
+}
+
+function addMusicToStartOfQueue() {
+  if (musicItem.value) {
+    const song = mapToSong(musicItem.value);
+    if (song) {
+      musicStore.addToStartOfQueue(song);
+      toast.success('Added to start of queue');
+    }
+  }
+}
+
+function addMusicToEndOfQueue() {
+  if (musicItem.value) {
+    const song = mapToSong(musicItem.value);
+    if (song) {
+      musicStore.addToQueue(song);
+      toast.success('Added to end of queue');
+    }
+  }
+}
 </script>

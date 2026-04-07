@@ -3,11 +3,21 @@
     <!-- Game Activity -->
     <template v-if="displayActivity?.is_running && displayActivity?.name">
       <div v-if="variant === 'small'" class="flex items-center gap-1.5 text-xs font-medium text-muted-foreground min-w-0 w-full">
-        <Icon name="solar:gamepad-bold" class="w-4 h-4 text-emerald-500 shrink-0" />
-        <span class="truncate min-w-0">Playing <span class="text-foreground">{{ displayActivity.name }}</span></span>
+        <Icon
+          :name="displayActivity.type === 'music' ? (displayActivity.is_paused ? 'solar:pause-bold' : 'solar:music-note-bold') : 'solar:gamepad-bold'"
+          class="w-4 h-4 shrink-0"
+          :class="[displayActivity.type === 'music' ? 'text-[#AA5CC3]' : 'text-emerald-500']"
+        />
+        <span class="truncate min-w-0">
+          {{ displayActivity.type === 'music' ? (displayActivity.is_paused ? 'Music Paused' : 'Listening to') : 'Playing' }}
+          <span class="text-foreground">{{ displayActivity.name }}</span>
+        </span>
       </div>
 
-      <GameCard v-else-if="variant === 'large'" :user-id="userId" />
+      <template v-else-if="variant === 'large'">
+        <MusicCard v-if="displayActivity.type === 'music'" :user-id="userId" />
+        <GameCard v-else :user-id="userId" />
+      </template>
     </template>
 
     <!-- Custom Status -->
@@ -30,6 +40,8 @@
 
 <script setup lang="ts">
 import { computed, ref, onMounted, watch, onUnmounted } from 'vue';
+import MusicCard from '~/components/MusicCard.vue';
+import GameCard from '~/components/GameCard.vue';
 
 const props = withDefaults(defineProps<{
   userId?: string | null;
@@ -137,7 +149,7 @@ const displayCustomStatus = computed(() => {
     return sanitize(store.customStatus);
   }
   
-  if (presenceStatusMsg.value && !presenceStatusMsg.value.startsWith('Playing ')) {
+  if (presenceStatusMsg.value && !presenceStatusMsg.value.startsWith('Playing ') && !presenceStatusMsg.value.startsWith('{')) {
       return sanitize(presenceStatusMsg.value);
   }
   return null;
