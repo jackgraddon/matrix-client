@@ -24,7 +24,8 @@
         "decorations": true,
         "hiddenTitle": true,
         "titleBarStyle": "Overlay",
-        "visible": true
+        "visible": true,
+        "theme": "System"
       },
       {
         "label": "guard",

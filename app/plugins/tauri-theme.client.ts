@@ -1,50 +1,49 @@
 
 import { getCurrentWindow } from '@tauri-apps/api/window';
 
-export default defineNuxtPlugin(async (nuxtApp) => {
-    // Only run on client side and in Tauri environment
-    const isTauri = process.client && !!(window as any).__TAURI_INTERNALS__;
-    if (!isTauri) return;
+export default defineNuxtPlugin(async () => {
+  const colorMode = useColorMode();
 
-    const colorMode = useColorMode();
-    const appWindow = getCurrentWindow();
+  // Guard: Only run if we are inside the Tauri environment
+  // @ts-ignore - Tauri internals are injected at runtime
+  if (typeof window === 'undefined' || !window.__TAURI_INTERNALS__) return;
 
-    /**
-     * Nudges Nuxt's color mode to match the system theme.
-     * Nuxt usually relies on matchMedia which can be unreliable in WebViews.
-     */
-    const syncTheme = (theme: 'light' | 'dark' | string) => {
-        if (colorMode.preference === 'system') {
-            console.log("[TauriTheme] Syncing system theme:", theme);
-            // We set the preference to the actual theme temporarily to force 'value' to update,
-            // then set it back to 'system'.
-            const currentTheme = theme as 'light' | 'dark';
-            colorMode.preference = currentTheme;
+  const appWindow = getCurrentWindow();
 
-            // Revert to 'system' in the next tick
-            setTimeout(() => {
-                colorMode.preference = 'system';
-            }, 10);
-        }
-    };
+  /**
+   * Helper to sync the Nuxt color mode with the native Tauri theme
+   * only when the user has "System" selected.
+   */
+  const syncWithNativeTheme = async (themeOverride?: string) => {
+    if (colorMode.preference === 'system') {
+      const theme = themeOverride || await appWindow.theme();
+      console.log("[TauriTheme] Syncing with native theme:", theme);
 
-    // 1. Initial Sync
-    try {
-        const currentTheme = await appWindow.theme();
-        if (currentTheme) {
-            syncTheme(currentTheme);
-        }
-    } catch (e) {
-        console.warn("[TauriTheme] Failed to get initial theme:", e);
+      if (theme) {
+        // Manually update the DOM class as a fallback since prefers-color-scheme
+        // can be unreliable in the WebView. Nuxt-color-mode uses .dark or .light
+        // (or .dark-mode/.light-mode depending on config, but default is just theme name)
+        document.documentElement.className = theme;
+
+        // Re-assign 'system' to nudge Nuxt's internal state
+        colorMode.preference = 'system';
+      }
     }
+  };
 
-    // 2. Listen for Changes
-    const unlisten = await appWindow.onThemeChanged(({ payload: theme }) => {
-        syncTheme(theme);
-    });
+  // 1. Initial sync on app load
+  await syncWithNativeTheme();
 
-    // Clean up on unmount (though plugins usually live for the app lifetime)
-    nuxtApp.hook('app:unmounted', () => {
-        unlisten();
-    });
+  // 2. Listen for real-time OS theme changes
+  // This listener bypasses the unreliable CSS media query
+  await appWindow.onThemeChanged(({ payload: theme }) => {
+    syncWithNativeTheme(theme);
+  });
+
+  // 3. Watch for when the user clicks "System" in the appearance settings
+  watch(() => colorMode.preference, async (newPref) => {
+    if (newPref === 'system') {
+      await syncWithNativeTheme();
+    }
+  });
 });
