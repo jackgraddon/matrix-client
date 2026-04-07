@@ -4,12 +4,12 @@
     <template v-if="displayActivity?.is_running && displayActivity?.name">
       <div v-if="variant === 'small'" class="flex items-center gap-1.5 text-xs font-medium text-muted-foreground min-w-0 w-full">
         <Icon
-          :name="displayActivity.type === 'music' ? 'solar:music-note-bold' : 'solar:gamepad-bold'"
+          :name="displayActivity.type === 'music' ? (displayActivity.is_paused ? 'solar:pause-bold' : 'solar:music-note-bold') : 'solar:gamepad-bold'"
           class="w-4 h-4 shrink-0"
           :class="[displayActivity.type === 'music' ? 'text-[#AA5CC3]' : 'text-emerald-500']"
         />
         <span class="truncate min-w-0">
-          {{ displayActivity.type === 'music' ? 'Listening to' : 'Playing' }}
+          {{ displayActivity.type === 'music' ? (displayActivity.is_paused ? 'Music Paused' : 'Listening to') : 'Playing' }}
           <span class="text-foreground">{{ displayActivity.name }}</span>
         </span>
       </div>
