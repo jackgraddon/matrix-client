@@ -666,11 +666,17 @@ export const useMatrixStore = defineStore('matrix', {
     },
 
     resolveActivity(userId: string | null): any {
-      const currentUserId = this.client?.getUserId();
+      // Ensure reactivity for key state properties
+      const _m = this.musicActivity;
+      const _a = this.activityDetails;
+      const _r = this.remoteActivityDetails;
+      const _p = this.lastPresenceState;
+
+      const currentUserId = this.user?.userId || this.client?.getUserId();
       const targetUserId = userId || currentUserId;
       if (!targetUserId) return null;
 
-      const isSelf = currentUserId && targetUserId === currentUserId;
+      const isSelf = !!(currentUserId && targetUserId === currentUserId);
 
       const sanitize = (val: any) => {
         if (val === null || val === undefined) return null;

@@ -85,6 +85,7 @@ const updateDuration = () => {
   if (!displayActivity.value) return;
 
   if (displayActivity.value.is_paused) {
+    // If paused, the elapsed time should be locked to the reported current time
     elapsedSeconds.value = remoteCurrentTime.value;
     return;
   }
@@ -144,7 +145,7 @@ onUnmounted(() => {
   if (timerInterval) clearInterval(timerInterval);
 });
 
-watch([startTime, remoteCurrentTime, () => displayActivity.value?.is_paused], () => {
+watch([startTime, remoteCurrentTime, () => displayActivity.value?.is_paused], (newVals, oldVals) => {
   updateDuration();
 }, { immediate: true });
 </script>
