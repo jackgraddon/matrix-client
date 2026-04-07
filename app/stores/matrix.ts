@@ -304,7 +304,7 @@ export const useMatrixStore = defineStore('matrix', {
     startMinimized: false,
     activityStatus: null as string | null,
     activityDetails: null as any | null,
-    musicActivity: null as { title: string; artist: string; album?: string; coverUrl?: string; duration?: number; startTime?: number; isRunning: boolean } | null,
+    musicActivity: null as { title: string; artist: string; album?: string; coverUrl?: string; duration?: number; currentTime?: number; startTime?: number; isRunning: boolean } | null,
     pushNotificationsEnabled: true,
     showContentInNotifications: true,
     customPushEndpoint: null as string | null,
@@ -686,14 +686,16 @@ export const useMatrixStore = defineStore('matrix', {
       }
 
       // 1.5 Local Music Activity
-      if (isSelf && this.musicActivity?.isRunning) {
+      if (isSelf && this.musicActivity) {
         return {
           name: `${this.musicActivity.title} by ${this.musicActivity.artist}`,
           details: this.musicActivity.album,
           coverUrl: this.musicActivity.coverUrl,
           duration: this.musicActivity.duration,
+          currentTime: this.musicActivity.currentTime,
           startTimestamp: this.musicActivity.startTime || Date.now(),
           is_running: true,
+          is_paused: !this.musicActivity.isRunning,
           type: 'music'
         };
       }
@@ -733,9 +735,11 @@ export const useMatrixStore = defineStore('matrix', {
                 smallIconHash: parsed.smallIconHash,
                 startTimestamp: parsed.startTimestamp,
                 duration: parsed.duration,
+                currentTime: parsed.currentTime,
                 coverUrl: parsed.coverUrl,
                 type: type,
                 is_running: true,
+                is_paused: parsed.is_paused ?? false,
               };
             }
           } catch { /* fall through to plain text */ }
@@ -1070,7 +1074,9 @@ export const useMatrixStore = defineStore('matrix', {
       this.refreshPresence();
     },
 
-    setMusicActivity(activity: { title: string; artist: string; album?: string; coverUrl?: string; duration?: number; startTime?: number; isRunning: boolean } | null) {
+    setMusicActivity(activity: { title: string; artist: string; album?: string; coverUrl?: string; duration?: number; currentTime?: number; startTime?: number; isRunning: boolean } | null) {
+      // If the song is exactly the same and only currentTime changed, we check if it's worth updating
+      // But for now, we allow the store to update it (throttled by refreshPresence anyway)
       this.musicActivity = activity;
       this.refreshPresence();
     },
@@ -1130,13 +1136,15 @@ export const useMatrixStore = defineStore('matrix', {
             is_running: true,
           });
         }
-      } else if (!status_msg && this.musicActivity?.isRunning) {
+      } else if (!status_msg && this.musicActivity) {
         status_msg = JSON.stringify({
           playing: `${this.musicActivity.title} by ${this.musicActivity.artist}`,
           details: this.musicActivity.album ?? null,
           duration: this.musicActivity.duration ?? null,
+          currentTime: this.musicActivity.currentTime ?? null,
           coverUrl: this.musicActivity.coverUrl ?? null,
           startTimestamp: this.musicActivity.startTime || Date.now(),
+          is_paused: !this.musicActivity.isRunning,
           type: 'music',
           is_running: true,
         });
@@ -1148,7 +1156,7 @@ export const useMatrixStore = defineStore('matrix', {
         this.lastPresenceState.status_msg !== status_msg;
 
       const now = Date.now();
-      const throttleMs = 30 * 1000; // 30 seconds
+      const throttleMs = 20 * 1000; // 20 seconds
 
       // Only skip if no change AND within throttle window
       if (!stateChanged && (now - this.lastPresenceUpdate < throttleMs)) {

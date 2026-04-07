@@ -46,6 +46,7 @@ export const useMusicStore = defineStore('music', {
 
       this.audioElement.addEventListener('play', () => {
         this.isPlaying = true;
+        this.startTime = Date.now() - (this.currentTime * 1000);
         this.updatePresence();
       });
 
@@ -67,7 +68,7 @@ export const useMusicStore = defineStore('music', {
       }
 
       this.currentSong = song;
-      this.startTime = Date.now();
+      this.startTime = Date.now() - (this.currentTime * 1000);
       this.audioElement.src = song.streamUrl;
       this.audioElement.play();
       this.updateMediaSession();
@@ -104,7 +105,12 @@ export const useMusicStore = defineStore('music', {
         this.playSong(nextSong);
       } else {
         this.isPlaying = false;
-        if (this.audioElement) this.audioElement.pause();
+        this.currentSong = null;
+        if (this.audioElement) {
+          this.audioElement.pause();
+          this.audioElement.src = '';
+        }
+        this.updatePresence();
       }
     },
 
@@ -163,15 +169,16 @@ export const useMusicStore = defineStore('music', {
 
     updatePresence() {
       const matrixStore = useMatrixStore();
-      if (this.isPlaying && this.currentSong) {
+      if (this.currentSong) {
         matrixStore.setMusicActivity({
           title: this.currentSong.title,
           artist: this.currentSong.artist,
           album: this.currentSong.album,
           coverUrl: this.currentSong.coverUrl,
-          duration: this.duration,
+          duration: Math.floor(this.duration),
+          currentTime: Math.floor(this.currentTime),
           startTime: this.startTime || undefined,
-          isRunning: true
+          isRunning: this.isPlaying
         });
       } else {
         matrixStore.setMusicActivity(null);

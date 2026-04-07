@@ -2,8 +2,8 @@
   <div v-if="displayActivity" class="relative flex flex-col p-4 bg-[#AA5CC3]/10 border border-[#AA5CC3]/20 rounded-xl shadow-sm w-full transition-all hover:bg-[#AA5CC3]/15">
     <div class="flex items-center justify-between w-full mb-3">
       <span class="text-[10px] font-bold uppercase tracking-widest text-[#AA5CC3] flex items-center gap-1.5">
-        <Icon name="solar:music-note-bold" class="w-3.5 h-3.5" />
-        Listening to music
+        <Icon :name="displayActivity.is_paused ? 'solar:pause-bold' : 'solar:music-note-bold'" class="w-3.5 h-3.5" />
+        {{ displayActivity.is_paused ? 'Music Paused' : 'Listening to music' }}
       </span>
       <button v-if="isSelf" class="text-muted-foreground hover:text-foreground transition-colors">
         <Icon name="solar:menu-dots-bold" class="w-4 h-4" />
@@ -41,7 +41,7 @@
         <div class="flex flex-col gap-1.5 mt-3">
           <div class="flex items-center justify-between text-[11px] font-bold tabular-nums text-[#AA5CC3]">
             <span>{{ elapsedFormatted }}</span>
-            <span v-if="displayActivity.duration">{{ durationFormatted }}</span>
+            <span v-if="totalDuration">{{ durationFormatted }}</span>
           </div>
           <!-- Progress Bar -->
           <div v-if="displayActivity.duration" class="h-1.5 w-full bg-muted rounded-full overflow-hidden border border-border/20">
@@ -74,16 +74,22 @@ const isSelf = computed(() => {
 const displayActivity = computed(() => store.resolveActivity(props.userId ?? null));
 
 const startTime = computed(() => (displayActivity.value as any)?.startTimestamp);
-const totalDuration = computed(() => (displayActivity.value as any)?.duration);
+const totalDuration = computed(() => (displayActivity.value as any)?.duration ? Math.floor((displayActivity.value as any).duration) : 0);
+const remoteCurrentTime = computed(() => (displayActivity.value as any)?.currentTime ? Math.floor((displayActivity.value as any).currentTime) : 0);
 
 // --- Timer Logic ---
 const elapsedSeconds = ref(0);
 let timerInterval: any = null;
 
 const updateDuration = () => {
+  if (displayActivity.value?.is_paused) {
+    elapsedSeconds.value = remoteCurrentTime.value;
+    return;
+  }
+
   let start = startTime.value;
   if (!start) {
-    elapsedSeconds.value = 0;
+    elapsedSeconds.value = remoteCurrentTime.value;
     return;
   }
 
@@ -92,13 +98,16 @@ const updateDuration = () => {
     start *= 1000;
   }
 
+  // Calculate how many seconds have passed since the "start" of the track
+  // (Start time is basically now - current_pos)
   elapsedSeconds.value = Math.max(0, Math.floor((Date.now() - start) / 1000));
 };
 
 const formatTime = (seconds: number) => {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = seconds % 60;
+  const rounded = Math.floor(seconds);
+  const h = Math.floor(rounded / 3600);
+  const m = Math.floor((rounded % 3600) / 60);
+  const s = rounded % 60;
   if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   return `${m}:${s.toString().padStart(2, '0')}`;
 };

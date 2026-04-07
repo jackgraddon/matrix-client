@@ -149,7 +149,7 @@ const displayCustomStatus = computed(() => {
     return sanitize(store.customStatus);
   }
   
-  if (presenceStatusMsg.value && !presenceStatusMsg.value.startsWith('Playing ')) {
+  if (presenceStatusMsg.value && !presenceStatusMsg.value.startsWith('Playing ') && !presenceStatusMsg.value.startsWith('{')) {
       return sanitize(presenceStatusMsg.value);
   }
   return null;
