@@ -39,9 +39,8 @@
                             v-if="jellyfinStore.isAuthenticated"
                             variant="secondary"
                             @click="() => { navigateTo('/chat/music'); matrixStore.toggleSidebar(false); }"
-                            class="w-full justify-start gap-2"
                         >
-                            <Icon name="solar:music-note-bold-duotone" class="h-4 w-4 text-[#AA5CC3]" />
+                            <Icon name="solar:music-note-bold-duotone" />
                             Music Library
                         </UiButton>
                     </div>
@@ -206,6 +205,12 @@
 
                 <!-- Sidebar Music Nav -->
                 <template v-if="isLinkActive('/chat/music')">
+                    <div class="flex items-center gap-2">
+                        <UiInput v-model="searchQuery" placeholder="Search music..." class="h-8 w-64" @keyup.enter="doSearch" />
+                        <UiButton size="icon-sm" @click="doSearch">
+                            <Icon name="solar:magnifer-outline" />
+                        </UiButton>
+                    </div>
                     <div class="flex flex-col gap-1 mb-4">
                         <div class="px-2 mb-1">
                             <span class="text-[10px] font-bold uppercase text-muted-foreground tracking-wider">Library</span>
@@ -431,6 +436,13 @@ const voiceStore = useVoiceStore();
 const musicStore = useMusicStore();
 const jellyfinStore = useJellyfinStore();
 const { fetcher: jellyfinFetch } = useJellyfin();
+
+const searchQuery = ref('');
+
+function doSearch() {
+  if (!searchQuery.value) return;
+  navigateTo(`/chat/music/search?q=${encodeURIComponent(searchQuery.value)}`);
+}
 
 const musicNav = [
     { label: 'Home', icon: 'solar:home-2-bold-duotone', path: '/chat/music' },

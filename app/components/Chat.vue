@@ -580,13 +580,7 @@
             placeholder="Type a message..."
             rows="1" 
             class="min-h-10 max-h-[200px] resize-none border-0 focus-visible:ring-0 py-2.5 flex-1 text-base"
-            @keydown.enter.exact="(e) => {
-              const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-              if (!isMobile) {
-                e.preventDefault();
-                sendMessage();
-              }
-            }"
+            @keydown="handleKeydown"
             @input="autoResize"
             @paste="handlePaste"
           />
@@ -1469,6 +1463,31 @@ async function handleTypingInput() {
             store.client.sendTyping(room.value.roomId, false, 0);
         }
     }, TYPING_TIMEOUT);
+}
+
+// Inside <script setup>
+
+function handleKeydown(e: KeyboardEvent) {
+  // Only intercept if the Enter key is pressed
+  if (e.key === 'Enter') {
+    // Robust mobile detection: checks UserAgent OR if the device has a touch screen
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) 
+      || ('ontouchstart' in window) 
+      || navigator.maxTouchPoints > 0;
+
+    if (isMobile) {
+      // Mobile: Do nothing. Let the native Enter behavior (new line) happen.
+      return; 
+    }
+
+    // Desktop: Check if Shift is being held down
+    if (!e.shiftKey) {
+      e.preventDefault(); // Stop the new line from forming
+      sendMessage();      // Send the message
+    }
+    // If Shift IS held down on desktop, it skips the `if` block 
+    // and naturally creates a new line.
+  }
 }
 
 // --- Send message ---
