@@ -152,8 +152,12 @@ onMounted(async () => {
     appWindow.onThemeChanged(({ payload: theme }) => {
       if (colorMode.preference === 'system') {
         console.log("[App] Native theme changed, syncing colorMode:", theme);
-        // We don't change preference, but we want to make sure Nuxt reacts.
-        // Usually Nuxt reacts to matchMedia, but we can nudge it.
+        // Manually nudge Nuxt's color mode value by temporarily setting preference
+        // and then reverting to 'system'. This forces a re-evaluation of the 'value' property.
+        colorMode.preference = theme as 'light' | 'dark';
+        setTimeout(() => {
+          colorMode.preference = 'system';
+        }, 10);
       }
     });
 
@@ -207,7 +211,12 @@ onMounted(async () => {
         if (theme) {
           console.log("[App] Initial native theme sync:", theme);
           // Force nuxt-color-mode to align if it missed the initial detection
-          // colorMode.value is read-only, but it should ideally just work.
+          if (colorMode.value !== theme) {
+            colorMode.preference = theme as 'light' | 'dark';
+            setTimeout(() => {
+              colorMode.preference = 'system';
+            }, 10);
+          }
         }
       }
     };
