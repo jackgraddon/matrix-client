@@ -1155,12 +1155,51 @@ export const useMatrixStore = defineStore('matrix', {
         this.lastPresenceState.presence !== presence ||
         this.lastPresenceState.status_msg !== status_msg;
 
+      // Determine if this is a "critical" change that should bypass throttling.
+      // For music, critical changes are play/pause and track changes.
+      // Continuous progress (time updates) should still be throttled.
+      let isCriticalChange = false;
+      if (stateChanged && this.lastPresenceState) {
+        try {
+          const lastMsg = this.lastPresenceState.status_msg;
+          const currentMsg = status_msg;
+
+          if (lastMsg.startsWith('{') && currentMsg.startsWith('{')) {
+            const last = JSON.parse(lastMsg);
+            const current = JSON.parse(currentMsg);
+
+            if (last.type === 'music' && current.type === 'music') {
+              const trackChanged = last.playing !== current.playing;
+              const pauseStateChanged = last.is_paused !== current.is_paused;
+              // Detect seeks: if the startTimestamp shifted by more than 2 seconds, it's a seek
+              const seeked = Math.abs((last.startTimestamp || 0) - (current.startTimestamp || 0)) > 2000;
+
+              if (trackChanged || pauseStateChanged || seeked) {
+                isCriticalChange = true;
+              }
+            }
+          } else if (lastMsg !== currentMsg) {
+            // If one is JSON and the other isn't, or both are plain text and changed, consider it critical enough
+            isCriticalChange = true;
+          }
+        } catch (e) {
+          isCriticalChange = true;
+        }
+      } else if (stateChanged && !this.lastPresenceState) {
+        isCriticalChange = true;
+      }
+
       const now = Date.now();
       const throttleMs = 20 * 1000; // 20 seconds
 
-      // Only skip if no change AND within throttle window
-      if (!stateChanged && (now - this.lastPresenceUpdate < throttleMs)) {
-        return;
+      // Only skip if:
+      // 1. No state change at all
+      // 2. OR state changed but it's not critical AND we are within the throttle window
+      if (!stateChanged || (!isCriticalChange && (now - this.lastPresenceUpdate < throttleMs))) {
+        // Double check: if it's been more than throttleMs, we should update anyway to keep presence alive
+        if (now - this.lastPresenceUpdate < throttleMs) {
+          return;
+        }
       }
 
       console.log(`[MatrixStore] Refreshing presence: ${presence} ("${status_msg}")`);

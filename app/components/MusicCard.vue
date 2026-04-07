@@ -82,7 +82,9 @@ const elapsedSeconds = ref(0);
 let timerInterval: any = null;
 
 const updateDuration = () => {
-  if (displayActivity.value?.is_paused) {
+  if (!displayActivity.value) return;
+
+  if (displayActivity.value.is_paused) {
     elapsedSeconds.value = remoteCurrentTime.value;
     return;
   }
@@ -100,7 +102,20 @@ const updateDuration = () => {
 
   // Calculate how many seconds have passed since the "start" of the track
   // (Start time is basically now - current_pos)
-  elapsedSeconds.value = Math.max(0, Math.floor((Date.now() - start) / 1000));
+  const calculatedSeconds = Math.max(0, Math.floor((Date.now() - start) / 1000));
+
+  // Reconcile with remoteCurrentTime:
+  // If we are more than 5 seconds off the last reported remote current time,
+  // snap to calculated time BUT only if the remote update was recent-ish.
+  // Actually, startTime (now - current_pos) is the most reliable way to
+  // maintain a continuous clock between presence updates.
+
+  elapsedSeconds.value = calculatedSeconds;
+
+  // Cap at total duration if known
+  if (totalDuration.value > 0 && elapsedSeconds.value > totalDuration.value) {
+    elapsedSeconds.value = totalDuration.value;
+  }
 };
 
 const formatTime = (seconds: number) => {
@@ -129,7 +144,7 @@ onUnmounted(() => {
   if (timerInterval) clearInterval(timerInterval);
 });
 
-watch(startTime, (newVal) => {
-  if (newVal) updateDuration();
-});
+watch([startTime, remoteCurrentTime, () => displayActivity.value?.is_paused], () => {
+  updateDuration();
+}, { immediate: true });
 </script>

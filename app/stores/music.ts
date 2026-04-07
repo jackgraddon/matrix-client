@@ -33,7 +33,14 @@ export const useMusicStore = defineStore('music', {
       this.audioElement.volume = this.volume;
 
       this.audioElement.addEventListener('timeupdate', () => {
-        this.currentTime = this.audioElement?.currentTime || 0;
+        const newTime = this.audioElement?.currentTime || 0;
+        // Only update state if the floored second has changed to avoid reactive churn
+        if (Math.floor(newTime) !== Math.floor(this.currentTime)) {
+          this.currentTime = newTime;
+          this.updatePresence();
+        } else {
+          this.currentTime = newTime;
+        }
       });
 
       this.audioElement.addEventListener('durationchange', () => {
@@ -46,7 +53,7 @@ export const useMusicStore = defineStore('music', {
 
       this.audioElement.addEventListener('play', () => {
         this.isPlaying = true;
-        this.startTime = Date.now() - (this.currentTime * 1000);
+        this.startTime = Math.floor(Date.now() - (this.currentTime * 1000));
         this.updatePresence();
       });
 
@@ -68,7 +75,8 @@ export const useMusicStore = defineStore('music', {
       }
 
       this.currentSong = song;
-      this.startTime = Date.now() - (this.currentTime * 1000);
+      this.currentTime = 0;
+      this.startTime = Math.floor(Date.now());
       this.audioElement.src = song.streamUrl;
       this.audioElement.play();
       this.updateMediaSession();
@@ -164,6 +172,11 @@ export const useMusicStore = defineStore('music', {
     seek(time: number) {
       if (this.audioElement) {
         this.audioElement.currentTime = time;
+        this.currentTime = time;
+        if (this.isPlaying) {
+          this.startTime = Math.floor(Date.now() - (time * 1000));
+        }
+        this.updatePresence();
       }
     },
 
