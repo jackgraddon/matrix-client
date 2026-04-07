@@ -668,9 +668,10 @@ export const useMatrixStore = defineStore('matrix', {
 
     resolveActivity(userId: string | null): any {
       // Ensure reactivity for key state properties
+      this.gameTrigger; // trigger reactivity
       const _m = this.musicActivity;
       const _a = this.activityDetails;
-      const _r = this.remoteActivityDetails;
+      const _r = { ...this.remoteActivityDetails };
       const _p = this.lastPresenceState;
 
       const currentUserId = this.user?.userId || this.client?.getUserId();
@@ -707,9 +708,11 @@ export const useMatrixStore = defineStore('matrix', {
         };
       }
 
-      // 2. Synced account data (self other sessions)
-      if (isSelf && this.remoteActivityDetails[targetUserId]?.is_running) {
-        const remote = this.remoteActivityDetails[targetUserId];
+      // 2. Synced account data (self other sessions OR remote users)
+      // For self, we merge activities from all our devices and pick the most recent running one.
+      // For others, this stores their rich activity parsed from presence or account data.
+      const remote = this.remoteActivityDetails[targetUserId];
+      if (remote && remote.is_running) {
         // 5 minute freshness check
         if (Date.now() - (remote.last_updated || 0) < 5 * 60 * 1000) {
           if (sanitize(remote.name)) return remote;
@@ -1139,40 +1142,39 @@ export const useMatrixStore = defineStore('matrix', {
     async refreshPresence() {
       if (!this.client || !this.isAuthenticated || !this.isClientReady) return;
 
-      const presence = this.isIdle ? 'unavailable' : 'online';
+      // Determine best activity for the status message
+      const bestActivity = this.resolveActivity(null);
+      const hasLiveActivity = bestActivity?.is_running && !bestActivity?.is_paused;
+
+      // CRITICAL: If we have a live activity running on ANY of our devices,
+      // we should stay 'online' and not flip to 'unavailable' (idle).
+      const presence = (this.isIdle && !hasLiveActivity) ? 'unavailable' : 'online';
 
       let status_msg: string = this.customStatus || '';
 
-      if (!status_msg && this.activityDetails?.is_running) {
-        const act = this.activityDetails;
-        const gameName = this._sanitizeActivityString(act.name);
-        if (gameName) {
+      if (!status_msg && bestActivity?.is_running) {
+        const act = bestActivity;
+        const name = this._sanitizeActivityString(act.name);
+        if (name) {
           // Encode the full payload so remote Tumult clients can render
           // icons, timestamps, and details. Non-Tumult clients will see
           // the JSON string as their status — not ideal but acceptable.
           status_msg = JSON.stringify({
-            playing: gameName,
+            playing: name,
             details: act.details ?? null,
             state: act.state ?? null,
             applicationId: act.applicationId ?? null,
             iconHash: act.iconHash ?? null,
             smallIconHash: act.smallIconHash ?? null,
             startTimestamp: act.startTimestamp ?? null,
+            duration: act.duration ?? null,
+            currentTime: act.currentTime ?? null,
+            coverUrl: act.coverUrl ?? null,
+            type: act.type || (name.includes(' by ') ? 'music' : 'game'),
             is_running: true,
+            is_paused: act.is_paused ?? false,
           });
         }
-      } else if (!status_msg && this.musicActivity) {
-        status_msg = JSON.stringify({
-          playing: `${this.musicActivity.title} by ${this.musicActivity.artist}`,
-          details: this.musicActivity.album ?? null,
-          duration: this.musicActivity.duration ?? null,
-          currentTime: this.musicActivity.currentTime ?? null,
-          coverUrl: this.musicActivity.coverUrl ?? null,
-          startTimestamp: this.musicActivity.startTime || Date.now(),
-          is_paused: !this.musicActivity.isRunning,
-          type: 'music',
-          is_running: true,
-        });
       }
 
       // Check if state has actually changed
@@ -2378,29 +2380,99 @@ export const useMatrixStore = defineStore('matrix', {
       const event = (this.client as any).getAccountData('cc.jackg.tumult.activity_details');
       if (event) {
         const content = event.getContent();
-        if (content && typeof content === 'object' && Object.keys(content).length > 0) {
-          // Only update if it's more recent than what we have locally (if anything)
-          const remoteUpdated = content.last_updated || 0;
-          const localUpdated = this.activityDetails?.last_updated || 0;
+        if (content && typeof content === 'object') {
+          // New format: Map of deviceId -> Activity
+          // Old format: Single Activity object
+          let activities: Record<string, any> = {};
 
-          // If we are currently running a game locally, we don't overwrite it with remote data
-          // unless the remote data is also "running" and newer.
-          if (!this.activityDetails?.is_running || remoteUpdated > localUpdated) {
-            this.remoteActivityDetails[userId] = content;
+          if (content.is_running !== undefined) {
+             // Legacy format conversion
+             activities['legacy'] = content;
+          } else {
+             activities = content;
           }
-        } else {
-          delete this.remoteActivityDetails[userId];
+
+          // Pick the "best" activity: most recent is_running one.
+          let bestActivity: any = null;
+          const currentDeviceId = this.client.getDeviceId();
+
+          for (const [deviceId, act] of Object.entries(activities)) {
+            // Ignore our own current device's synced data to avoid feedback loops
+            if (deviceId === currentDeviceId) continue;
+
+            if (act && act.is_running) {
+              if (!bestActivity || (act.last_updated || 0) > (bestActivity.last_updated || 0)) {
+                bestActivity = act;
+              }
+            }
+          }
+
+          if (bestActivity) {
+            this.remoteActivityDetails[userId] = { ...bestActivity };
+          } else {
+            // If no other devices are running anything, check if we had a legacy one or if we should clear
+            delete this.remoteActivityDetails[userId];
+          }
+          this.gameTrigger++;
         }
-      } else {
-        delete this.remoteActivityDetails[userId];
       }
     },
 
     async saveActivityToAccountData() {
       if (!this.client) return;
+      const deviceId = this.client.getDeviceId();
+      if (!deviceId) return;
+
       try {
-        // Only sync OUR activityDetails (the ones from the sidecar)
-        await (this.client as any).setAccountData('cc.jackg.tumult.activity_details', this.activityDetails || {});
+        // 1. Get existing data
+        const event = (this.client as any).getAccountData('cc.jackg.tumult.activity_details');
+        let activities: Record<string, any> = {};
+
+        if (event) {
+          const content = event.getContent();
+          if (content.is_running !== undefined) {
+            activities['legacy'] = content;
+          } else {
+            activities = { ...content };
+          }
+        }
+
+        // 2. Prepare our current activity
+        let myActivity: any = null;
+        if (this.activityDetails?.is_running) {
+          myActivity = { ...this.activityDetails };
+        } else if (this.musicActivity) {
+          myActivity = {
+            name: `${this.musicActivity.title} by ${this.musicActivity.artist}`,
+            details: this.musicActivity.album,
+            coverUrl: this.musicActivity.coverUrl,
+            duration: this.musicActivity.duration,
+            currentTime: this.musicActivity.currentTime,
+            startTimestamp: this.musicActivity.startTime || Date.now(),
+            is_running: true,
+            is_paused: !this.musicActivity.isRunning,
+            type: 'music',
+            last_updated: Date.now()
+          };
+        }
+
+        // 3. Update map
+        if (myActivity) {
+          activities[deviceId] = myActivity;
+        } else {
+          delete activities[deviceId];
+        }
+
+        // 4. Clean up stale activities (older than 24h)
+        const now = Date.now();
+        for (const [id, act] of Object.entries(activities)) {
+          if (!act.last_updated || now - act.last_updated > 24 * 60 * 60 * 1000) {
+            delete activities[id];
+          }
+        }
+
+        // 5. Save back
+        await (this.client as any).setAccountData('cc.jackg.tumult.activity_details', activities);
       } catch (e) {
         console.error('Failed to save rich activity to account data:', e);
       }

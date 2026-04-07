@@ -156,7 +156,12 @@ const displayCustomStatus = computed(() => {
 });
 
 const effectivePresence = computed(() => {
-    if (isSelf.value) return store.isIdle ? 'unavailable' : 'online';
+    if (isSelf.value) {
+        // Stay online if we have a live activity, even if idle
+        const bestActivity = store.resolveActivity(null);
+        const hasLiveActivity = bestActivity?.is_running && !bestActivity?.is_paused;
+        return (store.isIdle && !hasLiveActivity) ? 'unavailable' : 'online';
+    }
     return presenceStatus.value;
 });
 
