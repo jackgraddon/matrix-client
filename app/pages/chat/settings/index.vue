@@ -227,8 +227,8 @@ const installUpdate = async () => {
     isInstalling.value = true;
     try {
         await updateInfo.value.downloadAndInstall();
-        // The app will restart automatically if configured, 
-        // or you might need to trigger it. Tauri 2 usually handles it.
+        const { relaunch } = await import('@tauri-apps/plugin-process');
+        await relaunch();
     } catch (e) {
         console.error("Failed to install update:", e);
         isInstalling.value = false;

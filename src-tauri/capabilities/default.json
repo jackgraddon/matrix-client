@@ -43,6 +43,7 @@
     "store:default",
     "notification:default",
     "updater:default",
+    "process:allow-relaunch",
     "core:tray:default",
     "core:tray:allow-set-tooltip",
     "core:tray:allow-set-visible",

@@ -23,6 +23,13 @@ sw.addEventListener('message', (event) => {
             console.log('[Service Worker] Marked event as displayed (internal sync):', eventId);
         }
     }
+    if (event.data?.type === 'CLEAR_BADGE') {
+        if ('clearAppBadge' in navigator) {
+            navigator.clearAppBadge().catch(console.error);
+        } else if ('setAppBadge' in navigator) {
+            navigator.setAppBadge(0).catch(console.error);
+        }
+    }
 });
 
 // This is the magic line that Nuxt PWA module needs to inject the asset manifest.
@@ -207,7 +214,21 @@ sw.addEventListener('push', (event) => {
             }
         }
 
-        // --- 0. Deduplication ---
+        // --- 0. Update App Badge (iOS 16.4+ / Android) ---
+        // MUST happen early and regardless of deduplication to ensure current unread count is always reflected
+        if (data.counts && data.counts.unread !== undefined && 'setAppBadge' in navigator) {
+            if (data.counts.unread === 0) {
+                if ('clearAppBadge' in navigator) {
+                    navigator.clearAppBadge().catch(console.error);
+                } else {
+                    navigator.setAppBadge(0).catch(console.error);
+                }
+            } else {
+                navigator.setAppBadge(data.counts.unread).catch(console.error);
+            }
+        }
+
+        // --- 1. Deduplication ---
         if (data.event_id) {
             if (displayedEvents.has(data.event_id)) {
                 console.log('[Service Worker] Skipping duplicate notification for event:', data.event_id);
@@ -223,7 +244,12 @@ sw.addEventListener('push', (event) => {
 
         let debugError = null;
 
-        // --- 1. Transport Decryption (Relay Level) ---
+        // --- 1.5. Load Settings from IDB ---
+        const settings = await getSwSettings();
+        const effectiveShowContent = showContentInNotifications && settings.showContent;
+        const effectiveQuietUntil = Math.max(quietUntil, settings.quietUntil);
+
+        // --- 2. Transport Decryption (Relay Level) ---
         if (data.ciphertext) {
             try {
                 const decryptedPayload = await decryptTransportPayload(data.ciphertext);
@@ -237,9 +263,10 @@ sw.addEventListener('push', (event) => {
             }
         }
 
-        // --- 2. Protocol Decryption (Matrix Level) ---
+        // --- 3. Protocol Decryption (Matrix Level) ---
         // If content is still "Encrypted message", try a background fetch + decrypt
-        if (data.room_id && data.event_id && (data.content?.algorithm || getMessageSummary(data.content) === 'Encrypted message')) {
+        // ONLY if show content is enabled
+        if (effectiveShowContent && data.room_id && data.event_id && (data.content?.algorithm || getMessageSummary(data.content) === 'Encrypted message')) {
             try {
                 const decryptedContent = await fetchAndDecryptMatrixEvent(data.room_id, data.event_id);
                 if (decryptedContent) {
@@ -274,7 +301,7 @@ sw.addEventListener('push', (event) => {
         let title = data.title || (roomName ? `${sender} in ${roomName}` : sender);
         let notificationBody = data.body || bodyText;
 
-        if (!showContentInNotifications) {
+        if (!effectiveShowContent) {
             title = 'New Message';
             notificationBody = 'Tap to view message content';
         } else if (debugError) {
@@ -283,26 +310,21 @@ sw.addEventListener('push', (event) => {
         const urlToOpen = data.navigate || (data.data?.url || (data.room_id ? `/chat/rooms/${data.room_id}` : '/chat'));
 
         const options = {
-        body: notificationBody,
-        icon: data.icon || '/pwa-192x192.png',
-        badge: '/pwa-192x192.png',
-        data: {
-            roomId: data.room_id,
-            eventId: data.event_id,
-            url: urlToOpen
-        },
-        tag: data.room_id || 'general-notification',
-        renotify: true
-    };
+            body: notificationBody,
+            icon: data.icon || '/pwa-192x192.png',
+            badge: '/pwa-192x192.png',
+            data: {
+                roomId: data.room_id,
+                eventId: data.event_id,
+                url: urlToOpen
+            },
+            tag: data.room_id || 'general-notification',
+            renotify: true
+        };
 
-    // Update App Badge (iOS 16.4+ / Android)
-    if (data.counts && data.counts.unread !== undefined && 'setAppBadge' in navigator) {
-        navigator.setAppBadge(data.counts.unread).catch(console.error);
-    }
-
-    // Show Notification (Imperative Fallback)
-    const now = Date.now();
-    const shouldShow = now > quietUntil;
+        // Show Notification (Imperative Fallback)
+        const now = Date.now();
+        const shouldShow = now > effectiveQuietUntil;
 
         await Promise.all([
             shouldShow ? sw.registration.showNotification(title, options) : Promise.resolve(),
@@ -351,11 +373,34 @@ async function getSwMatrixAuth() {
         const store = transaction.objectStore(AUTH_STORE_NAME);
         const accessTokenReq = store.get('access_token');
         const homeserverUrlReq = store.get('homeserver_url');
+        const deviceIdReq = store.get('device_id');
         let accessToken = null;
         let homeserverUrl = null;
+        let deviceId = null;
         accessTokenReq.onsuccess = () => { accessToken = accessTokenReq.result || null; };
         homeserverUrlReq.onsuccess = () => { homeserverUrl = homeserverUrlReq.result || null; };
-        transaction.oncomplete = () => resolve({ accessToken, homeserverUrl });
+        deviceIdReq.onsuccess = () => { deviceId = deviceIdReq.result || null; };
+        transaction.oncomplete = () => resolve({ accessToken, homeserverUrl, deviceId });
+        transaction.onerror = () => reject(transaction.error);
+    });
+}
+
+async function getSwSettings() {
+    const db = await openCryptoDB();
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(AUTH_STORE_NAME, 'readonly');
+        const store = transaction.objectStore(AUTH_STORE_NAME);
+        const showContentReq = store.get('show_content');
+        const quietUntilReq = store.get('quiet_until');
+        let showContent = true;
+        let quietUntil = 0;
+        showContentReq.onsuccess = () => {
+            if (showContentReq.result !== undefined) showContent = showContentReq.result;
+        };
+        quietUntilReq.onsuccess = () => {
+            if (quietUntilReq.result !== undefined) quietUntil = quietUntilReq.result;
+        };
+        transaction.oncomplete = () => resolve({ showContent, quietUntil });
         transaction.onerror = () => reject(transaction.error);
     });
 }
@@ -408,43 +453,47 @@ async function fetchAndDecryptMatrixEvent(roomId, eventId) {
         // For now, we'll try to reach out to any open windows to decrypt it for us.
 
         const clients = await sw.clients.matchAll({ type: 'window' });
-        if (clients.length === 0) return null;
 
-        // Race all open windows for the decryption
-        const decryptionPromises = clients.map(client => {
-            return new Promise((resolve) => {
-                const channel = new MessageChannel();
-                channel.port1.onmessage = (msg) => {
-                    if (msg.data.decrypted) resolve(msg.data.decrypted);
-                    else resolve(null);
-                };
-                client.postMessage({
-                    type: 'DECRYPT_EVENT',
-                    event
-                }, [channel.port2]);
+        if (clients.length > 0) {
+            // Race all open windows for the decryption
+            const decryptionPromises = clients.map(client => {
+                return new Promise((resolve) => {
+                    const channel = new MessageChannel();
+                    channel.port1.onmessage = (msg) => {
+                        if (msg.data.decrypted) resolve(msg.data.decrypted);
+                        else resolve(null);
+                    };
+                    client.postMessage({
+                        type: 'DECRYPT_EVENT',
+                        event
+                    }, [channel.port2]);
 
-                // Individual client timeout
-                setTimeout(() => resolve(null), 2000);
+                    // Individual client timeout
+                    setTimeout(() => resolve(null), 2000);
+                });
             });
-        });
 
-        // Add a global timeout promise
-        const globalTimeout = new Promise(resolve => setTimeout(() => resolve(null), 2500));
+            // Add a global timeout promise
+            const globalTimeout = new Promise(resolve => setTimeout(() => resolve(null), 2500));
 
-        // Use Promise.race to get the first non-null decryption
-        const result = await Promise.race([
-            ...decryptionPromises,
-            globalTimeout
-        ]);
+            const result = await Promise.race([
+                ...decryptionPromises,
+                globalTimeout
+            ]);
 
-        // If Promise.race returns null immediately because all clients resolved null quickly,
-        // we might still want to wait a bit for others. A better way:
-        if (result) return result;
+            if (result) return result;
 
-        // Fallback: Filter for any truthy results
-        const allResults = await Promise.all(decryptionPromises);
-        const successfulResult = allResults.find(r => !!r);
-        if (successfulResult) return successfulResult;
+            // Fallback: Filter for any truthy results
+            const allResults = await Promise.all(decryptionPromises);
+            const successfulResult = allResults.find(r => !!r);
+            if (successfulResult) return successfulResult;
+        }
+
+        // --- NEW: Standalone Decryption (App Closed) ---
+        // In 2026, we might try to use a shared Megolm session cache in IDB
+        // but for now, if no windows are open, we can't decrypt E2EE messages.
+        // However, we can at least return the encrypted event so the generic
+        // "Encrypted message" is shown instead of failing entirely.
 
         throw new Error('No active window could decrypt the event');
     } catch (e) {

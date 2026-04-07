@@ -191,7 +191,8 @@ class LocalStorageOidcTokenRefresher extends OidcTokenRefresher {
       try {
         const { saveMatrixAuth } = await import('~/utils/crypto-db');
         const hsUrl = await getHomeserverUrl();
-        await saveMatrixAuth(tokens.accessToken, hsUrl);
+        const deviceId = await getPref<string | null>('matrix_device_id', null);
+        await saveMatrixAuth(tokens.accessToken, hsUrl, deviceId || undefined);
       } catch (err) {
         console.warn('[MatrixStore] Failed to sync auth to SW store:', err);
       }
@@ -943,6 +944,15 @@ export const useMatrixStore = defineStore('matrix', {
     async setShowContentInNotifications(enabled: boolean) {
       this.showContentInNotifications = enabled;
       await setPref('show_content_in_notifications', enabled);
+
+      // Sync to SW via IDB
+      try {
+        const { saveSwSettings } = await import('~/utils/crypto-db');
+        await saveSwSettings({ showContent: enabled });
+      } catch (e) {
+        console.warn('[MatrixStore] Failed to sync showContent to SW IDB:', e);
+      }
+
       if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
         navigator.serviceWorker.controller.postMessage({
           type: 'SET_SHOW_CONTENT',
@@ -965,6 +975,15 @@ export const useMatrixStore = defineStore('matrix', {
     async setNotificationsQuietUntil(timestamp: number) {
       this.notificationsQuietUntil = timestamp;
       await setPref('notifications_quiet_until', timestamp);
+
+      // Sync to SW via IDB
+      try {
+        const { saveSwSettings } = await import('~/utils/crypto-db');
+        await saveSwSettings({ quietUntil: timestamp });
+      } catch (e) {
+        console.warn('[MatrixStore] Failed to sync quietUntil to SW IDB:', e);
+      }
+
       // Sync to Service Worker via message (simplified mechanism)
       if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
         navigator.serviceWorker.controller.postMessage({
@@ -1610,8 +1629,12 @@ export const useMatrixStore = defineStore('matrix', {
 
       // Sync to Service Worker store for background decryption
       try {
-        const { saveMatrixAuth } = await import('~/utils/crypto-db');
-        await saveMatrixAuth(accessToken, data.homeserverUrl);
+        const { saveMatrixAuth, saveSwSettings } = await import('~/utils/crypto-db');
+        await saveMatrixAuth(accessToken, data.homeserverUrl, deviceId);
+        await saveSwSettings({
+          showContent: this.showContentInNotifications,
+          quietUntil: this.notificationsQuietUntil
+        });
       } catch (err) {
         console.warn('[MatrixStore] Failed to sync auth to SW store:', err);
       }
@@ -1640,7 +1663,7 @@ export const useMatrixStore = defineStore('matrix', {
       try {
         const { saveMatrixAuth } = await import('~/utils/crypto-db');
         const hsUrl = await getHomeserverUrl();
-        await saveMatrixAuth(accessToken, hsUrl);
+        await saveMatrixAuth(accessToken, hsUrl, deviceId);
       } catch (err) {
         console.warn('[MatrixStore] Failed to sync auth to SW store on init:', err);
       }
@@ -4115,6 +4138,15 @@ export const useMatrixStore = defineStore('matrix', {
 
       // Clear any active notifications for this room
       await dismissNotification(roomId);
+
+      // If total unread count is going to be 0, proactively clear the badge
+      if (this.totalDmUnreadCount + this.totalOrphanRoomUnreadCount + this.totalInviteCount <= 1) {
+          if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+              navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_BADGE' });
+          } else if ('clearAppBadge' in navigator) {
+              (navigator as any).clearAppBadge().catch(() => {});
+          }
+      }
 
       const lastEvent = room.timeline[room.timeline.length - 1];
       if (lastEvent) {

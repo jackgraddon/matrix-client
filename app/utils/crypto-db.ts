@@ -59,13 +59,16 @@ export async function getCryptoKey(): Promise<CryptoKey | null> {
  * Used to share credentials with the Service Worker for background decryption.
  */
 
-export async function saveMatrixAuth(accessToken: string, homeserverUrl: string): Promise<void> {
+export async function saveMatrixAuth(accessToken: string, homeserverUrl: string, deviceId?: string): Promise<void> {
     const db = await openCryptoDB();
     return new Promise((resolve, reject) => {
         const transaction = db.transaction(AUTH_STORE_NAME, 'readwrite');
         const store = transaction.objectStore(AUTH_STORE_NAME);
         store.put(accessToken, 'access_token');
         store.put(homeserverUrl, 'homeserver_url');
+        if (deviceId) {
+            store.put(deviceId, 'device_id');
+        }
 
         transaction.oncomplete = () => resolve();
         transaction.onerror = () => reject(transaction.error);
@@ -85,7 +88,7 @@ export async function clearMatrixAuth(): Promise<void> {
     });
 }
 
-export async function getMatrixAuth(): Promise<{ accessToken: string | null, homeserverUrl: string | null }> {
+export async function getMatrixAuth(): Promise<{ accessToken: string | null, homeserverUrl: string | null, deviceId: string | null }> {
     const db = await openCryptoDB();
     return new Promise((resolve, reject) => {
         const transaction = db.transaction(AUTH_STORE_NAME, 'readonly');
@@ -93,14 +96,33 @@ export async function getMatrixAuth(): Promise<{ accessToken: string | null, hom
 
         const accessTokenReq = store.get('access_token');
         const homeserverUrlReq = store.get('homeserver_url');
+        const deviceIdReq = store.get('device_id');
 
         let accessToken: string | null = null;
         let homeserverUrl: string | null = null;
+        let deviceId: string | null = null;
 
         accessTokenReq.onsuccess = () => { accessToken = accessTokenReq.result || null; };
         homeserverUrlReq.onsuccess = () => { homeserverUrl = homeserverUrlReq.result || null; };
+        deviceIdReq.onsuccess = () => { deviceId = deviceIdReq.result || null; };
 
-        transaction.oncomplete = () => resolve({ accessToken, homeserverUrl });
+        transaction.oncomplete = () => resolve({ accessToken, homeserverUrl, deviceId });
+        transaction.onerror = () => reject(transaction.error);
+    });
+}
+
+/**
+ * Settings Storage Functions
+ */
+export async function saveSwSettings(settings: { showContent?: boolean, quietUntil?: number }): Promise<void> {
+    const db = await openCryptoDB();
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(AUTH_STORE_NAME, 'readwrite');
+        const store = transaction.objectStore(AUTH_STORE_NAME);
+        if (settings.showContent !== undefined) store.put(settings.showContent, 'show_content');
+        if (settings.quietUntil !== undefined) store.put(settings.quietUntil, 'quiet_until');
+
+        transaction.oncomplete = () => resolve();
         transaction.onerror = () => reject(transaction.error);
     });
 }
