@@ -11,6 +11,7 @@ const STORE_NAME = 'keys';
 const AUTH_STORE_NAME = 'auth';
 const MEGOLM_STORE_NAME = 'megolm_sessions';
 const DECRYPTED_EVENTS_STORE = 'decrypted_events';
+const SHARE_STORE_NAME = 'shares';
 const KEY_NAME = 'notification-decryption-key';
 
 // Call this whenever you receive/process a room key
@@ -52,6 +53,9 @@ export async function openCryptoDB(): Promise<IDBDatabase> {
             }
             if (!db.objectStoreNames.contains('decrypted_events')) {
                 db.createObjectStore('decrypted_events');
+            }
+            if (!db.objectStoreNames.contains(SHARE_STORE_NAME)) {
+                db.createObjectStore(SHARE_STORE_NAME);
             }
         };
 

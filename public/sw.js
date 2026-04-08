@@ -392,6 +392,7 @@ async function openCryptoDB() {
             if (!db.objectStoreNames.contains(AUTH_STORE_NAME)) db.createObjectStore(AUTH_STORE_NAME);
             if (!db.objectStoreNames.contains('megolm_sessions')) db.createObjectStore('megolm_sessions');
             if (!db.objectStoreNames.contains('decrypted_events')) db.createObjectStore('decrypted_events');
+            if (!db.objectStoreNames.contains(SHARE_STORE_NAME)) db.createObjectStore(SHARE_STORE_NAME);
         };
         request.onsuccess = () => resolve(request.result);
         request.onerror = () => reject(request.error);

@@ -1628,9 +1628,11 @@ function checkAndApplyPendingShare() {
     // Handle files
     if (share.files && share.files.length > 0) {
       for (const fileData of share.files) {
+        // Convert Blob back to File to preserve name and type for Matrix upload
+        const file = new File([fileData.blob], fileData.name, { type: fileData.type });
         stagedFiles.value.push({
-          file: fileData.blob,
-          previewUrl: URL.createObjectURL(fileData.blob)
+          file: file,
+          previewUrl: URL.createObjectURL(file)
         });
       }
     }
