@@ -71,7 +71,7 @@ const isSelf = computed(() => {
   return !props.userId || (currentUserId && props.userId === currentUserId);
 });
 
-const displayActivity = computed(() => store.resolveActivity(props.userId ?? null));
+const displayActivity = computed(() => store.resolveActivities(props.userId ?? null).music);
 
 const startTime = computed(() => (displayActivity.value as any)?.startTimestamp);
 const totalDuration = computed(() => (displayActivity.value as any)?.duration ? Math.floor((displayActivity.value as any).duration) : 0);
