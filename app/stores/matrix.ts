@@ -2196,9 +2196,28 @@ export const useMatrixStore = defineStore('matrix', {
         debouncedUnreadTrigger();
       });
 
-      this.client.on(sdk.RoomEvent.Timeline, (event, room, toStartOfTimeline) => {
+      this.client.on(sdk.RoomEvent.Timeline, async (event, room, toStartOfTimeline) => {
         if (toStartOfTimeline) return;
         debouncedUnreadTrigger();
+
+        // --- NEW: Cache decrypted content for Service Worker ---
+        if (event.getType() === 'm.room.encrypted' || event.isEncrypted()) {
+          const cache = async (ev: sdk.MatrixEvent) => {
+            const content = ev.getClearContent();
+            if (content && ev.getId()) {
+              const { cacheDecryptedEvent } = await import('~/utils/crypto-db');
+              await cacheDecryptedEvent(ev.getId()!, content);
+            }
+          };
+
+          if (event.getClearContent()) {
+            cache(event);
+          } else {
+            event.once(sdk.MatrixEventEvent.Decrypted, (ev) => {
+              if (!ev.isDecryptionFailure()) cache(ev);
+            });
+          }
+        }
       });
 
       this.client.on(sdk.ClientEvent.Event, (event) => {
