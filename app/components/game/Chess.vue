@@ -32,7 +32,7 @@ const chess = computed(() => {
 
 const board = computed(() => chess.value.board());
 
-const currentTurnColor = computed(() => chess.value.turn()); // 'w' or 'b'
+const currentTurnColor = computed(() => chess.value.turn());
 const myColor = computed(() => {
   if (players.value.white === myUserId) return 'w';
   if (players.value.black === myUserId) return 'b';
@@ -134,9 +134,9 @@ function getPieceIcon(type: string, color: string): string {
 </script>
 
 <template>
-  <div class="flex flex-col items-center gap-4 p-4 bg-muted/20 rounded-xl border border-border">
-    <div class="text-sm font-semibold flex items-center gap-2">
-      <Icon name="solar:gamepad-bold" class="h-5 w-5 text-primary" />
+  <div class="flex flex-col items-center gap-4 p-4 rounded-xl border border-border">
+    <div class="text-sm text-primary font-semibold flex items-center gap-2">
+      <Icon name="solar:gamepad-bold" />
       Chess
     </div>
 
@@ -148,7 +148,7 @@ function getPieceIcon(type: string, color: string): string {
           @click="handleSquareClick(i, j)"
           class="h-10 w-10 flex items-center justify-center cursor-pointer transition-colors relative"
           :class="[
-            (i + j) % 2 === 0 ? 'bg-[#eeeed2]' : 'bg-[#769656]',
+            (i + j) % 2 === 0 ? 'bg-primary/35' : 'bg-primary/55',
             selectedSquare === getSquareName(i, j) ? 'ring-2 ring-primary ring-inset z-10' : ''
           ]"
         >

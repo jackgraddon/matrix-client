@@ -5,9 +5,6 @@
         <Icon :name="displayActivity.is_paused ? 'solar:pause-bold' : 'solar:music-note-bold'" class="w-3.5 h-3.5" />
         {{ displayActivity.is_paused ? 'Music Paused' : 'Listening to music' }}
       </span>
-      <button v-if="isSelf" class="text-muted-foreground hover:text-foreground transition-colors">
-        <Icon name="solar:menu-dots-bold" class="w-4 h-4" />
-      </button>
     </div>
 
     <div class="flex items-start gap-4">
@@ -71,7 +68,7 @@ const isSelf = computed(() => {
   return !props.userId || (currentUserId && props.userId === currentUserId);
 });
 
-const displayActivity = computed(() => store.resolveActivity(props.userId ?? null));
+const displayActivity = computed(() => store.resolveActivities(props.userId ?? null).music);
 
 const startTime = computed(() => (displayActivity.value as any)?.startTimestamp);
 const totalDuration = computed(() => (displayActivity.value as any)?.duration ? Math.floor((displayActivity.value as any).duration) : 0);

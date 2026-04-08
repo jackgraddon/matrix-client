@@ -101,12 +101,12 @@ async function loadHome() {
   const p3 = fetcher('/Items', {
     method: 'GET',
     query: {
-      IncludeItemTypes: ['Audio'],
+      IncludeItemTypes: ['MusicAlbum'],
       Recursive: true,
       SortBy: ['DateCreated'],
       SortOrder: 'Descending',
       Limit: 12,
-      Fields: ['ArtistItems', 'PrimaryImageAspectRatio', 'UserData']
+      Fields: ['ArtistItems', 'AlbumArtist', 'PrimaryImageAspectRatio', 'UserData', 'ProductionYear']
     }
   }).then(data => {
     if (data && 'Items' in data) recentlyAdded.value = data.Items as BaseItemDto[];
@@ -197,7 +197,7 @@ async function prefetchAlbums() {
       SortBy: ['PlayCount'],
       SortOrder: 'Descending',
       Limit: 12,
-      Fields: ['ArtistItems', 'AlbumArtist', 'PrimaryImageAspectRatio', 'UserData']
+      Fields: ['ArtistItems', 'AlbumArtist', 'PrimaryImageAspectRatio', 'UserData', 'ProductionYear']
     }
   });
 
@@ -209,7 +209,7 @@ async function prefetchAlbums() {
       SortBy: ['SortName'],
       SortOrder: 'Ascending',
       Limit: 100,
-      Fields: ['ArtistItems', 'AlbumArtist', 'PrimaryImageAspectRatio', 'UserData']
+      Fields: ['ArtistItems', 'AlbumArtist', 'PrimaryImageAspectRatio', 'UserData', 'ProductionYear']
     }
   });
 

@@ -187,14 +187,15 @@ class LocalStorageOidcTokenRefresher extends OidcTokenRefresher {
       await setPref('matrix_token_expiry', tokens.expiry.getTime());
     }
 
-      // Sync to Service Worker store for background decryption
-      try {
-        const { saveMatrixAuth } = await import('~/utils/crypto-db');
-        const hsUrl = await getHomeserverUrl();
-        await saveMatrixAuth(tokens.accessToken, hsUrl);
-      } catch (err) {
-        console.warn('[MatrixStore] Failed to sync auth to SW store:', err);
-      }
+    // Sync to Service Worker store for background decryption
+    try {
+      const { saveMatrixAuth } = await import('~/utils/crypto-db');
+      const hsUrl = await getHomeserverUrl();
+      const deviceId = await getPref<string | null>('matrix_device_id', null);
+      await saveMatrixAuth(tokens.accessToken, hsUrl, deviceId || undefined);
+    } catch (err) {
+      console.warn('[MatrixStore] Failed to sync auth to SW store:', err);
+    }
   }
 }
 
@@ -309,7 +310,7 @@ export const useMatrixStore = defineStore('matrix', {
     showContentInNotifications: true,
     customPushEndpoint: null as string | null,
     notificationsQuietUntil: 0,
-    remoteActivityDetails: {} as Record<string, any>,
+    remoteActivityDetails: {} as Record<string, { game?: any; music?: any }>,
     appCache: {} as Record<string, { name: string; icon: string | null }>,
     assetCache: {} as Record<string, Record<string, string>>,
     gameDetectionLevel: 'off' as 'off' | 'basic' | 'advanced',
@@ -666,7 +667,13 @@ export const useMatrixStore = defineStore('matrix', {
     },
 
     resolveActivity(userId: string | null): any {
-      // Ensure reactivity for key state properties
+      const { game, music } = this.resolveActivities(userId);
+      return game || music;
+    },
+
+    resolveActivities(userId: string | null): { game: any | null; music: any | null } {
+      // Ensure reactivity
+      this.gameTrigger;
       const _m = this.musicActivity;
       const _a = this.activityDetails;
       const _r = this.remoteActivityDetails;
@@ -674,7 +681,7 @@ export const useMatrixStore = defineStore('matrix', {
 
       const currentUserId = this.user?.userId || this.client?.getUserId();
       const targetUserId = userId || currentUserId;
-      if (!targetUserId) return null;
+      if (!targetUserId) return { game: null, music: null };
 
       const isSelf = !!(currentUserId && targetUserId === currentUserId);
 
@@ -685,79 +692,91 @@ export const useMatrixStore = defineStore('matrix', {
         return s;
       };
 
-      // 1. Local sidecar data (highest priority for self)
-      if (isSelf && this.activityDetails?.is_running) {
-        const act = this.activityDetails;
-        if (sanitize(act.name)) return act;
-      }
+      let game: any = null;
+      let music: any = null;
 
-      // 1.5 Local Music Activity
-      if (isSelf && this.musicActivity) {
-        return {
-          name: `${this.musicActivity.title} by ${this.musicActivity.artist}`,
-          details: this.musicActivity.album,
-          coverUrl: this.musicActivity.coverUrl,
-          duration: this.musicActivity.duration,
-          currentTime: this.musicActivity.currentTime,
-          startTimestamp: this.musicActivity.startTime || Date.now(),
-          is_running: true,
-          is_paused: !this.musicActivity.isRunning,
-          type: 'music'
-        };
-      }
-
-      // 2. Synced account data (self other sessions)
-      if (isSelf && this.remoteActivityDetails[targetUserId]?.is_running) {
-        const remote = this.remoteActivityDetails[targetUserId];
-        // 5 minute freshness check
-        if (Date.now() - (remote.last_updated || 0) < 5 * 60 * 1000) {
-          if (sanitize(remote.name)) return remote;
+      // 1. Local data (highest priority for self)
+      if (isSelf) {
+        if (this.activityDetails?.is_running && this.activityDetails?.type !== 'music') {
+          if (sanitize(this.activityDetails.name)) {
+            game = { ...this.activityDetails };
+          }
+        }
+        if (this.musicActivity) {
+          music = {
+            name: `${this.musicActivity.title} by ${this.musicActivity.artist}`,
+            details: this.musicActivity.album,
+            coverUrl: this.musicActivity.coverUrl,
+            duration: this.musicActivity.duration,
+            currentTime: this.musicActivity.currentTime,
+            startTimestamp: this.musicActivity.startTime || Date.now(),
+            is_running: true,
+            is_paused: !this.musicActivity.isRunning,
+            type: 'music'
+          };
         }
       }
 
-      // 3. Presence fallback (works for everyone)
-      let presenceMsg: string | undefined;
+      // 2. Synced account data (self other sessions OR remote users)
+      const remote = this.remoteActivityDetails[targetUserId];
+      if (remote) {
+        const now = Date.now();
+        const freshnessThreshold = 5 * 60 * 1000;
 
-      if (isSelf && this.lastPresenceState !== null) {
-        presenceMsg = this.lastPresenceState.status_msg;
-      } else {
-        const user = this.client?.getUser(targetUserId);
-        presenceMsg = user?.presenceStatusMsg;
-      }
-
-      if (presenceMsg) {
-        // Try rich JSON payload first (Tumult clients)
-        if (presenceMsg.startsWith('{')) {
-          try {
-            const parsed = JSON.parse(presenceMsg);
-            if (parsed.playing && parsed.is_running) {
-              const type = parsed.type || (parsed.playing.includes(' by ') ? 'music' : 'game');
-              return {
-                name: parsed.playing,
-                details: parsed.details,
-                state: parsed.state,
-                applicationId: parsed.applicationId,
-                iconHash: parsed.iconHash,
-                smallIconHash: parsed.smallIconHash,
-                startTimestamp: parsed.startTimestamp,
-                duration: parsed.duration,
-                currentTime: parsed.currentTime,
-                coverUrl: parsed.coverUrl,
-                type: type,
-                is_running: true,
-                is_paused: parsed.is_paused ?? false,
-              };
-            }
-          } catch { /* fall through to plain text */ }
+        if (remote.game && remote.game.is_running && (now - (remote.game.last_updated || 0) < freshnessThreshold)) {
+          if (!game && sanitize(remote.game.name)) game = remote.game;
         }
-        // Plain text fallback ("Playing X") for non-Tumult clients
-        if (presenceMsg.startsWith('Playing ')) {
-          const name = sanitize(presenceMsg.substring(8));
-          if (name) return { name, is_running: true };
+        if (remote.music && remote.music.is_running && (now - (remote.music.last_updated || 0) < freshnessThreshold)) {
+          if (!music && sanitize(remote.music.name)) music = remote.music;
         }
       }
 
-      return null;
+      // 3. Presence fallback (if still missing)
+      if (!game || !music) {
+        let presenceMsg: string | undefined;
+        if (isSelf && this.lastPresenceState !== null) {
+          presenceMsg = this.lastPresenceState.status_msg;
+        } else {
+          const user = this.client?.getUser(targetUserId);
+          presenceMsg = user?.presenceStatusMsg;
+        }
+
+        if (presenceMsg) {
+          if (presenceMsg.startsWith('{')) {
+            try {
+              const parsed = JSON.parse(presenceMsg);
+              if (parsed.playing && parsed.is_running) {
+                const type = parsed.type || (parsed.playing.includes(' by ') ? 'music' : 'game');
+                const act = {
+                  name: parsed.playing,
+                  details: parsed.details,
+                  state: parsed.state,
+                  applicationId: parsed.applicationId,
+                  iconHash: parsed.iconHash,
+                  smallIconHash: parsed.smallIconHash,
+                  startTimestamp: parsed.startTimestamp,
+                  duration: parsed.duration,
+                  currentTime: parsed.currentTime,
+                  coverUrl: parsed.coverUrl,
+                  type: type,
+                  is_running: true,
+                  is_paused: parsed.is_paused ?? false,
+                };
+                if (type === 'music') {
+                  if (!music) music = act;
+                } else {
+                  if (!game) game = act;
+                }
+              }
+            } catch { }
+          } else if (presenceMsg.startsWith('Playing ')) {
+            const name = sanitize(presenceMsg.substring(8));
+            if (name && !game) game = { name, is_running: true };
+          }
+        }
+      }
+
+      return { game, music };
     },
 
     async initStorage() {
@@ -943,6 +962,15 @@ export const useMatrixStore = defineStore('matrix', {
     async setShowContentInNotifications(enabled: boolean) {
       this.showContentInNotifications = enabled;
       await setPref('show_content_in_notifications', enabled);
+
+      // Sync to SW via IDB
+      try {
+        const { saveSwSettings } = await import('~/utils/crypto-db');
+        await saveSwSettings({ showContent: enabled });
+      } catch (e) {
+        console.warn('[MatrixStore] Failed to sync showContent to SW IDB:', e);
+      }
+
       if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
         navigator.serviceWorker.controller.postMessage({
           type: 'SET_SHOW_CONTENT',
@@ -965,6 +993,15 @@ export const useMatrixStore = defineStore('matrix', {
     async setNotificationsQuietUntil(timestamp: number) {
       this.notificationsQuietUntil = timestamp;
       await setPref('notifications_quiet_until', timestamp);
+
+      // Sync to SW via IDB
+      try {
+        const { saveSwSettings } = await import('~/utils/crypto-db');
+        await saveSwSettings({ quietUntil: timestamp });
+      } catch (e) {
+        console.warn('[MatrixStore] Failed to sync quietUntil to SW IDB:', e);
+      }
+
       // Sync to Service Worker via message (simplified mechanism)
       if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
         navigator.serviceWorker.controller.postMessage({
@@ -1120,40 +1157,63 @@ export const useMatrixStore = defineStore('matrix', {
     async refreshPresence() {
       if (!this.client || !this.isAuthenticated || !this.isClientReady) return;
 
-      const presence = this.isIdle ? 'unavailable' : 'online';
+      // Determine best activity for the status message
+      const { game, music } = this.resolveActivities(null);
+      const bestActivity = game || music;
+      const hasLiveActivity = (game?.is_running && !game?.is_paused) || (music?.is_running && !music?.is_paused);
+
+      // CRITICAL: If we have a live activity running on ANY of our devices,
+      // we should stay 'online' and not flip to 'unavailable' (idle).
+      const presence = (this.isIdle && !hasLiveActivity) ? 'unavailable' : 'online';
 
       let status_msg: string = this.customStatus || '';
 
-      if (!status_msg && this.activityDetails?.is_running) {
-        const act = this.activityDetails;
-        const gameName = this._sanitizeActivityString(act.name);
-        if (gameName) {
+      if (!status_msg && bestActivity?.is_running) {
+        const act = bestActivity;
+        const name = this._sanitizeActivityString(act.name);
+        if (name) {
           // Encode the full payload so remote Tumult clients can render
           // icons, timestamps, and details. Non-Tumult clients will see
           // the JSON string as their status — not ideal but acceptable.
           status_msg = JSON.stringify({
-            playing: gameName,
+            playing: name,
             details: act.details ?? null,
             state: act.state ?? null,
             applicationId: act.applicationId ?? null,
             iconHash: act.iconHash ?? null,
             smallIconHash: act.smallIconHash ?? null,
             startTimestamp: act.startTimestamp ?? null,
+            duration: act.duration ?? null,
+            currentTime: act.currentTime ?? null,
+            coverUrl: act.coverUrl ?? null,
+            type: act.type || (name.includes(' by ') ? 'music' : 'game'),
             is_running: true,
+            is_paused: act.is_paused ?? false,
+            // Multi-activity support
+            game: game ? {
+              name: game.name,
+              details: game.details,
+              state: game.state,
+              applicationId: game.applicationId,
+              iconHash: game.iconHash,
+              smallIconHash: game.smallIconHash,
+              startTimestamp: game.startTimestamp,
+              is_running: true,
+              type: 'game'
+            } : null,
+            music: music ? {
+              name: music.name,
+              details: music.details,
+              coverUrl: music.coverUrl,
+              duration: music.duration,
+              currentTime: music.currentTime,
+              startTimestamp: music.startTimestamp,
+              is_running: true,
+              is_paused: music.is_paused,
+              type: 'music'
+            } : null
           });
         }
-      } else if (!status_msg && this.musicActivity) {
-        status_msg = JSON.stringify({
-          playing: `${this.musicActivity.title} by ${this.musicActivity.artist}`,
-          details: this.musicActivity.album ?? null,
-          duration: this.musicActivity.duration ?? null,
-          currentTime: this.musicActivity.currentTime ?? null,
-          coverUrl: this.musicActivity.coverUrl ?? null,
-          startTimestamp: this.musicActivity.startTime || Date.now(),
-          is_paused: !this.musicActivity.isRunning,
-          type: 'music',
-          is_running: true,
-        });
       }
 
       // Check if state has actually changed
@@ -1610,8 +1670,12 @@ export const useMatrixStore = defineStore('matrix', {
 
       // Sync to Service Worker store for background decryption
       try {
-        const { saveMatrixAuth } = await import('~/utils/crypto-db');
-        await saveMatrixAuth(accessToken, data.homeserverUrl);
+        const { saveMatrixAuth, saveSwSettings } = await import('~/utils/crypto-db');
+        await saveMatrixAuth(accessToken, data.homeserverUrl, deviceId);
+        await saveSwSettings({
+          showContent: this.showContentInNotifications,
+          quietUntil: this.notificationsQuietUntil
+        });
       } catch (err) {
         console.warn('[MatrixStore] Failed to sync auth to SW store:', err);
       }
@@ -1640,7 +1704,7 @@ export const useMatrixStore = defineStore('matrix', {
       try {
         const { saveMatrixAuth } = await import('~/utils/crypto-db');
         const hsUrl = await getHomeserverUrl();
-        await saveMatrixAuth(accessToken, hsUrl);
+        await saveMatrixAuth(accessToken, hsUrl, deviceId);
       } catch (err) {
         console.warn('[MatrixStore] Failed to sync auth to SW store on init:', err);
       }
@@ -2248,31 +2312,86 @@ export const useMatrixStore = defineStore('matrix', {
       });
 
       this.client.on(sdk.UserEvent.Presence, (event, user) => {
-        if (!user?.userId || user.userId === this.client?.getUserId()) return;
+        if (!user?.userId) return;
 
         const msg = user.presenceStatusMsg;
         if (msg?.startsWith('{')) {
           try {
             const parsed = JSON.parse(msg);
-            if (parsed.playing && parsed.is_running) {
-              this.remoteActivityDetails[user.userId] = {
-                name: parsed.playing,
-                details: parsed.details,
-                state: parsed.state,
-                applicationId: parsed.applicationId,
-                iconHash: parsed.iconHash,
-                smallIconHash: parsed.smallIconHash,
-                startTimestamp: parsed.startTimestamp,
-                is_running: true,
-                last_updated: Date.now(),
-              };
+            let changed = false;
+
+            if (!this.remoteActivityDetails[user.userId]) {
+              this.remoteActivityDetails[user.userId] = {};
+            }
+
+            const processParsedAct = (item: any) => {
+              if (item && (item.playing || item.name) && item.is_running) {
+                const playing = item.playing || item.name;
+                const type = item.type || (playing.includes(' by ') ? 'music' : 'game');
+                const act = {
+                  name: playing,
+                  details: item.details,
+                  state: item.state,
+                  applicationId: item.applicationId,
+                  iconHash: item.iconHash,
+                  smallIconHash: item.smallIconHash,
+                  startTimestamp: item.startTimestamp,
+                  duration: item.duration,
+                  currentTime: item.currentTime,
+                  coverUrl: item.coverUrl,
+                  type: type,
+                  is_running: true,
+                  is_paused: item.is_paused ?? false,
+                  last_updated: Date.now(),
+                };
+
+                if (type === 'music') {
+                  this.remoteActivityDetails[user.userId].music = act;
+                } else {
+                  this.remoteActivityDetails[user.userId].game = act;
+                }
+                changed = true;
+              }
+            };
+
+            if (parsed.game || parsed.music) {
+              if (parsed.game) processParsedAct(parsed.game);
+              if (parsed.music) processParsedAct(parsed.music);
             } else {
-              delete this.remoteActivityDetails[user.userId];
+              processParsedAct(parsed);
+            }
+
+            if (changed) {
+              this.gameTrigger++;
+              if (user.userId === this.client?.getUserId()) {
+                this.refreshPresence();
+              }
             }
           } catch { /* malformed JSON, ignore */ }
-        } else if (!msg || !msg.startsWith('Playing ')) {
-          // User cleared their activity
-          delete this.remoteActivityDetails[user.userId];
+        } else if (msg?.startsWith('Playing ')) {
+          const name = msg.substring(8).trim();
+          if (name) {
+            if (!this.remoteActivityDetails[user.userId]) {
+              this.remoteActivityDetails[user.userId] = {};
+            }
+            this.remoteActivityDetails[user.userId].game = {
+              name,
+              is_running: true,
+              last_updated: Date.now()
+            };
+            this.gameTrigger++;
+          }
+        } else if (!msg || msg === 'Online' || msg === 'Idle') {
+          const remote = this.remoteActivityDetails[user.userId];
+          if (remote) {
+            const now = Date.now();
+            const staleThreshold = 2 * 60 * 1000;
+            if ((!remote.game || (now - (remote.game.last_updated || 0) > staleThreshold)) &&
+              (!remote.music || (now - (remote.music.last_updated || 0) > staleThreshold))) {
+              delete this.remoteActivityDetails[user.userId];
+              this.gameTrigger++;
+            }
+          }
         }
       });
 
@@ -2355,29 +2474,100 @@ export const useMatrixStore = defineStore('matrix', {
       const event = (this.client as any).getAccountData('cc.jackg.tumult.activity_details');
       if (event) {
         const content = event.getContent();
-        if (content && typeof content === 'object' && Object.keys(content).length > 0) {
-          // Only update if it's more recent than what we have locally (if anything)
-          const remoteUpdated = content.last_updated || 0;
-          const localUpdated = this.activityDetails?.last_updated || 0;
+        if (content && typeof content === 'object') {
+          // New format: Map of deviceId -> Activity
+          // Old format: Single Activity object
+          let activities: Record<string, any> = {};
 
-          // If we are currently running a game locally, we don't overwrite it with remote data
-          // unless the remote data is also "running" and newer.
-          if (!this.activityDetails?.is_running || remoteUpdated > localUpdated) {
-            this.remoteActivityDetails[userId] = content;
+          if (content.is_running !== undefined) {
+            // Legacy format conversion
+            activities['legacy'] = content;
+          } else {
+            activities = content;
           }
-        } else {
-          delete this.remoteActivityDetails[userId];
+
+          // Pick the "best" activity: most recent is_running one.
+          let bestActivity: any = null;
+          const currentDeviceId = this.client.getDeviceId();
+
+          for (const [deviceId, act] of Object.entries(activities)) {
+            // Ignore our own current device's synced data to avoid feedback loops
+            if (deviceId === currentDeviceId) continue;
+
+            if (act && act.is_running) {
+              if (!bestActivity || (act.last_updated || 0) > (bestActivity.last_updated || 0)) {
+                bestActivity = act;
+              }
+            }
+          }
+
+          if (bestActivity) {
+            this.remoteActivityDetails[userId] = { ...bestActivity };
+          } else {
+            // If no other devices are running anything, check if we had a legacy one or if we should clear
+            delete this.remoteActivityDetails[userId];
+          }
+          this.gameTrigger++;
+          this.refreshPresence();
         }
-      } else {
-        delete this.remoteActivityDetails[userId];
       }
     },
 
     async saveActivityToAccountData() {
       if (!this.client) return;
+      const deviceId = this.client.getDeviceId();
+      if (!deviceId) return;
+
       try {
-        // Only sync OUR activityDetails (the ones from the sidecar)
-        await (this.client as any).setAccountData('cc.jackg.tumult.activity_details', this.activityDetails || {});
+        // 1. Get existing data
+        const event = (this.client as any).getAccountData('cc.jackg.tumult.activity_details');
+        let activities: Record<string, any> = {};
+
+        if (event) {
+          const content = event.getContent();
+          if (content.is_running !== undefined) {
+            activities['legacy'] = content;
+          } else {
+            activities = { ...content };
+          }
+        }
+
+        // 2. Prepare our current activity
+        let myActivity: any = null;
+        if (this.activityDetails?.is_running) {
+          myActivity = { ...this.activityDetails };
+        } else if (this.musicActivity) {
+          myActivity = {
+            name: `${this.musicActivity.title} by ${this.musicActivity.artist}`,
+            details: this.musicActivity.album,
+            coverUrl: this.musicActivity.coverUrl,
+            duration: this.musicActivity.duration,
+            currentTime: this.musicActivity.currentTime,
+            startTimestamp: this.musicActivity.startTime || Date.now(),
+            is_running: true,
+            is_paused: !this.musicActivity.isRunning,
+            type: 'music',
+            last_updated: Date.now()
+          };
+        }
+
+        // 3. Update map
+        if (myActivity) {
+          activities[deviceId] = myActivity;
+        } else {
+          delete activities[deviceId];
+        }
+
+        // 4. Clean up stale activities (older than 24h)
+        const now = Date.now();
+        for (const [id, act] of Object.entries(activities)) {
+          if (!act.last_updated || now - act.last_updated > 24 * 60 * 60 * 1000) {
+            delete activities[id];
+          }
+        }
+
+        // 5. Save back
+        await (this.client as any).setAccountData('cc.jackg.tumult.activity_details', activities);
       } catch (e) {
         console.error('Failed to save rich activity to account data:', e);
       }
@@ -4115,6 +4305,15 @@ export const useMatrixStore = defineStore('matrix', {
 
       // Clear any active notifications for this room
       await dismissNotification(roomId);
+
+      // If total unread count is going to be 0, proactively clear the badge
+      if (this.totalDmUnreadCount + this.totalOrphanRoomUnreadCount + this.totalInviteCount <= 1) {
+        if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+          navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_BADGE' });
+        } else if ('clearAppBadge' in navigator) {
+          (navigator as any).clearAppBadge().catch(() => { });
+        }
+      }
 
       const lastEvent = room.timeline[room.timeline.length - 1];
       if (lastEvent) {

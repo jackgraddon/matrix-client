@@ -1,7 +1,7 @@
 <template>
   <div class="flex flex-col h-full overflow-y-auto">
     <!-- Playlist Header -->
-    <div class="relative p-8 pt-16 flex flex-col md:flex-row gap-8 items-end bg-gradient-to-b from-[#AA5CC3]/20 to-background shrink-0">
+    <div class="relative p-8 pt-16 flex flex-col md:flex-row gap-8 items-end bg-gradient-to-b from-[#AA5CC3]/20 to-transparent shrink-0">
       <div class="h-64 w-64 shrink-0 rounded-lg overflow-hidden shadow-2xl border border-border/50 bg-muted">
         <img v-if="imageUrl" :src="imageUrl" class="h-full w-full object-cover" alt="" />
         <div v-else class="h-full w-full flex items-center justify-center">
@@ -44,7 +44,7 @@
             @click="addAllToQueue"
             title="Add all to queue"
           >
-            <Icon name="solar:list-plus-bold" class="h-6 w-6" />
+            <Icon name="solar:list-line-duotone" class="h-6 w-6" />
           </UiButton>
         </div>
       </div>
@@ -79,7 +79,7 @@
           <span class="text-xs text-muted-foreground font-medium tabular-nums px-4">{{ formatDuration(track.RunTimeTicks) }}</span>
 
           <UiButton variant="ghost" size="icon-sm" class="opacity-0 group-hover:opacity-100 h-8 w-8" @click.stop="addToQueue(track)">
-             <Icon name="solar:list-plus-bold" class="h-4 w-4 text-muted-foreground hover:text-[#AA5CC3]" />
+             <Icon name="solar:list-line-duotone" class="h-4 w-4 text-muted-foreground hover:text-[#AA5CC3]" />
           </UiButton>
         </div>
       </div>

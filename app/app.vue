@@ -148,15 +148,6 @@ onMounted(async () => {
       }
     }, { immediate: true });
 
-    // Listen for native theme changes and update Nuxt color mode if preference is 'system'
-    appWindow.onThemeChanged(({ payload: theme }) => {
-      if (colorMode.preference === 'system') {
-        console.log("[App] Native theme changed, syncing colorMode:", theme);
-        // We don't change preference, but we want to make sure Nuxt reacts.
-        // Usually Nuxt reacts to matchMedia, but we can nudge it.
-      }
-    });
-
     // Handle startup minimized logic
     const handleMinimizedStartup = async () => {
       try {
@@ -200,18 +191,6 @@ onMounted(async () => {
 
     window.addEventListener('focus', handleAppResume);
 
-    // Initial sync of system theme in Tauri
-    const syncSystemTheme = async () => {
-      if (colorMode.preference === 'system') {
-        const theme = await appWindow.theme();
-        if (theme) {
-          console.log("[App] Initial native theme sync:", theme);
-          // Force nuxt-color-mode to align if it missed the initial detection
-          // colorMode.value is read-only, but it should ideally just work.
-        }
-      }
-    };
-    syncSystemTheme();
 
     // Tauri: Handle app closure
     // We intercept the close request to hide the window instead,

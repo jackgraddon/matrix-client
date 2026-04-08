@@ -131,6 +131,15 @@ async function buildLivekitWorker(): Promise<Worker> {
                 crypto.subtle, algo, baseKey, derivedKeyType, true, keyUsages
             );
         };
+
+        const _originalUnwrapKey = crypto.subtle.unwrapKey;
+        crypto.subtle.unwrapKey = function(format, wrappedKey, unwrappingKey, unwrapAlgo, unwrappedKeyAlgo, extractable, keyUsages) {
+            const name = _algoName(unwrappedKeyAlgo);
+            const safeExtractable = _NON_EXTRACTABLE_ALGOS.has(name) ? extractable : true;
+            return _originalUnwrapKey.call(
+                crypto.subtle, format, wrappedKey, unwrappingKey, unwrapAlgo, unwrappedKeyAlgo, safeExtractable, keyUsages
+            );
+        };
     `;
 
     const blobUrl = URL.createObjectURL(

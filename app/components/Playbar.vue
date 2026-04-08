@@ -1,7 +1,7 @@
 <template>
   <div v-if="musicStore.currentSong"
-    class="flex flex-col bg-accent/20 rounded-md border border-border/50 shadow-sm transition-all overflow-hidden"
-    :class="[musicStore.isExpanded ? 'flex-1 h-full w-full' : 'p-2 group hover:bg-accent/30']"
+    class="flex flex-col rounded-md bg-sidebar border border-border/50 shadow-sm transition-all overflow-hidden"
+    :class="[musicStore.isExpanded ? 'flex-1 h-full w-full' : 'p-2 group hover:bg-sidebar/30']"
   >
     <!-- Expanded Header (Only when expanded) -->
     <div v-if="musicStore.isExpanded" class="flex-1 overflow-hidden flex flex-col">
@@ -19,12 +19,12 @@
           </div>
 
           <!-- Play/Pause Overlay -->
-          <div
+          <!-- <div
             class="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
             @click="musicStore.togglePlay"
           >
             <Icon :name="musicStore.isPlaying ? 'solar:pause-bold' : 'solar:play-bold'" class="text-white h-12 w-12" />
-          </div>
+          </div> -->
         </div>
 
         <div class="flex flex-col min-w-0">
@@ -34,8 +34,8 @@
       </div>
 
       <!-- Queue Area -->
-      <div class="flex-1 overflow-hidden border-t">
-        <MusicQueue />
+      <div class="flex-1 overflow-hidden">
+        <MusicQueue class="h-full" />
       </div>
     </div>
 
@@ -54,12 +54,12 @@
         </div>
 
         <!-- Play/Pause Overlay -->
-        <div
+        <!-- <div
           class="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
           @click.stop="musicStore.togglePlay"
         >
           <Icon :name="musicStore.isPlaying ? 'solar:pause-bold' : 'solar:play-bold'" class="text-white h-5 w-5" />
-        </div>
+        </div> -->
       </div>
 
       <!-- Text Details -->
@@ -98,7 +98,7 @@
       <!-- Progress Slider -->
       <div class="flex items-center gap-2 group/progress">
         <span v-if="musicStore.isExpanded" class="text-[10px] text-muted-foreground w-8 tabular-nums">{{ formatTime(musicStore.currentTime) }}</span>
-        <div class="relative flex-1 h-1 bg-muted rounded-full cursor-pointer" @click="handleSeek">
+        <div class="relative flex-1 h-1 bg-muted rounded-full cursor-pointer hover:h-2 transition-all duration-100" @click="handleSeek">
           <div
             class="absolute top-0 left-0 h-full bg-[#AA5CC3] rounded-full transition-all duration-100"
             :style="{ width: `${progress}%` }"

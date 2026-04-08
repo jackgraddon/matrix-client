@@ -34,7 +34,7 @@
           <div class="space-y-0.5">
             <p class="text-sm font-medium">Show Message Content</p>
             <p class="text-xs text-muted-foreground">
-              Include message text and sender in notifications
+              Include message text and sender in notifications (Uses background decryption)
             </p>
           </div>
         </div>

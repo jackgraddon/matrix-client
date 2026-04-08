@@ -49,7 +49,7 @@
               @click="addAllToQueue"
               title="Add all to queue"
             >
-              <Icon name="solar:list-plus-bold" class="h-6 w-6" />
+              <Icon name="solar:list-line-duotone" class="h-6 w-6" />
             </UiButton>
           </div>
         </div>

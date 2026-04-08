@@ -206,7 +206,7 @@
                 <!-- Sidebar Music Nav -->
                 <template v-if="isLinkActive('/chat/music')">
                     <div class="flex items-center gap-2">
-                        <UiInput v-model="searchQuery" placeholder="Search music..." class="h-8 w-64" @keyup.enter="doSearch" />
+                        <UiInput v-model="searchQuery" placeholder="Search music..." class="h-8" @keyup.enter="doSearch" />
                         <UiButton size="icon-sm" @click="doSearch">
                             <Icon name="solar:magnifer-outline" />
                         </UiButton>

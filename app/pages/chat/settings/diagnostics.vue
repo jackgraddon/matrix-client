@@ -242,6 +242,32 @@
       </UiCardContent>
     </UiCard>
 
+    <!-- Internal Storage & Crypto Reset -->
+    <UiCard class="border-destructive/20 bg-destructive/5">
+      <UiCardHeader class="pb-2 pt-4 px-4">
+        <UiCardTitle class="text-sm font-medium text-destructive flex items-center gap-2">
+          <Icon name="solar:shield-warning-bold-duotone" class="h-4 w-4" />
+          Internal Storage & Crypto
+        </UiCardTitle>
+      </UiCardHeader>
+      <UiCardContent class="px-4 pb-4 space-y-3">
+        <div class="flex items-start justify-between gap-4">
+          <div class="flex-1">
+            <p class="text-sm font-medium text-foreground">Purge Local Database & Keys</p>
+            <p class="text-xs text-muted-foreground mt-1 leading-relaxed">
+              Use this if you are stuck in a macOS Keychain password loop. This will delete all local Matrix data,
+              clearing any "bad" keys that trigger the system prompt.
+              <span class="text-destructive font-medium block mt-1">You will be logged out and the app will restart.</span>
+            </p>
+          </div>
+          <UiButton variant="destructive" size="sm" @click="purgeAllData" class="shrink-0 gap-1.5">
+            <Icon name="solar:trash-bin-trash-bold" class="h-3.5 w-3.5" />
+            Purge
+          </UiButton>
+        </div>
+      </UiCardContent>
+    </UiCard>
+
     <!-- Debug: Haptics (dev tool) -->
     <UiCard class="border-dashed">
       <UiCardHeader class="pb-2 pt-4 px-4">
@@ -807,5 +833,41 @@ function dumpRoomState() {
       });
     }
   });
+}
+async function purgeAllData() {
+  const confirmed = confirm(
+    "This will delete ALL local data and log you out. This is the only way to stop recurring macOS keychain prompts if they are 'stuck' in your history. Proceed?"
+  );
+  if (!confirmed) return;
+
+  isRunning.value = true;
+
+  try {
+    if (window.indexedDB && window.indexedDB.databases) {
+      const dbs = await window.indexedDB.databases();
+      for (const db of dbs) {
+        if (db.name) {
+          console.log(`[Purge] Deleting IDB: ${db.name}`);
+          window.indexedDB.deleteDatabase(db.name);
+        }
+      }
+    }
+
+    localStorage.clear();
+    sessionStorage.clear();
+
+    try {
+      await matrixStore.logout();
+    } catch (e) {
+      console.warn("[Purge] Matrix logout failed (data may already be gone):", e);
+    }
+
+    window.location.reload();
+  } catch (err) {
+    console.error("[Purge] Failed:", err);
+    alert("Purge failed. You may need to manually reset the app storage in your browser settings.");
+  } finally {
+    isRunning.value = false;
+  }
 }
 </script>

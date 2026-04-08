@@ -301,21 +301,24 @@
                 :class="msg.isOwn ? 'items-end' : 'items-start'"
               >
                 <!-- Render Interactive Board ONLY for the latest event of this game -->
-                <template v-if="msg.gameId && latestGameEventMap[msg.gameId] === msg.eventId && hasGameState(msg.gameId)">
+                <template v-if="msg.gameId && latestGameEventMap[msg.gameId] === msg.eventId && hasGameState(msg.gameId)" >
                    <TicTacToe 
                      v-if="getGameTypeFromState(msg.gameId) === 'tictactoe'"
                      :game-id="msg.gameId"
                      :room-id="(roomId as string)"
+                     :class="msg.isOwn ? 'bg-primary/10' : 'bg-transparent'"
                    />
                    <Chess
                      v-else-if="getGameTypeFromState(msg.gameId) === 'chess'"
                      :game-id="msg.gameId"
                      :room-id="(roomId as string)"
+                     :class="msg.isOwn ? 'bg-primary/10' : 'bg-transparent'"
                    />
                    <SlangTiles
                      v-else-if="getGameTypeFromState(msg.gameId) === 'slangtiles'"
                      :game-id="msg.gameId"
                      :room-id="(roomId as string)"
+                     :class="msg.isOwn ? 'bg-primary/10' : 'bg-transparent'"
                    />
                    <div class="mt-2 w-full flex flex-col" :class="msg.isOwn ? 'items-end' : 'items-start'">
                      <GameActionBubble v-if="msg.isGameAction && getMatrixEvent(msg)" :event="getMatrixEvent(msg)!" />

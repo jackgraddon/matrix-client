@@ -1,13 +1,10 @@
 <template>
-  <div v-if="displayActivity" class="relative flex flex-col p-4 bg-secondary/30 border border-border/50 rounded-xl shadow-sm w-full transition-all hover:bg-secondary/40">
+  <div v-if="displayActivity" class="relative flex flex-col p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl shadow-sm w-full transition-all hover:bg-emerald-500/15">
     <div class="flex items-center justify-between w-full mb-3">
-      <span class="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/80 flex items-center gap-1.5">
+      <span class="text-[10px] font-bold uppercase tracking-widest text-emerald-500 flex items-center gap-1.5">
         <Icon name="solar:gamepad-bold" class="w-3.5 h-3.5" />
         Playing a game
       </span>
-      <button v-if="isSelf" class="text-muted-foreground hover:text-foreground transition-colors">
-        <Icon name="solar:menu-dots-bold" class="w-4 h-4" />
-      </button>
     </div>
 
     <div class="flex items-start gap-4">
@@ -81,7 +78,7 @@ const sanitize = (val: any) => {
   return s;
 };
 
-const displayActivity = computed(() => store.resolveActivity(props.userId ?? null));
+const displayActivity = computed(() => store.resolveActivities(props.userId ?? null).game);
 
 const gameStartTimestamp = computed(() => (displayActivity.value as any)?.startTimestamp);
 

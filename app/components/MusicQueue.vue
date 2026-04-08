@@ -1,7 +1,7 @@
 <template>
-  <div class="flex flex-col h-full bg-background border-t">
+  <div class="flex flex-col">
     <!-- Queue Header -->
-    <div class="flex items-center justify-between p-4 border-b">
+    <div class="flex items-center justify-between p-4">
       <h3 class="font-bold text-sm">Up Next</h3>
       <div class="flex items-center gap-1">
         <UiButton variant="ghost" size="icon-sm" @click="musicStore.shuffleQueue" title="Shuffle Queue">

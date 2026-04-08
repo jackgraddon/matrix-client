@@ -1,23 +1,34 @@
 <template>
   <div class="flex flex-col gap-1 min-w-0">
-    <!-- Game Activity -->
-    <template v-if="displayActivity?.is_running && displayActivity?.name">
-      <div v-if="variant === 'small'" class="flex items-center gap-1.5 text-xs font-medium text-muted-foreground min-w-0 w-full">
-        <Icon
-          :name="displayActivity.type === 'music' ? (displayActivity.is_paused ? 'solar:pause-bold' : 'solar:music-note-bold') : 'solar:gamepad-bold'"
-          class="w-4 h-4 shrink-0"
-          :class="[displayActivity.type === 'music' ? 'text-[#AA5CC3]' : 'text-emerald-500']"
-        />
-        <span class="truncate min-w-0">
-          {{ displayActivity.type === 'music' ? (displayActivity.is_paused ? 'Music Paused' : 'Listening to') : 'Playing' }}
-          <span class="text-foreground">{{ displayActivity.name }}</span>
-        </span>
+    <!-- Activities -->
+    <template v-if="activities.game || activities.music">
+      <!-- Small Variant -->
+      <div v-if="variant === 'small'" class="flex flex-col gap-0.5">
+        <!-- Game (Small) -->
+        <div v-if="activities.game?.is_running" class="flex items-center gap-1.5 text-xs font-medium text-muted-foreground min-w-0 w-full">
+          <Icon name="solar:gamepad-bold" class="w-4 h-4 text-emerald-500 shrink-0" />
+          <span class="truncate min-w-0">
+            Playing <span class="text-foreground">{{ activities.game.name }}</span>
+          </span>
+        </div>
+        <!-- Music (Small) -->
+        <div v-else-if="activities.music?.is_running" class="flex items-center gap-1.5 text-xs font-medium text-muted-foreground min-w-0 w-full">
+          <Icon
+            :name="activities.music.is_paused ? 'solar:pause-bold' : 'solar:music-note-bold'"
+            class="w-4 h-4 text-[#AA5CC3] shrink-0"
+          />
+          <span class="truncate min-w-0">
+            {{ activities.music.is_paused ? 'Music Paused' : 'Listening to' }}
+            <span class="text-foreground">{{ activities.music.name }}</span>
+          </span>
+        </div>
       </div>
 
-      <template v-else-if="variant === 'large'">
-        <MusicCard v-if="displayActivity.type === 'music'" :user-id="userId" />
-        <GameCard v-else :user-id="userId" />
-      </template>
+      <!-- Large Variant -->
+      <div v-else-if="variant === 'large'" class="flex flex-col gap-2">
+        <GameCard v-if="activities.game?.is_running" :user-id="userId" />
+        <MusicCard v-if="activities.music?.is_running" :user-id="userId" />
+      </div>
     </template>
 
     <!-- Custom Status -->
@@ -123,7 +134,6 @@ onUnmounted(() => {
     if (store.client) {
         store.client.removeListener('User.presence' as any, handlePresenceEvent);
     }
-    if (timerInterval) clearInterval(timerInterval);
     if (pollInterval) clearInterval(pollInterval);
 });
 
@@ -141,7 +151,7 @@ const sanitize = (val: any) => {
   return s;
 };
 
-const displayActivity = computed(() => store.resolveActivity(props.userId as string | null));
+const activities = computed(() => store.resolveActivities(props.userId as string | null));
 
 const displayCustomStatus = computed(() => {
   // Prefer local store custom status for self
@@ -156,7 +166,12 @@ const displayCustomStatus = computed(() => {
 });
 
 const effectivePresence = computed(() => {
-    if (isSelf.value) return store.isIdle ? 'unavailable' : 'online';
+    if (isSelf.value) {
+        // Stay online if we have a live activity, even if idle
+        const { game, music } = store.resolveActivities(null);
+        const hasLiveActivity = (game?.is_running && !game?.is_paused) || (music?.is_running && !music?.is_paused);
+        return (store.isIdle && !hasLiveActivity) ? 'unavailable' : 'online';
+    }
     return presenceStatus.value;
 });
 
@@ -172,69 +187,4 @@ const displayPresenceText = computed(() => {
     return 'Offline';
 });
 
-const gameStartTimestamp = computed(() => (displayActivity.value as any)?.startTimestamp);
-
-// --- Compute the Discord CDN Image URL for games ---
-const iconUrl = computed(() => {
-  const game = displayActivity.value;
-  if (!game || !(game as any).applicationId || !(game as any).iconHash) return null;
-  return `https://cdn.discordapp.com/app-icons/${(game as any).applicationId}/${(game as any).iconHash}.png?size=128`;
-});
-
-// --- Duration Timer Logic ---
-const elapsedDuration = ref('0:00');
-let timerInterval: number | null = null;
-
-const updateDuration = () => {
-  const game = displayActivity.value;
-  let start = (game as any)?.startTimestamp;
-  if (!game || !start) {
-    elapsedDuration.value = '';
-    return;
-  }
-
-  // Handle Unix seconds vs milliseconds
-  if (start < 10000000000) {
-    start *= 1000;
-  }
-  
-  const now = Date.now();
-  const diffInSeconds = Math.max(0, Math.floor((now - start) / 1000));
-  
-  const hours = Math.floor(diffInSeconds / 3600);
-  const minutes = Math.floor((diffInSeconds % 3600) / 60);
-  const seconds = diffInSeconds % 60;
-
-  if (hours > 0) {
-    elapsedDuration.value = `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-  } else {
-    elapsedDuration.value = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-  }
-};
-
-onMounted(() => {
-  const game = displayActivity.value;
-  if (game && (game as any).startTimestamp) {
-    updateDuration();
-    // Use window.setInterval to avoid NodeJS typing conflicts in Nuxt
-    timerInterval = window.setInterval(updateDuration, 1000);
-  }
-});
-
-onUnmounted(() => {
-  if (timerInterval) clearInterval(timerInterval);
-});
-
-watch(() => (displayActivity.value as any)?.startTimestamp, (newTimestamp) => {
-  if (timerInterval) {
-    clearInterval(timerInterval);
-    timerInterval = null;
-  }
-  if (newTimestamp) {
-    updateDuration();
-    timerInterval = window.setInterval(updateDuration, 1000);
-  } else {
-    elapsedDuration.value = '';
-  }
-});
 </script>
