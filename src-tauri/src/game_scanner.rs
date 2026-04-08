@@ -7,6 +7,36 @@ use serde::{Deserialize, Serialize};
 use sysinfo::System;
 use tauri::{AppHandle, Emitter};
 
+#[cfg(windows)]
+use windows_sys::Win32::UI::WindowsAndMessaging::{
+    GetForegroundWindow, GetWindowTextW, GetWindowThreadProcessId,
+};
+
+#[cfg(windows)]
+fn get_foreground_info() -> Option<(u32, String)> {
+    unsafe {
+        let hwnd = GetForegroundWindow();
+        if hwnd == 0 {
+            return None;
+        }
+        let mut process_id = 0;
+        GetWindowThreadProcessId(hwnd, &mut process_id);
+        if process_id == 0 {
+            return None;
+        }
+
+        let mut buffer = [0u16; 512];
+        let len = GetWindowTextW(hwnd, buffer.as_mut_ptr(), buffer.len() as i32);
+        let title = if len > 0 {
+            String::from_utf16_lossy(&buffer[..len as usize])
+        } else {
+            String::new()
+        };
+
+        Some((process_id, title))
+    }
+}
+
 /// A single executable entry from the detectable games list.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct GameExecutable {
@@ -87,23 +117,59 @@ pub fn start(app: AppHandle, state: Arc<ScannerState>) {
             let mut detected_name: Option<String> = None;
             let mut detected_exe: Option<String> = None;
 
-            // Check each game in the watch list
-            for game in &watch_list {
-                for exe in &game.executables {
-                    // Normalize executable name: handle paths by taking only the filename
-                    let exe_path = std::path::Path::new(&exe.name);
-                    let exe_filename = exe_path.file_name().unwrap_or_else(|| OsStr::new(&exe.name));
-                    
-                    let found = sys.processes_by_name(exe_filename).next().is_some();
+            #[cfg(windows)]
+            {
+                if let Some((fg_pid, fg_title)) = get_foreground_info() {
+                    if let Some(process) = sys.process(sysinfo::Pid::from(fg_pid as usize)) {
+                        let process_exe_name = process.name();
+                        let fg_title_lower = fg_title.to_lowercase();
 
-                    if found {
-                        detected_name = Some(game.name.clone());
-                        detected_exe = Some(exe_filename.to_string_lossy().to_string());
-                        break;
+                        for game in &watch_list {
+                            for exe in &game.executables {
+                                let exe_path = std::path::Path::new(&exe.name);
+                                let exe_filename = exe_path.file_name().unwrap_or_else(|| OsStr::new(&exe.name));
+
+                                if process_exe_name == exe_filename {
+                                    let game_name_lower = game.name.to_lowercase();
+                                    let exe_lower = exe_filename.to_string_lossy().to_lowercase();
+                                    let exe_name_only = exe_lower.strip_suffix(".exe").unwrap_or(&exe_lower);
+
+                                    // Robust check: window title should match game name or exe name
+                                    if fg_title_lower.contains(&game_name_lower) || fg_title_lower.contains(exe_name_only) {
+                                        detected_name = Some(game.name.clone());
+                                        detected_exe = Some(process_exe_name.to_string_lossy().into_owned());
+                                        break;
+                                    }
+                                }
+                            }
+                            if detected_name.is_some() {
+                                break;
+                            }
+                        }
                     }
                 }
-                if detected_name.is_some() {
-                    break;
+            }
+
+            #[cfg(not(windows))]
+            {
+                // Fallback to "is running" check for non-Windows platforms
+                for game in &watch_list {
+                    for exe in &game.executables {
+                        // Normalize executable name: handle paths by taking only the filename
+                        let exe_path = std::path::Path::new(&exe.name);
+                        let exe_filename = exe_path.file_name().unwrap_or_else(|| OsStr::new(&exe.name));
+
+                        let found = sys.processes_by_name(exe_filename).next().is_some();
+
+                        if found {
+                            detected_name = Some(game.name.clone());
+                            detected_exe = Some(exe_filename.to_string_lossy().to_string());
+                            break;
+                        }
+                    }
+                    if detected_name.is_some() {
+                        break;
+                    }
                 }
             }
 
