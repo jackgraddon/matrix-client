@@ -61,7 +61,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import { useNuxtApp, useHead, navigateTo } from '#app';
-import { MatrixEvent } from 'matrix-js-sdk';
+import * as sdk from 'matrix-js-sdk';
 import { useColorMode } from '#imports';
 import { useMatrixStore } from '~/stores/matrix';
 import { Toaster } from '~/components/ui/sonner';
@@ -242,9 +242,14 @@ onMounted(async () => {
 
         try {
           console.log('[App] Decrypting Matrix event for Service Worker:', matrixEventData.event_id);
-          const sdkEvent = new MatrixEvent(matrixEventData);
+          const sdkEvent = new sdk.MatrixEvent(matrixEventData);
           await sdkEvent.attemptDecryption(store.client.getCrypto() as any);
           const content = sdkEvent.getClearContent();
+
+          if (content && matrixEventData.event_id) {
+            const { cacheDecryptedEvent } = await import('~/utils/crypto-db');
+            await cacheDecryptedEvent(matrixEventData.event_id, content);
+          }
 
           // Mark this event as displayed to prevent the app from showing a duplicate notification
           // if it happens to be syncing this event at the same time.

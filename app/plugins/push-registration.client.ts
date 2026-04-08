@@ -140,6 +140,7 @@ export default defineNuxtPlugin(async (nuxtApp) => {
                 data: {
                     url: `${relayUrl}/_matrix/push/v1/notify`,
                     user_id: store.client.getUserId(),
+                    include_content: true,
                     ...({
                         ek: encryptionKey,
                     } as any)

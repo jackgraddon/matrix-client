@@ -9,11 +9,35 @@
 const DB_NAME = 'tumult-crypto-storage';
 const STORE_NAME = 'keys';
 const AUTH_STORE_NAME = 'auth';
+const MEGOLM_STORE_NAME = 'megolm_sessions';
+const DECRYPTED_EVENTS_STORE = 'decrypted_events';
 const KEY_NAME = 'notification-decryption-key';
+
+// Call this whenever you receive/process a room key
+export async function storeMegolmSession(roomId: string, sessionId: string, sessionKey: any) {
+  const db = await openCryptoDB();
+  return new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(MEGOLM_STORE_NAME, 'readwrite');
+    tx.objectStore(MEGOLM_STORE_NAME).put(sessionKey, `${roomId}:${sessionId}`);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+// Cache already-decrypted plaintext in IDB when the app is open
+export async function cacheDecryptedEvent(eventId: string, content: any) {
+  const db = await openCryptoDB();
+  return new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(DECRYPTED_EVENTS_STORE, 'readwrite');
+    tx.objectStore(DECRYPTED_EVENTS_STORE).put(content, eventId);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
 
 export async function openCryptoDB(): Promise<IDBDatabase> {
     return new Promise((resolve, reject) => {
-        const request = indexedDB.open(DB_NAME, 2);
+        const request = indexedDB.open(DB_NAME, 3); // Bump version to 3
 
         request.onupgradeneeded = (event) => {
             const db = (event.target as IDBOpenDBRequest).result;
@@ -22,6 +46,12 @@ export async function openCryptoDB(): Promise<IDBDatabase> {
             }
             if (!db.objectStoreNames.contains(AUTH_STORE_NAME)) {
                 db.createObjectStore(AUTH_STORE_NAME);
+            }
+            if (!db.objectStoreNames.contains('megolm_sessions')) {
+                db.createObjectStore('megolm_sessions');
+            }
+            if (!db.objectStoreNames.contains('decrypted_events')) {
+                db.createObjectStore('decrypted_events');
             }
         };
 

@@ -11,6 +11,8 @@ use tauri_plugin_shell::process::CommandChild;
 use tauri_plugin_shell::ShellExt;
 use tokio::sync::Notify;
 use tauri_plugin_store::StoreExt;
+#[cfg(target_os = "windows")]
+use tauri_plugin_decorum::WebviewWindowExt;
 
 mod game_scanner;
 
@@ -91,6 +93,7 @@ fn show_main_window(app: &tauri::AppHandle) {
         {
             // Windows-specific: ensure taskbar focus and bring to top
             let _ = window.set_skip_taskbar(false);
+            let _ = window.create_overlay_titlebar();
         }
 
         // 3. THE "KICKSTART": Open DevTools and request attention
@@ -119,7 +122,12 @@ pub fn run() {
         notify: Arc::new(Notify::new()),
     });
 
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+
+    #[cfg(target_os = "windows")]
+    let builder = builder.plugin(tauri_plugin_decorum::init());
+
+    builder
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
@@ -161,7 +169,10 @@ pub fn run() {
             // Register the main window in our generalized manager to ensure longevity
             app.state::<WindowMap>().0.lock().unwrap().insert("main".to_string(), window.clone());
 
-            #[cfg(any(target_os = "windows", target_os = "linux"))]
+            #[cfg(target_os = "windows")]
+            window.create_overlay_titlebar().unwrap();
+
+            #[cfg(target_os = "linux")]
             {
                 window.set_decorations(false).unwrap();
                 window.set_shadow(true).unwrap();

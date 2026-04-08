@@ -344,11 +344,13 @@ const KEY_NAME = 'notification-decryption-key';
 
 async function openCryptoDB() {
     return new Promise((resolve, reject) => {
-        const request = indexedDB.open(CRYPTO_DB_NAME, 2);
+        const request = indexedDB.open(CRYPTO_DB_NAME, 3); // Bump version to 3
         request.onupgradeneeded = (event) => {
             const db = request.result;
             if (!db.objectStoreNames.contains(CRYPTO_STORE_NAME)) db.createObjectStore(CRYPTO_STORE_NAME);
             if (!db.objectStoreNames.contains(AUTH_STORE_NAME)) db.createObjectStore(AUTH_STORE_NAME);
+            if (!db.objectStoreNames.contains('megolm_sessions')) db.createObjectStore('megolm_sessions');
+            if (!db.objectStoreNames.contains('decrypted_events')) db.createObjectStore('decrypted_events');
         };
         request.onsuccess = () => resolve(request.result);
         request.onerror = () => reject(request.error);
@@ -429,8 +431,75 @@ async function decryptTransportPayload(ciphertextB64) {
     }
 }
 
+async function getDecryptedEventCache(eventId) {
+    try {
+        const db = await openCryptoDB();
+        return new Promise((resolve) => {
+            const tx = db.transaction('decrypted_events', 'readonly');
+            const req = tx.objectStore('decrypted_events').get(eventId);
+            req.onsuccess = () => resolve(req.result || null);
+            req.onerror = () => resolve(null);
+        });
+    } catch (e) {
+        return null;
+    }
+}
+
+async function cacheDecryptedEventInSw(eventId, content) {
+    try {
+        const db = await openCryptoDB();
+        await new Promise((resolve, reject) => {
+            const tx = db.transaction('decrypted_events', 'readwrite');
+            tx.objectStore('decrypted_events').put(content, eventId);
+            tx.oncomplete = resolve;
+            tx.onerror = () => reject(tx.error);
+        });
+    } catch (e) {
+        console.warn('[SW] Could not cache decrypted event:', e);
+    }
+}
+
+async function tryDecryptWithStoredSession(encryptedEvent) {
+    try {
+        const content = encryptedEvent.content;
+        const roomId = encryptedEvent.room_id || content?.room_id;
+        const sessionId = content?.session_id;
+        if (!sessionId || !roomId) return null;
+
+        const sessionKey = `${roomId}:${sessionId}`;
+        const db = await openCryptoDB();
+
+        const sessionData = await new Promise((resolve) => {
+            const tx = db.transaction('megolm_sessions', 'readonly');
+            const req = tx.objectStore('megolm_sessions').get(sessionKey);
+            req.onsuccess = () => resolve(req.result || null);
+            req.onerror = () => resolve(null);
+        });
+
+        if (!sessionData) {
+            console.log('[SW] No stored session for', sessionKey);
+            return null;
+        }
+
+        // --- Future: Full Megolm JS/WASM path ---
+        // if (typeof Olm !== 'undefined') { ... }
+
+        return null; // For now, we still need the app open for direct Megolm
+    } catch (e) {
+        console.error('[SW] tryDecryptWithStoredSession error:', e);
+        return null;
+    }
+}
+
 async function fetchAndDecryptMatrixEvent(roomId, eventId) {
     try {
+        // 1. Check decrypted event cache first (populated by app when open)
+        const cached = await getDecryptedEventCache(eventId);
+        if (cached) {
+            console.log('[SW] Using cached decrypted content for', eventId);
+            return cached;
+        }
+
         const { accessToken, homeserverUrl } = await getSwMatrixAuth();
         if (!accessToken || !homeserverUrl) return null;
 
@@ -446,12 +515,7 @@ async function fetchAndDecryptMatrixEvent(roomId, eventId) {
         // If it's not encrypted, just return the content
         if (event.type !== 'm.room.encrypted') return event.content;
 
-        // --- Advanced: Megolm Decryption ---
-        // For a full implementation, we'd need to load the Megolm room keys from the store.
-        // Since full Megolm in a SW is complex without the full SDK, we signal the app
-        // to handle the decryption if it's open, OR we use a lightweight WASM decrypter if available.
-        // For now, we'll try to reach out to any open windows to decrypt it for us.
-
+        // 2. Try open windows (app is open path)
         const clients = await sw.clients.matchAll({ type: 'window' });
         
         if (clients.length > 0) {
@@ -481,19 +545,24 @@ async function fetchAndDecryptMatrixEvent(roomId, eventId) {
                 globalTimeout
             ]);
 
-            if (result) return result;
+            if (result) {
+                // Cache it for next time app is closed
+                await cacheDecryptedEventInSw(eventId, result);
+                return result;
+            }
 
             // Fallback: Filter for any truthy results
             const allResults = await Promise.all(decryptionPromises);
             const successfulResult = allResults.find(r => !!r);
-            if (successfulResult) return successfulResult;
+            if (successfulResult) {
+                await cacheDecryptedEventInSw(eventId, successfulResult);
+                return successfulResult;
+            }
         }
 
-        // --- NEW: Standalone Decryption (App Closed) ---
-        // In 2026, we might try to use a shared Megolm session cache in IDB
-        // but for now, if no windows are open, we can't decrypt E2EE messages.
-        // However, we can at least return the encrypted event so the generic 
-        // "Encrypted message" is shown instead of failing entirely.
+        // 3. App is closed — try megolm session from IDB
+        const standaloneDecrypted = await tryDecryptWithStoredSession(event);
+        if (standaloneDecrypted) return standaloneDecrypted;
 
         throw new Error('No active window could decrypt the event');
     } catch (e) {

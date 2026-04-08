@@ -444,6 +444,7 @@ async function resetPusher() {
       lang: 'en',
       data: {
         url: CORRECT_PUSHER_URL,
+        include_content: true,
         ek: jwk, // Ensure Zero-Knowledge is enabled
       },
     });
@@ -528,6 +529,7 @@ async function hardResetPush() {
       lang: 'en',
       data: {
         url: CORRECT_PUSHER_URL,
+        include_content: true,
         ek: jwk, // Enable Zero-Knowledge for the new subscription
       },
     });
