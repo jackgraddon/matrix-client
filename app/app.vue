@@ -45,6 +45,7 @@
       <RoomSettingsModal />
       <SpaceSettingsModal />
       <MediaPreviewModal />
+      <AboutModal />
 
       <!-- Failover Notice -->
       <div 

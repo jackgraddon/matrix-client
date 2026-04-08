@@ -45,7 +45,8 @@ export default defineNuxtConfig({
       push: {
         relayUrl: process.env.NUXT_PUBLIC_PUSH_BASE_URL || 'https://tumult.jackg.cc/',
         vapidPublicKey: process.env.NUXT_VAPID_PUBLIC_KEY || 'BG1ZIw13v4KW4i2Xu6cV8IdPBgvXWj2E3CmjmI5njf_rCf05h0jv3D85uzKvn9YAuwMd0UBZfDDlbr3hbutwF_Y',
-      }
+      },
+      buildDate: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric' }),
     }
   },
 
