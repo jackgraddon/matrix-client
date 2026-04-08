@@ -10,6 +10,7 @@ import type { VerificationRequest, Verifier, ShowSasCallbacks } from 'matrix-js-
 import { deriveRecoveryKeyFromPassphrase } from 'matrix-js-sdk/lib/crypto-api/key-passphrase';
 import { decodeRecoveryKey } from 'matrix-js-sdk/lib/crypto-api/recovery-key';
 import type { IdTokenClaims } from 'oidc-client-ts';
+import { getPendingShare, clearPendingShare } from '~/utils/crypto-db';
 import { getOidcConfig, registerClient, getLoginUrl, completeLoginFlow, getHomeserverUrl, getDeviceDisplayName } from '~/utils/matrix-auth';
 import { MsgType, EventType, IndexedDBStore, IndexedDBCryptoStore, MemoryStore, LocalStorageCryptoStore } from 'matrix-js-sdk';
 import { useRouter } from '#app';
@@ -48,6 +49,7 @@ export interface UIState {
   };
   themePreset: string;
   customCss: string;
+  pendingShare: any | null;
   hapticFeedbackEnabled: boolean;
   hapticsDebugEnabled: boolean;
   sidebarOpen: boolean;
@@ -354,6 +356,7 @@ export const useMatrixStore = defineStore('matrix', {
       uiOrder: { rootSpaces: [], categories: {}, rooms: {} },
       themePreset: 'default',
       customCss: '',
+      pendingShare: null,
       hapticFeedbackEnabled: true,
       hapticsDebugEnabled: false,
       sidebarOpen: false,
@@ -4507,6 +4510,29 @@ export const useMatrixStore = defineStore('matrix', {
 
     closeMediaPreview() {
       this.ui.mediaPreview = null;
+    },
+
+    async checkPendingShare() {
+      if (typeof window === 'undefined') return;
+
+      if (window.location.search.includes('share=pending')) {
+        console.log('[MatrixStore] Pending share detected in URL, fetching from IDB...');
+        try {
+          const share = await getPendingShare();
+          if (share) {
+            console.log('[MatrixStore] Successfully retrieved pending share from IDB:', share);
+            this.ui.pendingShare = markRaw(share);
+            await clearPendingShare();
+          }
+        } catch (err) {
+          console.error('[MatrixStore] Failed to fetch pending share:', err);
+        }
+
+        // Clean up the URL
+        const url = new URL(window.location.href);
+        url.searchParams.delete('share');
+        window.history.replaceState({}, '', url.pathname + url.search);
+      }
     },
 
   }

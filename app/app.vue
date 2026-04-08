@@ -230,6 +230,11 @@ onMounted(async () => {
   window.addEventListener('keydown', resetIdleTimer);
   resetIdleTimer(); // Initial start
 
+  // PWA Share Target Handling
+  if (import.meta.client) {
+    store.checkPendingShare();
+  }
+
   // Service Worker Decryption Handler
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('message', async (event) => {

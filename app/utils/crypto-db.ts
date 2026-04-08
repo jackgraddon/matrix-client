@@ -9,11 +9,12 @@
 const DB_NAME = 'tumult-crypto-storage';
 const STORE_NAME = 'keys';
 const AUTH_STORE_NAME = 'auth';
+const SHARE_STORE_NAME = 'shares';
 const KEY_NAME = 'notification-decryption-key';
 
 export async function openCryptoDB(): Promise<IDBDatabase> {
     return new Promise((resolve, reject) => {
-        const request = indexedDB.open(DB_NAME, 2);
+        const request = indexedDB.open(DB_NAME, 3);
 
         request.onupgradeneeded = (event) => {
             const db = (event.target as IDBOpenDBRequest).result;
@@ -22,6 +23,9 @@ export async function openCryptoDB(): Promise<IDBDatabase> {
             }
             if (!db.objectStoreNames.contains(AUTH_STORE_NAME)) {
                 db.createObjectStore(AUTH_STORE_NAME);
+            }
+            if (!db.objectStoreNames.contains(SHARE_STORE_NAME)) {
+                db.createObjectStore(SHARE_STORE_NAME);
             }
         };
 
@@ -175,4 +179,44 @@ export async function getOrCreateNotificationKey(): Promise<{ key: CryptoKey, jw
         await saveCryptoKey(key);
         return { key, jwk };
     }
+}
+
+/**
+ * Share Target Storage Functions
+ */
+
+export async function saveShareToIDB(share: { title?: string, text?: string, url?: string, files?: { blob: Blob, name: string, type: string }[] }): Promise<void> {
+    const db = await openCryptoDB();
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(SHARE_STORE_NAME, 'readwrite');
+        const store = transaction.objectStore(SHARE_STORE_NAME);
+        const request = store.put(share, 'pending-share');
+
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+    });
+}
+
+export async function getPendingShare(): Promise<any | null> {
+    const db = await openCryptoDB();
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(SHARE_STORE_NAME, 'readonly');
+        const store = transaction.objectStore(SHARE_STORE_NAME);
+        const request = store.get('pending-share');
+
+        request.onsuccess = () => resolve(request.result || null);
+        request.onerror = () => reject(request.error);
+    });
+}
+
+export async function clearPendingShare(): Promise<void> {
+    const db = await openCryptoDB();
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(SHARE_STORE_NAME, 'readwrite');
+        const store = transaction.objectStore(SHARE_STORE_NAME);
+        const request = store.delete('pending-share');
+
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+    });
 }
