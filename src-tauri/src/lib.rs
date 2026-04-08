@@ -206,12 +206,15 @@ pub fn run() {
             if has_minimized_arg || store_minimized {
                 log::info!("[setup] Starting minimized to tray via hide");
                 let _ = window.hide();
-                let app_handle = app.handle().clone();
-                tauri::async_runtime::spawn(async move {
-                    tokio::time::sleep(tokio::time::Duration::from_millis(150)).await;
-                    #[cfg(target_os = "macos")]
-                    let _ = app_handle.set_activation_policy(tauri::ActivationPolicy::Accessory);
-                });
+
+                #[cfg(target_os = "macos")]
+                {
+                    let app_handle = app.handle().clone();
+                    tauri::async_runtime::spawn(async move {
+                        tokio::time::sleep(tokio::time::Duration::from_millis(150)).await;
+                        let _ = app_handle.set_activation_policy(tauri::ActivationPolicy::Accessory);
+                    });
+                }
             }
 
             if use_remote && !cfg!(debug_assertions) {
