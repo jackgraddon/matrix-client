@@ -16,7 +16,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 fn get_foreground_info() -> Option<(u32, String)> {
     unsafe {
         let hwnd = GetForegroundWindow();
-        if hwnd == 0 {
+        if hwnd.is_null() {
             return None;
         }
         let mut process_id = 0;
