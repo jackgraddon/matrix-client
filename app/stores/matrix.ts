@@ -2414,6 +2414,7 @@ export const useMatrixStore = defineStore('matrix', {
             delete this.remoteActivityDetails[userId];
           }
           this.gameTrigger++;
+          this.refreshPresence();
         }
       }
     },
