@@ -1605,6 +1605,46 @@ watch(topSentinel, (newEl) => {
   }
 });
 
+function checkAndApplyPendingShare() {
+  if (store.ui.pendingShare) {
+    const share = store.ui.pendingShare;
+    console.log('[Chat] Applying pending share to composer:', share);
+
+    // Combine title, text, and URL
+    const parts = [];
+    if (share.title) parts.push(share.title);
+    if (share.text) parts.push(share.text);
+    if (share.url) parts.push(share.url);
+
+    if (parts.length > 0) {
+      const combined = parts.join('\n');
+      if (newMessage.value) {
+        newMessage.value += '\n\n' + combined;
+      } else {
+        newMessage.value = combined;
+      }
+    }
+
+    // Handle files
+    if (share.files && share.files.length > 0) {
+      for (const fileData of share.files) {
+        stagedFiles.value.push({
+          file: fileData.blob,
+          previewUrl: URL.createObjectURL(fileData.blob)
+        });
+      }
+    }
+
+    // Clear it
+    store.ui.pendingShare = null;
+
+    // Focus the textarea
+    nextTick(() => {
+        textareaRef.value?.$el?.focus();
+    });
+  }
+}
+
 async function initRoom() {
   if (!store.client) return;
   const r = store.client.getRoom(roomId.value);
@@ -1709,10 +1749,11 @@ const handleViewSourceEvent = ((e: CustomEvent) => {
 
 onMounted(() => {
   if (store.client && roomId.value) {
-    initRoom(); // Assuming initializeRoom is a typo and it should be initRoom
+    initRoom();
     setupListener();
   }
   window.addEventListener('view-message-source', handleViewSourceEvent);
+  checkAndApplyPendingShare();
 });
 
 // Watch for room changes to track last opened
@@ -1745,6 +1786,13 @@ watch(room, (newRoom) => {
 watch(roomId, () => {
   if (store.client) {
     initRoom();
+    checkAndApplyPendingShare();
+  }
+});
+
+watch(() => store.ui.pendingShare, (newShare) => {
+  if (newShare && roomId.value) {
+    checkAndApplyPendingShare();
   }
 });
 

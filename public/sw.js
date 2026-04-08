@@ -74,6 +74,46 @@ sw.addEventListener('fetch', (event) => {
     // Match /_media_proxy/ with or without trailing slash
     if (url.pathname === MEDIA_PROXY_PATH || url.pathname === MEDIA_PROXY_PATH.slice(0, -1)) {
         event.respondWith(handleMediaProxy(event.request));
+        return;
+    }
+
+    // Web Share Target Interceptor
+    if (url.pathname === '/share-target' && event.request.method === 'POST') {
+        event.respondWith((async () => {
+            try {
+                const formData = await event.request.formData();
+                const title = formData.get('title');
+                const text = formData.get('text');
+                const urlValue = formData.get('url');
+                const files = formData.getAll('media');
+
+                const shareData = {
+                    title: title ? title.toString() : undefined,
+                    text: text ? text.toString() : undefined,
+                    url: urlValue ? urlValue.toString() : undefined,
+                    files: [],
+                };
+
+                if (files && files.length > 0) {
+                    for (const file of files) {
+                        if (file instanceof File) {
+                            shareData.files.push({
+                                blob: file,
+                                name: file.name,
+                                type: file.type
+                            });
+                        }
+                    }
+                }
+
+                await saveShareToIDB(shareData);
+                return Response.redirect('/?share=pending', 303);
+            } catch (err) {
+                console.error('[Service Worker] Share Target error:', err);
+                return Response.redirect('/?share=error', 303);
+            }
+        })());
+        return;
     }
 });
 
@@ -340,11 +380,12 @@ sw.addEventListener('push', (event) => {
 const CRYPTO_DB_NAME = 'tumult-crypto-storage';
 const CRYPTO_STORE_NAME = 'keys';
 const AUTH_STORE_NAME = 'auth';
+const SHARE_STORE_NAME = 'shares';
 const KEY_NAME = 'notification-decryption-key';
 
 async function openCryptoDB() {
     return new Promise((resolve, reject) => {
-        const request = indexedDB.open(CRYPTO_DB_NAME, 3); // Bump version to 3
+        const request = indexedDB.open(CRYPTO_DB_NAME, 3);
         request.onupgradeneeded = (event) => {
             const db = request.result;
             if (!db.objectStoreNames.contains(CRYPTO_STORE_NAME)) db.createObjectStore(CRYPTO_STORE_NAME);
@@ -353,6 +394,17 @@ async function openCryptoDB() {
             if (!db.objectStoreNames.contains('decrypted_events')) db.createObjectStore('decrypted_events');
         };
         request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
+}
+
+async function saveShareToIDB(share) {
+    const db = await openCryptoDB();
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(SHARE_STORE_NAME, 'readwrite');
+        const store = transaction.objectStore(SHARE_STORE_NAME);
+        const request = store.put(share, 'pending-share');
+        request.onsuccess = () => resolve();
         request.onerror = () => reject(request.error);
     });
 }

@@ -37,7 +37,7 @@ export async function cacheDecryptedEvent(eventId: string, content: any) {
 
 export async function openCryptoDB(): Promise<IDBDatabase> {
     return new Promise((resolve, reject) => {
-        const request = indexedDB.open(DB_NAME, 3); // Bump version to 3
+        const request = indexedDB.open(DB_NAME, 3);
 
         request.onupgradeneeded = (event) => {
             const db = (event.target as IDBOpenDBRequest).result;
@@ -205,4 +205,44 @@ export async function getOrCreateNotificationKey(): Promise<{ key: CryptoKey, jw
         await saveCryptoKey(key);
         return { key, jwk };
     }
+}
+
+/**
+ * Share Target Storage Functions
+ */
+
+export async function saveShareToIDB(share: { title?: string, text?: string, url?: string, files?: { blob: Blob, name: string, type: string }[] }): Promise<void> {
+    const db = await openCryptoDB();
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(SHARE_STORE_NAME, 'readwrite');
+        const store = transaction.objectStore(SHARE_STORE_NAME);
+        const request = store.put(share, 'pending-share');
+
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+    });
+}
+
+export async function getPendingShare(): Promise<any | null> {
+    const db = await openCryptoDB();
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(SHARE_STORE_NAME, 'readonly');
+        const store = transaction.objectStore(SHARE_STORE_NAME);
+        const request = store.get('pending-share');
+
+        request.onsuccess = () => resolve(request.result || null);
+        request.onerror = () => reject(request.error);
+    });
+}
+
+export async function clearPendingShare(): Promise<void> {
+    const db = await openCryptoDB();
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(SHARE_STORE_NAME, 'readwrite');
+        const store = transaction.objectStore(SHARE_STORE_NAME);
+        const request = store.delete('pending-share');
+
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+    });
 }

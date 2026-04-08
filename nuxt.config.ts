@@ -176,6 +176,22 @@ export default defineNuxtConfig({
       scope: '/',
       start_url: '/',
       categories: ['social', 'chat', 'communications'],
+      share_target: {
+        action: '/share-target',
+        method: 'POST',
+        enctype: 'multipart/form-data',
+        params: {
+          title: 'title',
+          text: 'text',
+          url: 'url',
+          files: [
+            {
+              name: 'media',
+              accept: ['image/*', 'video/*', 'audio/*', 'application/pdf', '.txt']
+            }
+          ]
+        }
+      },
       icons: [
         {
           src: 'pwa-64x64.png',
