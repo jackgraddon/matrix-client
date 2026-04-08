@@ -150,6 +150,13 @@
         <UiSwitch v-model="showEmptyRoomsToggle" />
       </div>
     </div>
+
+    <div class="pt-4">
+      <UiButton variant="outline" class="w-full gap-2 h-12" @click="store.openAboutModal()">
+        <Icon name="solar:info-circle-bold" class="size-5 text-muted-foreground" />
+        About Tumult
+      </UiButton>
+    </div>
   </div>
 </template>
 

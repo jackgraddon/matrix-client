@@ -275,6 +275,7 @@ export const useMatrixStore = defineStore('matrix', {
     verificationPhase: null as VerificationPhase | null,
     qrCodeData: null as any | null,
     verificationModalOpen: false,
+    aboutModalOpen: false,
     globalSearchModalOpen: false,
     createRoomModalOpen: false,
     createSpaceModalOpen: false,
@@ -3989,6 +3990,14 @@ export const useMatrixStore = defineStore('matrix', {
     closeSpaceSettingsModal() {
       this.spaceSettingsModalOpen = false;
       this.activeSettingsSpaceId = null;
+    },
+
+    openAboutModal() {
+      this.aboutModalOpen = true;
+    },
+
+    closeAboutModal() {
+      this.aboutModalOpen = false;
     },
 
     async createRoom(opts: {
