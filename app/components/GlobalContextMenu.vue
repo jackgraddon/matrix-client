@@ -205,7 +205,7 @@ const showReactionPicker = ref(false);
 const reloadPage = () => window.location.reload();
 const goBack = () => window.history.back();
 const goForward = () => window.history.forward();
-const openAboutModal = () => {};
+const openAboutModal = () => store.openAboutModal();
 
 // --- Context Menu Management ---
 const onGlobalContextMenu = (e: MouseEvent) => {
