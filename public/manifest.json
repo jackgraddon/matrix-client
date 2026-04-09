@@ -4,10 +4,21 @@
   "short_name": "Tumult",
   "description": "Own your noise.",
   "lang": "en-US",
+  "dir": "ltr",
+  "scope": "/",
   "start_url": "/",
   "display": "standalone",
+  "display_override": [
+    "window-controls-overlay",
+    "standalone"
+  ],
+  "orientation": "any",
   "background_color": "#f8f9fa",
   "theme_color": "#2d6a4f",
+  "prefer_related_applications": false,
+  "launch_handler": {
+    "client_mode": "focus-existing"
+  },
   "categories": [
     "social",
     "chat",
