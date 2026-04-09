@@ -1,47 +1,61 @@
 <template>
-  <div class="participant-tile relative flex flex-col items-center justify-center bg-neutral-800 rounded-lg overflow-hidden border border-neutral-700 shadow-xl group aspect-video">
-    
-    <video
-      v-show="videoTrack"
-      ref="videoElement"
-      autoplay
-      playsinline
-      muted
-      class="w-full h-full object-cover"
-    ></video>
+  <div 
+    :class="[
+      layout === 'minimized'
+        ? 'relative rounded-full shrink-0 transition-all duration-300 w-12 h-12 md:w-16 md:h-16 flex items-center justify-center overflow-hidden ' + (isSpeaking ? 'ring-4 ring-[#5865F2]' : 'ring-1 ring-border shadow-sm')
+        : 'participant-tile relative flex flex-col items-center justify-center bg-secondary rounded-xl overflow-hidden shadow-xl group transition-all duration-300 transform-gpu w-full h-full min-h-[120px] ' + (isSpeaking ? 'ring-2 ring-green-500 shadow-[0_0_20px_rgba(34,197,94,0.3)]' : 'ring-1 ring-black/10')
+    ]"
+    :title="layout === 'minimized' ? displayName : undefined"
+  >
+    <!-- Minimized Content -->
+    <MatrixAvatar 
+      v-show="layout === 'minimized'"
+      :mxc-url="avatarUrl" 
+      :name="displayName" 
+      class="w-full h-full"
+      :size="64"
+    />
 
-    <div 
-      v-if="!videoTrack || !isCameraEnabled"
-      class="absolute inset-0 flex flex-col items-center justify-center bg-neutral-800 gap-4"
-    >
-      <MatrixAvatar 
-        :mxc-url="avatarUrl" 
-        :name="displayName" 
-        class="w-24 h-24 rounded-full border-2 border-primary/20 shadow-2xl" 
-        :size="128"
-      />
-      <div class="flex flex-col items-center gap-1">
-        <span class="text-xl font-bold text-white drop-shadow-md">{{ displayName }}</span>
+    <!-- Default Content -->
+    <div v-show="layout !== 'minimized'" class="contents">
+      <video
+        v-show="videoTrack"
+        ref="videoElement"
+        autoplay
+        playsinline
+        muted
+        class="w-full h-full object-cover bg-black absolute inset-0 z-0"
+      ></video>
+
+      <div 
+        v-show="!videoTrack || !isCameraEnabled"
+        class="absolute inset-0 flex flex-col items-center justify-center bg-secondary z-0"
+      >
+        <MatrixAvatar 
+          :mxc-url="avatarUrl" 
+          :name="displayName" 
+          class="w-20 h-20 md:w-24 md:h-24 shadow-2xl transition-all duration-300"
+          :size="128"
+        />
       </div>
-    </div>
 
-    <div class="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-between">
-      <div class="flex items-center gap-2">
-        <span class="text-xs font-medium text-white px-2 py-0.5 bg-black/40 rounded backdrop-blur-sm flex items-center gap-1">
-          <Icon v-if="isDiscordParticipant" name="logos:discord-icon" class="h-3 w-3" />
+      <!-- Pill Overlay in bottom-left -->
+      <div class="absolute bottom-2 left-2 md:bottom-3 md:left-3 flex items-center gap-1.5 px-2 py-1 md:py-1.5 bg-black/60 rounded-lg backdrop-blur-md max-w-[calc(100%-16px)] z-10">
+        <span class="text-[10px] md:text-xs font-semibold text-white truncate max-w-[100px] md:max-w-[150px] flex items-center gap-1">
+          <Icon v-if="isDiscordParticipant" name="logos:discord-icon" class="h-3 w-3 shrink-0" />
           {{ displayName }}
         </span>
-      </div>
-      <div class="flex items-center gap-1">
-        <Icon v-if="!isMicEnabled" name="solar:muted-bold" class="h-4 w-4 text-red-500" />
-        <Icon v-if="isSpeaking" name="solar:soundwave-bold" class="h-4 w-4 text-green-500" />
-        <Icon v-if="isEncrypted" name="solar:lock-bold" class="h-3 w-3 text-green-500" />
+        <div class="flex items-center gap-1 shrink-0 ml-1">
+          <Icon v-if="!isMicEnabled" name="solar:muted-bold" class="h-3 w-3 md:h-3.5 md:w-3.5 text-red-500" />
+          <Icon v-if="isSpeaking" name="solar:soundwave-bold" class="h-3 w-3 md:h-3.5 md:w-3.5 text-green-500" />
+          <Icon v-if="isEncrypted" name="solar:lock-bold" class="h-2.5 w-2.5 text-green-500/70" />
+        </div>
       </div>
     </div>
 
     <div 
       v-if="isSpeaking" 
-      class="absolute inset-0 border-2 border-green-500 rounded-lg pointer-events-none z-10 animate-pulse"
+      class="absolute inset-0 ring-2 ring-green-500 rounded-lg pointer-events-none z-10 animate-pulse active-speaking-glow"
     ></div>
 
     <audio 
@@ -60,10 +74,13 @@ import { ref, shallowRef, onMounted, onUnmounted, computed } from 'vue';
 import { useMatrixStore } from '~/stores/matrix';
 import MatrixAvatar from '~/components/MatrixAvatar.vue';
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   participant: Participant;
   roomId: string;
-}>();
+  layout?: 'default' | 'minimized';
+}>(), {
+  layout: 'default'
+});
 
 const store = useMatrixStore();
 const videoElement = ref<HTMLVideoElement | null>(null);

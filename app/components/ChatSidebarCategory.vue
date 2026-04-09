@@ -58,7 +58,16 @@
                         class="inline-flex items-center justify-start px-2 h-9 w-full rounded-md text-sm font-medium transition-colors cursor-pointer hover:bg-muted group relative"
                         :class="[(isLinkActive(`/chat/spaces/${activeSpaceId}/${room.roomId}`) || voiceStore.activeRoomId === room.roomId) ? 'bg-secondary text-secondary-foreground' : '']"
                         @contextmenu.capture="store.openRoomContextMenu(room.roomId)"
-                        @click="voiceStore.joinVoiceRoom(store.client!.getRoom(room.roomId)!)"
+                        @click="() => {
+                            const isMobile = window.innerWidth < 768;
+                            const room = store.client!.getRoom(room.roomId)!;
+                            if (isMobile) {
+                                navigateTo(`/chat/spaces/${activeSpaceId}/${room.roomId}`);
+                                store.toggleSidebar(false);
+                            } else {
+                                voiceStore.joinVoiceRoom(room);
+                            }
+                        }"
                     >
                         <div class="h-6 w-6 mr-1 flex items-center justify-center shrink-0">
                             <Icon name="solar:soundwave-square-bold-duotone" class="h-5 w-5" />

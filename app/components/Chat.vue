@@ -1,15 +1,5 @@
 <template>
   <div class="flex flex-col h-full relative">
-    <!-- Voice Call Overlay -->
-    <MatrixVoiceCall 
-      v-if="voiceStore.activeRoomId === roomId && voiceStore.lkRoom && voiceStore.isConnected" 
-      :room="toRaw(voiceStore.lkRoom) as any" 
-      :room-id="roomId as string"
-      :room-name="room?.name || 'Voice Room'"
-      @disconnect="voiceStore.leaveVoiceRoom()"
-      class="absolute inset-0 z-50"
-    />
-
     <KeychainWarningDialog
       v-model="showKeychainWarning"
       @proceed="handleProceed"
@@ -69,6 +59,16 @@
             v-if="voiceStore.activeRoomId === roomId"
             variant="ghost" 
             size="icon-sm" 
+            @click="isCallUiHidden = !isCallUiHidden"
+            :title="isCallUiHidden ? 'Show Call UI' : 'Hide Call UI'"
+            class="rounded-full"
+          >
+            <Icon :name="isCallUiHidden ? 'solar:maximize-square-minimalistic-linear' : 'solar:minimize-square-minimalistic-linear'" class="h-5 w-5 text-foreground" />
+          </UiButton>
+          <UiButton
+            v-if="voiceStore.activeRoomId === roomId"
+            variant="ghost" 
+            size="icon-sm" 
             @click="voiceStore.leaveVoiceRoom()"
             title="Disconnect Call"
             class="rounded-full"
@@ -98,8 +98,21 @@
       />
     </header>
 
-    <!-- Invite Prompt -->
-    <div v-if="room && isInvited" class="flex-1 flex flex-col items-center justify-center p-8 text-center bg-muted/20">
+    <!-- Main Chat Content Area -->
+    <div class="flex-1 flex flex-col relative min-h-0">
+      <!-- Voice Call Overlay (Below Header) -->
+      <MatrixVoiceCall 
+        v-if="voiceStore.activeRoomId === roomId && voiceStore.lkRoom && voiceStore.isConnected" 
+        :room="toRaw(voiceStore.lkRoom) as any" 
+        :room-id="roomId as string"
+        :room-name="room?.name || 'Voice Room'"
+        :is-minimized="isCallUiHidden"
+        @disconnect="voiceStore.leaveVoiceRoom()"
+        :class="isCallUiHidden ? 'w-full flex-none h-16 md:h-20 z-40 w-full rounded-xl shadow-sm transition-all' : 'absolute inset-0 z-[60] transition-all'"
+      />
+
+      <!-- Invite Prompt -->
+      <div v-if="room && isInvited" class="flex-1 flex flex-col items-center justify-center p-8 text-center bg-muted/20">
       <div class="max-w-md w-full space-y-8 animate-in fade-in zoom-in duration-300">
         <div class="flex flex-col items-center gap-4">
           <MatrixAvatar 
@@ -601,6 +614,7 @@
         </UiInputGroup>
       </form>
     </footer>
+    </div>
   </div>
 </template>
 
@@ -664,6 +678,7 @@ const { trigger } = useWebHaptics({
 const { onTouchStart, onTouchEnd } = useMobileGestures();
 const voiceStore = useVoiceStore();
 const { showKeychainWarning, handleJoinCall, handleProceed, handleCancel } = useJoinCall();
+const isCallUiHidden = ref(false);
 
 async function handleInviteToGame(gameType: string = 'tictactoe') {
   console.log(`[Chat] Invite to ${gameType} requested`, { roomId: roomId.value, otherUserId: otherUserId.value });

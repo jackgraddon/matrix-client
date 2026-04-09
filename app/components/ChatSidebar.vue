@@ -90,8 +90,10 @@
                             @contextmenu.capture="matrixStore.openRoomContextMenu(friend.roomId)"
                             v-long-press="() => { if (matrixStore.ui.hapticFeedbackEnabled) trigger('medium'); matrixStore.openRoomContextMenu(friend.roomId); }"
                             @click="() => {
-                                if (isVoiceChannel(matrixStore.client?.getRoom(friend.roomId))) {
-                                    voiceStore.joinVoiceRoom(matrixStore.client!.getRoom(friend.roomId)!);
+                                const isMobile = window.innerWidth < 768;
+                                const room = matrixStore.client?.getRoom(friend.roomId);
+                                if (isVoiceChannel(room) && !isMobile) {
+                                    voiceStore.joinVoiceRoom(room!);
                                 } else {
                                     navigateTo(`/chat/dms/${friend.roomId}`);
                                 }
@@ -146,8 +148,10 @@
                             @contextmenu.capture="matrixStore.openRoomContextMenu(room.roomId)"
                             v-long-press="() => { if (matrixStore.ui.hapticFeedbackEnabled) trigger('medium'); matrixStore.openRoomContextMenu(room.roomId); }"
                             @click="() => {
-                                if (isVoiceChannel(matrixStore.client?.getRoom(room.roomId))) {
-                                    voiceStore.joinVoiceRoom(matrixStore.client!.getRoom(room.roomId)!);
+                                const isMobile = window.innerWidth < 768;
+                                const room = matrixStore.client?.getRoom(room.roomId);
+                                if (isVoiceChannel(room) && !isMobile) {
+                                    voiceStore.joinVoiceRoom(room!);
                                 } else {
                                     navigateTo(`/chat/rooms/${room.roomId}`);
                                 }
