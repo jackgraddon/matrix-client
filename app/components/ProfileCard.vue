@@ -6,8 +6,8 @@
         size="full"
       />
     </div>
-    <div class="text-sm text-muted-foreground mb-4">
-      Example description
+    <div class="text-sm text-muted-foreground mb-4 italic bio-display">
+      {{ displayBio || 'No biography set.' }}
     </div>
 
     <!-- Activity -->
@@ -33,8 +33,33 @@ const props = defineProps<{
 const store = useMatrixStore();
 
 const user = computed(() => store.client?.getUser(props.userid));
+const bioCache = ref<string | null>(null);
 
-console.log(user);
+const displayBio = computed(() => {
+  if (props.userid === store.user?.userId) {
+    return store.user.description || null;
+  }
+  return bioCache.value;
+});
+
+async function fetchBio() {
+  if (props.userid === store.user?.userId) {
+    // Already handled by computed
+    return;
+  }
+
+  if (!store.client || !props.userid) return;
+  try {
+    const profile = await store.client.getProfileInfo(props.userid);
+    bioCache.value = (profile as any).description || (profile as any).status_msg_description || (profile as any)['org.matrix.msc2403.description'] || null;
+  } catch (err) {
+    console.warn('Failed to fetch user bio:', err);
+    bioCache.value = null;
+  }
+}
+
+onMounted(fetchBio);
+watch(() => props.userid, fetchBio);
 
 async function sendMessage() {
   if (!store.client) return;
@@ -81,5 +106,9 @@ async function sendMessage() {
 </script>
 
 <style>
-
+.bio-display {
+  white-space: pre-line; 
+  word-break: break-word; 
+  line-height: 1.5;
+}
 </style>

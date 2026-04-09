@@ -766,7 +766,14 @@ function getMatrixEvent(msg: ChatMessage): MatrixEvent | undefined {
 }
 
 const messages = ref<ChatMessage[]>([]);
-const newMessage = ref('');
+const newMessage = computed({
+  get: () => store.ui.composerStates[roomId.value ?? '']?.text || '',
+  set: (val: string) => {
+    if (roomId.value) {
+      store.setUIComposerState(roomId.value as string, { text: val });
+    }
+  }
+});
 const isSending = ref(false);
 const isLoadingHistory = ref(false);
 const isRecording = ref(false);
@@ -868,9 +875,7 @@ const canSend = computed(() => {
 function mapEvent(event: MatrixEvent): ChatMessage | null {
   const type = event.getType();
   
-  // Filter out replacement events (edits) from the timeline
-  // They are handled by the SDK updating the original event
-  if (event.isRelation(RelationType.Replace)) {
+  if (event.isRelation(RelationType.Replace) || event.isRedacted()) {
       return null;
   }
 
@@ -1304,6 +1309,17 @@ async function loadMoreMessages() {
 
 // --- Live message handler ---
 
+function processEventForStore(event: MatrixEvent) {
+  const isEncrypted = event.getType() === 'm.room.encrypted';
+  const content = isEncrypted ? event.getClearContent() : event.getContent();
+  const type = isEncrypted ? content?.type : event.getType();
+
+  if (type === 'cc.jackg.ruby.game.state' && content?.game_id) {
+    store.gameStates[content.game_id] = content;
+    store.gameTrigger++;
+  }
+}
+
 function onTimelineEvent(
   event: MatrixEvent,
   eventRoom: Room | undefined,
@@ -1315,14 +1331,28 @@ function onTimelineEvent(
   if (!eventRoom || eventRoom.roomId !== roomId.value) return;
   if (!timelineWindow.value) return;
 
+  // Process for global store side-effects (e.g. game state)
+  processEventForStore(event);
+
   // Extend the window forward to absorb any new live event(s)
-  // extend() is synchronous and uses events already in the underlying timeline
   timelineWindow.value.extend(Direction.Forward, 20);
 
   // Rebuild messages from the window (single source of truth)
   refreshMessagesFromWindow();
 
   sendReadReceipt(event);
+}
+
+function onRedactionEvent(event: MatrixEvent, _room: Room) {
+  if (event.getRoomId() === roomId.value) {
+    refreshMessagesFromWindow();
+  }
+}
+
+function onLocalEchoUpdated(event: MatrixEvent, _room: Room, _oldEventId: string | undefined, _newStatus: string | null) {
+  if (event.getRoomId() === roomId.value) {
+    refreshMessagesFromWindow();
+  }
 }
 
 function onReceiptEvent(event: MatrixEvent, triggeredRoom: Room) {
@@ -1510,11 +1540,8 @@ async function sendMessage() {
   stagedFiles.value = [];
   if (textareaRef.value) {
     const el = textareaRef.value.$el || textareaRef.value;
-    if (el instanceof HTMLTextAreaElement) el.style.height = 'auto';
-    else if (el.querySelector) {
-        const ta = el.querySelector('textarea');
-        if (ta) ta.style.height = 'auto';
-    }
+    const ta = el instanceof HTMLTextAreaElement ? el : el.querySelector('textarea');
+    if (ta) ta.style.height = 'auto';
   }
   
   replyingTo.value = null;
@@ -1802,12 +1829,16 @@ function setupListener() {
   store.client?.on(RoomEvent.Timeline, onTimelineEvent);
   store.client?.on(RoomEvent.Receipt, onReceiptEvent);
   store.client?.on(RoomEvent.MyMembership, onMyMembership);
+  store.client?.on(RoomEvent.Redaction, onRedactionEvent);
+  store.client?.on(RoomEvent.LocalEchoUpdated, onLocalEchoUpdated);
 }
 
 function teardownListener() {
   store.client?.removeListener(RoomEvent.Timeline, onTimelineEvent);
   store.client?.removeListener(RoomEvent.Receipt, onReceiptEvent);
   store.client?.removeListener(RoomEvent.MyMembership, onMyMembership);
+  store.client?.removeListener(RoomEvent.Redaction, onRedactionEvent);
+  store.client?.removeListener(RoomEvent.LocalEchoUpdated, onLocalEchoUpdated);
 }
 
 // Handle late client init (e.g. page refresh)
@@ -1844,24 +1875,24 @@ function cancelAction() {
   replyingTo.value = null;
   editingMessage.value = null;
   newMessage.value = '';
-  // Update store for text clearing too if we decide to persist it
-  store.setUIComposerState(roomId.value!, { text: '' });
 }
 
-function handleReply(msg: ChatMessage) {
-  cancelAction(); // clear any pending edit
-  replyingTo.value = msg;
-  // Focus input
-  nextTick(() => { document.querySelector('input')?.focus() });
-}
+watch([editingMessage, replyingTo], ([newEdit, newReply], [oldEdit, oldReply]) => {
+  if ((newEdit && !oldEdit) || (newReply && !oldReply)) {
+    nextTick(() => {
+        const el = textareaRef.value?.$el || textareaRef.value;
+        const ta = el?.querySelector('textarea') || el;
+        if (ta && ta.focus) {
+          ta.focus();
+          // Trigger height adjustment for the new content
+          ta.style.height = 'auto';
+          ta.style.height = `${ta.scrollHeight}px`;
+        }
+    });
+  }
+});
 
-function handleEdit(msg: ChatMessage) {
-  cancelAction(); // clear any pending reply
-  editingMessage.value = msg;
-  newMessage.value = msg.body;
-  // Focus input
-  nextTick(() => { document.querySelector('input')?.focus() });
-}
+
 
 async function handleReaction(msg: ChatMessage, key: string) {
   if (!room.value || !store.client) return;

@@ -23,27 +23,42 @@
             </UiButton>
             <UiButton size="sm" @click="updateStatus">Set Status</UiButton>
           </div>
-          <div class="space-y-2">
-            <h4 class="text-md font-semibold tracking-tight">Edit Profile</h4>
-            <div class="flex gap-2">
-              <UiButton 
-                :variant="updatedUserInfo.avatarFile.size > 0 ? 'default' : 'outline'"
-                @click="uploadAvatar"
-              >
-                <Icon :name="updatedUserInfo.avatarFile.size > 0 ? 'solar:check-circle-outline' : 'solar:upload-outline'" />
-                <p v-if="updatedUserInfo.avatarFile.size > 0">Uploaded</p>
-                <p v-else>Upload Avatar</p>
-              </UiButton>
-              <UiInput
-                label="Display Name"
-                :placeholder="updatedUserInfo.displayName"
-                v-model="updatedUserInfo.displayName"
-                @keyup.enter="updateProfile"
-                @update:model-value="updatedUserInfo.isUpdating = true"
-              />
+            <div class="space-y-4">
+              <div class="flex gap-2 items-end">
+                <div class="flex-1">
+                  <UiInput
+                    label="Display Name"
+                    :placeholder="updatedUserInfo.displayName"
+                    v-model="updatedUserInfo.displayName"
+                    @keyup.enter="updateProfile"
+                    @update:model-value="updatedUserInfo.isUpdating = true"
+                  />
+                </div>
+                <UiButton 
+                  :variant="updatedUserInfo.avatarFile.size > 0 ? 'default' : 'outline'"
+                  @click="uploadAvatar"
+                >
+                  <Icon :name="updatedUserInfo.avatarFile.size > 0 ? 'solar:check-circle-outline' : 'solar:upload-outline'" />
+                  <p v-if="updatedUserInfo.avatarFile.size > 0">Uploaded</p>
+                  <p v-else>Update Avatar</p>
+                </UiButton>
+              </div>
+
+              <div class="space-y-2">
+                <UiLabel for="bio">Biography</UiLabel>
+                <UiTextarea
+                  id="bio"
+                  v-model="updatedUserInfo.description"
+                  placeholder="Tell us about yourself..."
+                  @update:model-value="updatedUserInfo.isUpdating = true"
+                  class="min-h-[100px]"
+                />
+              </div>
+
               <UiButton 
                 aria-label="Save"
                 title="Save"
+                class="w-full"
                 :variant="updatedUserInfo.isUpdating ? 'default' : 'outline'"
                 :disabled="!updatedUserInfo.isUpdating"
                 @click="updateProfile"
@@ -51,7 +66,6 @@
                 Save Changes
               </UiButton>
             </div>
-          </div>
         </UiCardContent>
       </UiCard>
     </div>
@@ -148,10 +162,18 @@ const updatedUserInfo = ref(
   {
     isUpdating: false,
     displayName: store.user?.displayName,
+    description: store.user?.description || '',
     avatarFile: new File([], ""),
-
   }
 );
+
+watchEffect(() => {
+  if (store.user && !updatedUserInfo.value.isUpdating) {
+    console.log('[AccountSettings] Syncing user data:', store.user);
+    updatedUserInfo.value.displayName = store.user.displayName || '';
+    updatedUserInfo.value.description = store.user.description || '';
+  }
+});
 
 function uploadAvatar() {
   const input = document.createElement('input');
@@ -168,11 +190,18 @@ function uploadAvatar() {
 }
 
 async function updateProfile() {
-  if (updatedUserInfo.value.displayName) {
+  console.log('[AccountSettings] Saving profile changes:', updatedUserInfo.value);
+  if (updatedUserInfo.value.displayName && updatedUserInfo.value.displayName !== store.user?.displayName) {
+    console.log('[AccountSettings] Updating display name...');
     await store.setProfileDisplayName(updatedUserInfo.value.displayName);
   }
   if (updatedUserInfo.value.avatarFile.size > 0) {
+    console.log('[AccountSettings] Updating avatar...');
     await store.uploadAndSetProfileAvatar(updatedUserInfo.value.avatarFile);
+  }
+  if (updatedUserInfo.value.description !== store.user?.description) {
+    console.log('[AccountSettings] Updating bio...');
+    await store.setProfileDescription(updatedUserInfo.value.description);
   }
   updatedUserInfo.value.isUpdating = false;
 

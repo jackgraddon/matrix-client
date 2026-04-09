@@ -172,7 +172,33 @@ async function connectLivekitTransport(
     });
 
     if (!response.ok) throw new Error(`LiveKit JWT fetch failed: ${response.statusText}`);
-    const { url: lkUrl, jwt } = await response.json();
+
+    const responseData = await response.json();
+    const { url: lkUrl, jwt } = responseData;
+
+    // Validate the returned URL before handing it to LiveKit. Without this, a missing or
+    // malformed url field produces an opaque WebKit "SyntaxError: The string did not match
+    // the expected pattern" inside lkRoom.connect() with no indication of root cause.
+    //
+    // Common causes:
+    //  - livekit_service_url in .well-known points to the SFU itself (wss://) rather than
+    //    the livekit-jwt HTTP service. The /sfu/get endpoint won't exist there.
+    //  - The JWT service returned an error body that parsed as JSON but had no url field.
+    if (!lkUrl || (!lkUrl.startsWith('wss://') && !lkUrl.startsWith('ws://'))) {
+        console.error(
+            '[Voice/LiveKit] JWT service returned unexpected response body:',
+            responseData,
+            `\nExpected { url: "wss://...", jwt: "..." } from ${focus.livekit_service_url}/sfu/get`
+        );
+        throw new Error(
+            `LiveKit JWT service did not return a valid wss:// URL. ` +
+            `Got: "${lkUrl}". ` +
+            `Check that livekit_service_url in .well-known points to the livekit-jwt HTTP service, ` +
+            `not the LiveKit SFU itself.`
+        );
+    }
+
+    console.log(`[Voice/LiveKit] JWT obtained, connecting to SFU at ${lkUrl}`);
 
     const keyProvider = new BaseE2EEKeyProvider({
         sharedKey: false,
@@ -254,7 +280,11 @@ export const useVoiceStore = defineStore('voice', {
     actions: {
         async joinVoiceRoom(room: Room) {
             if (this.activeRoomId === room.roomId) return;
-            if (this.activeRoomId) await this.leaveVoiceRoom();
+            // Guard against double-join while a connection is already in flight.
+            // Without this, two concurrent calls race over shared state and produce
+            // two LiveKit room instances fighting over the same RTC session.
+            if (this.connectingRoomId === room.roomId) return;
+            if (this.activeRoomId || this.connectingRoomId) await this.leaveVoiceRoom();
 
             this.isConnecting = true;
             this.connectingRoomId = room.roomId;
@@ -331,21 +361,21 @@ export const useVoiceStore = defineStore('voice', {
                 // use oldest_membership to find it. When joining an existing call,
                 // pass undefined — the SDK derives activeFocus from oldest_membership
                 // internally, preventing split-brain.
-                const activeFocusForSdk: Focus | undefined = isFirstToJoin ? foci[0] : undefined;
+                //
+                // IMPORTANT: must be Focus[] not Focus. The SDK's MembershipManager builds
+                // the foci_active field of the state event by spreading this value as an array
+                // (matching the MSC4143 spec where foci_active is always an array). Passing a
+                // plain Focus object causes "Spread syntax requires ...iterable[Symbol.iterator]
+                // to be a function" inside SendJoinEvent, crashing the MembershipManager.
+                const activeFocusForSdk: Focus[] | undefined = isFirstToJoin ? [foci[0]] : undefined;
 
                 try {
-                    // SDK v41 4-arg signature:
-                    //   joinRTCSession(membershipData, fociPreferred, activeFocus?, opts?)
-                    const membershipData = {
-                        userId: matrixStore.client!.getUserId()!,
-                        deviceId: matrixStore.client!.getDeviceId()!,
-                        memberId: `${matrixStore.client!.getUserId()}:${matrixStore.client!.getDeviceId()}`,
-                    };
-
+                    // Correct SDK signature:
+                    //   joinRTCSession(fociPreferred, activeFocus?, opts?)
+                    // The SDK builds membershipData internally from client.getUserId()/getDeviceId().
                     rtcSession.joinRTCSession(
-                        membershipData,
                         foci,
-                        activeFocusForSdk,
+                        activeFocusForSdk as any,
                         {
                             manageMediaKeys: true,
                             membershipEventExpiryMs: 120000,
@@ -371,9 +401,6 @@ export const useVoiceStore = defineStore('voice', {
                 // Bridge MatrixRTC E2EE keys into the LiveKit key provider.
                 // MatrixRTC distributes keys via to-device messages (manageMediaKeys: true).
                 // We forward each key to LiveKit as it arrives.
-                const encKeyEvent =
-                    (MatrixRTCSessionEvent as any).EncryptionKeyChanged ?? 'encryption_key_changed';
-
                 const onKeyChanged = (
                     keyBin: Uint8Array,
                     keyIndex: number,
@@ -390,7 +417,10 @@ export const useVoiceStore = defineStore('voice', {
 
                 this._rtcSession = rtcSession;
                 this._encryptionKeyHandler = onKeyChanged;
-                (rtcSession as any).on(encKeyEvent, onKeyChanged);
+                // MatrixRTCSessionEvent.EncryptionKeyChanged is the correct enum value.
+                // Using the typed import directly prevents silent mis-fires if the
+                // event name ever changes between SDK versions.
+                rtcSession.on(MatrixRTCSessionEvent.EncryptionKeyChanged, onKeyChanged);
 
                 // Re-emit any keys that were distributed before we subscribed
                 // (covers the case where we join after other members already set keys)
@@ -425,7 +455,12 @@ export const useVoiceStore = defineStore('voice', {
                 console.error('[Voice] Failed to join:', e);
                 this.error = e.message;
                 toast.error('Failed to join call');
-                if (this.activeRoomId) this.leaveVoiceRoom();
+                // Always clean up on failure — not just when activeRoomId is set.
+                // activeRoomId is only assigned after a *successful* connect, so a
+                // failed attempt leaves connectingRoomId set. Without this, the
+                // race-condition guard (if connectingRoomId === roomId return) silently
+                // swallows every subsequent click with no log, no error, no UI change.
+                await this.leaveVoiceRoom();
             } finally {
                 this.isConnecting = false;
             }
@@ -442,14 +477,15 @@ export const useVoiceStore = defineStore('voice', {
 
             // 1. Leave MatrixRTC FIRST — the state event must be sent while
             //    the HTTP connection is still alive.
-            if (room) {
+            //    Use the stored _rtcSession reference rather than re-fetching it.
+            //    getRoomSession() could return a different instance if the client
+            //    has re-initialised, in which case leaveRoomSession() would be a no-op
+            //    and your membership event would stay open on the server indefinitely.
+            if (this._rtcSession) {
                 try {
-                    const rtcSession = matrixStore.client?.matrixRTC.getRoomSession(room);
-                    if (rtcSession) {
-                        const left = await rtcSession.leaveRoomSession(3000);
-                        if (!left) console.warn('[Voice] leaveRoomSession timed out');
-                        else console.log('[Voice] MatrixRTC leave confirmed');
-                    }
+                    const left = await (this._rtcSession as any).leaveRoomSession(3000);
+                    if (!left) console.warn('[Voice] leaveRoomSession timed out');
+                    else console.log('[Voice] MatrixRTC leave confirmed');
                 } catch (e) {
                     console.warn('[Voice] Failed to leave MatrixRTC session:', e);
                 } finally {
@@ -470,9 +506,7 @@ export const useVoiceStore = defineStore('voice', {
 
             // 3. Clean up E2EE key listener.
             if (this._rtcSession && this._encryptionKeyHandler) {
-                const encKeyEvent =
-                    (MatrixRTCSessionEvent as any).EncryptionKeyChanged ?? 'encryption_key_changed';
-                (this._rtcSession as any).off(encKeyEvent, this._encryptionKeyHandler);
+                (this._rtcSession as any).off(MatrixRTCSessionEvent.EncryptionKeyChanged, this._encryptionKeyHandler);
                 this._rtcSession = null;
                 this._encryptionKeyHandler = null;
             }

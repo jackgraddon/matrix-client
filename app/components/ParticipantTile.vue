@@ -120,6 +120,9 @@ function detachTrack(track: Track) {
 }
 
 // Map LiveKit Events
+// All handlers are stored as named references so they can be properly removed
+// in onUnmounted. Inline arrow functions passed to .on() can never be .off()'d —
+// each call creates a new function identity, so the listener leaks permanently.
 const onTrackSubscribed = (track: Track) => attachTrack(track);
 const onTrackUnsubscribed = (track: Track) => detachTrack(track);
 const onLocalTrackPublished = (pub: TrackPublication) => { if (pub.track) attachTrack(pub.track); updateMediaState(); };
@@ -130,6 +133,9 @@ function updateMediaState() {
   isCameraEnabled.value = props.participant.isCameraEnabled;
   isEncrypted.value = props.participant.isEncrypted;
 }
+
+// Named handler for IsSpeakingChanged — must be stored to remove in onUnmounted
+const onIsSpeakingChanged = (speaking: boolean) => { isSpeaking.value = speaking; };
 
 onMounted(() => {
   // Attach any existing tracks (e.g., if you join a room with people already in it)
@@ -146,10 +152,8 @@ onMounted(() => {
   props.participant.on(ParticipantEvent.LocalTrackPublished, onLocalTrackPublished);
   props.participant.on(ParticipantEvent.LocalTrackUnpublished, onLocalTrackUnpublished);
 
-  // Status updates
-  props.participant.on(ParticipantEvent.IsSpeakingChanged, (speaking: boolean) => {
-    isSpeaking.value = speaking;
-  });
+  // Status updates — all stored as named references so they can be cleaned up
+  props.participant.on(ParticipantEvent.IsSpeakingChanged, onIsSpeakingChanged);
   props.participant.on(ParticipantEvent.TrackPublished, updateMediaState);
   props.participant.on(ParticipantEvent.TrackUnpublished, updateMediaState);
   props.participant.on(ParticipantEvent.TrackMuted, updateMediaState);
@@ -161,7 +165,14 @@ onUnmounted(() => {
   props.participant.off(ParticipantEvent.TrackUnsubscribed, onTrackUnsubscribed);
   props.participant.off(ParticipantEvent.LocalTrackPublished, onLocalTrackPublished);
   props.participant.off(ParticipantEvent.LocalTrackUnpublished, onLocalTrackUnpublished);
-  
+  // These five were previously leaked — inline arrow functions passed to .on()
+  // are never the same reference, so the old code's .off() calls were no-ops.
+  props.participant.off(ParticipantEvent.IsSpeakingChanged, onIsSpeakingChanged);
+  props.participant.off(ParticipantEvent.TrackPublished, updateMediaState);
+  props.participant.off(ParticipantEvent.TrackUnpublished, updateMediaState);
+  props.participant.off(ParticipantEvent.TrackMuted, updateMediaState);
+  props.participant.off(ParticipantEvent.TrackUnmuted, updateMediaState);
+
   if (videoTrack.value) videoTrack.value.detach();
   if (audioTrack.value) audioTrack.value.detach();
 });

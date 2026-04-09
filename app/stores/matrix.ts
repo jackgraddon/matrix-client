@@ -263,6 +263,8 @@ export const useMatrixStore = defineStore('matrix', {
       userId: string;
       displayName?: string;
       avatarUrl?: string;
+      description?: string;
+      status_msg?: string;
     } | null,
     // Verification state
     isCrossSigningReady: false,
@@ -1315,6 +1317,33 @@ export const useMatrixStore = defineStore('matrix', {
       } catch (e) {
         console.error('[MatrixStore] Failed to upload/set avatar:', e);
         toast.error('Failed to update avatar');
+      }
+    },
+
+    async setProfileDescription(description: string) {
+      if (!this.client) return;
+      const userId = this.client.getUserId();
+      if (!userId) return;
+
+      try {
+        const path = `/profile/${encodeURIComponent(userId)}/org.matrix.msc2403.description`;
+        const res = await this.client.http.authedRequest(
+          sdk.Method.Put,
+          path,
+          undefined,
+          { "org.matrix.msc2403.description": description }
+        );
+        console.log('[MatrixStore] Bio update response:', res);
+
+        // Update local state
+        if (this.user) {
+          this.user.description = description;
+        }
+        
+        toast.success('Bio updated');
+      } catch (e) {
+        console.error('[MatrixStore] Failed to update bio:', e);
+        toast.error('Failed to update bio');
       }
     },
 
@@ -2684,10 +2713,13 @@ export const useMatrixStore = defineStore('matrix', {
         let avatarUrl = profile.avatar_url;
 
         // Update state
+        console.log(`[MatrixStore] Fetched profile for ${userId}:`, profile);
         this.user = {
           userId,
           displayName: profile.displayname,
-          avatarUrl: avatarUrl || undefined
+          avatarUrl: avatarUrl || undefined,
+          description: (profile as any).description || (profile as any).status_msg_description || (profile as any)['org.matrix.msc2403.description'],
+          status_msg: (profile as any).status_msg || (profile as any)['org.matrix.msc2403.status_msg']
         };
       } catch (e) {
         console.error("Could not fetch profile:", e);
