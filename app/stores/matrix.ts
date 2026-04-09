@@ -2196,27 +2196,35 @@ export const useMatrixStore = defineStore('matrix', {
         debouncedUnreadTrigger();
       });
 
+      const { handleDecryptedEvent } = useMatrixNotifications();
+
       this.client.on(sdk.RoomEvent.Timeline, async (event, room, toStartOfTimeline) => {
         if (toStartOfTimeline) return;
         debouncedUnreadTrigger();
 
-        // --- NEW: Cache decrypted content for Service Worker ---
-        if (event.getType() === 'm.room.encrypted' || event.isEncrypted()) {
-          const cache = async (ev: sdk.MatrixEvent) => {
-            const content = ev.getClearContent();
-            if (content && ev.getId()) {
-              const { cacheDecryptedEvent } = await import('~/utils/crypto-db');
-              await cacheDecryptedEvent(ev.getId()!, content);
-            }
-          };
+        if (!room) return;
+        if (event.isDecryptionFailure()) return;
 
-          if (event.getClearContent()) {
-            cache(event);
-          } else {
-            event.once(sdk.MatrixEventEvent.Decrypted, (ev) => {
-              if (!ev.isDecryptionFailure()) cache(ev);
-            });
-          }
+        // Don't notify/cache for events that arrived during initial sync
+        if (this.client && !this.client.isInitialSyncComplete()) return;
+
+        const processDecrypted = async (ev: sdk.MatrixEvent) => {
+          if (ev.isDecryptionFailure()) return;
+
+          // Only notify/cache for messages and custom game events
+          const notifiableTypes = ['m.room.message', 'cc.jackg.ruby.game.action', 'cc.jackg.ruby.game.over'];
+          const type = ev.getType();
+          if (!notifiableTypes.includes(type)) return;
+
+          handleDecryptedEvent(ev, room);
+        };
+
+        if (event.getType() === 'm.room.encrypted' && !event.getClearContent()) {
+          event.once(sdk.MatrixEventEvent.Decrypted, (ev) => {
+            processDecrypted(ev);
+          });
+        } else {
+          processDecrypted(event);
         }
       });
 
