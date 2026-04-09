@@ -254,6 +254,12 @@ const handleTimelineEvent = async (event: MatrixEvent, room: Room | undefined, t
 
   if (toStartOfTimeline || !room || !store.client) return;
 
+  if (isTauri) {
+    // Native desktop notifications are handled by MatrixStore -> useMatrixNotifications
+    return;
+  }
+
+  // Web fallback notifications
   // Prevent history spam by only notifying when the client is fully synced
   // and we are NOT in the middle of a large initial sync.
   const syncState = store.client.getSyncState();
@@ -292,53 +298,54 @@ const handleTimelineEvent = async (event: MatrixEvent, room: Room | undefined, t
         console.log('[Chat] Skipping notification as room is currently active and focused.');
         return;
       }
+
       const content = event.getClearContent() || event.getContent();
       const senderId = event.getSender();
       if (!senderId) return;
       const senderMember = room.getMember(senderId);
       const senderName = senderMember?.name || senderId;
-      
-      console.log('[Chat] Notification triggered:', { 
-        type: event.getType(), 
-        sender: senderName, 
-        room: room.name,
-        hasClearContent: !!event.getClearContent()
-      });
-
-      let bodyText = 'New message';
-      let imageUrl: string | undefined;
-
-      if (content.msgtype === 'm.image') {
-        bodyText = `Sent an image: ${content.body || 'filename'}`;
-        const mxcUrl = content.file?.url || content.url;
-        if (mxcUrl) {
-          // Use authenticated thumbnail if possible, otherwise fallback to unauthenticated MXC
-          const serverName = mxcUrl.replace('mxc://', '').split('/')[0];
-          const mediaId = mxcUrl.replace('mxc://', '').split('/')[1];
-          if (serverName && mediaId) {
-            imageUrl = `${store.client.baseUrl}/_matrix/client/v1/media/thumbnail/${serverName}/${mediaId}?width=800&height=600&method=scale&animated=true`;
-            // Add access token if we have one
-            const token = store.client.getAccessToken();
-            if (token) imageUrl += `&access_token=${encodeURIComponent(token)}`;
-          } else {
-            imageUrl = store.client.mxcUrlToHttp(mxcUrl) || undefined;
-          }
-        }
-      } else if (content.msgtype === 'm.video') bodyText = 'Sent a video';
-      else if (content.msgtype === 'm.file') bodyText = `Sent a file: ${content.body}`;
-      else if (type === 'cc.jackg.ruby.game.state') bodyText = 'Game state updated';
-      else if (type === 'cc.jackg.ruby.game.action') bodyText = 'New game action';
-      else if (content.body) bodyText = content.body;
 
       // Determine if it is a private DM
       const isDirect = room.getMember(store.client.getUserId()!)?.events.member?.getContent().is_direct ||
                        room.currentState.getStateEvents('m.room.member', store.client.getUserId()!)?.getContent().is_direct;
       
-      // Better way to check for DM: check the store's directMessageMap or room members count
       const isDM = room.getInvitedAndJoinedMemberCount() === 2 && isDirect;
 
-      const title = (isDM ? senderName : `${senderName} in ${room.name || 'Room'}`) || 'New Message';
-      const notificationBody = bodyText || '';
+      let title = (isDM ? senderName : `${senderName} in ${room.name || 'Room'}`) || 'New Message';
+      let notificationBody = 'New message';
+      let imageUrl: string | undefined;
+
+      if (!store.showContentInNotifications) {
+          title = 'New Message';
+          notificationBody = 'Tap to read';
+      } else {
+          // Content display is enabled
+          if (event.getType() === 'm.room.encrypted' && !event.getClearContent()) {
+              notificationBody = 'New encrypted message';
+          } else {
+              if (content.msgtype === 'm.image') {
+                notificationBody = `Sent an image: ${content.body || 'filename'}`;
+                const mxcUrl = content.file?.url || content.url;
+                if (mxcUrl) {
+                  // Use authenticated thumbnail if possible, otherwise fallback to unauthenticated MXC
+                  const serverName = mxcUrl.replace('mxc://', '').split('/')[0];
+                  const mediaId = mxcUrl.replace('mxc://', '').split('/')[1];
+                  if (serverName && mediaId) {
+                    imageUrl = `${store.client.baseUrl}/_matrix/client/v1/media/thumbnail/${serverName}/${mediaId}?width=800&height=600&method=scale&animated=true`;
+                    // Add access token if we have one
+                    const token = store.client.getAccessToken();
+                    if (token) imageUrl += `&access_token=${encodeURIComponent(token)}`;
+                  } else {
+                    imageUrl = store.client.mxcUrlToHttp(mxcUrl) || undefined;
+                  }
+                }
+              } else if (content.msgtype === 'm.video') notificationBody = 'Sent a video';
+              else if (content.msgtype === 'm.file') notificationBody = `Sent a file: ${content.body}`;
+              else if (type === 'cc.jackg.ruby.game.state') notificationBody = 'Game state updated';
+              else if (type === 'cc.jackg.ruby.game.action') notificationBody = 'New game action';
+              else if (content.body) notificationBody = content.body;
+          }
+      }
 
       let iconUrl = isDM
         ? senderMember?.getMxcAvatarUrl()

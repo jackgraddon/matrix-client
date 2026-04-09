@@ -163,7 +163,7 @@ function getMessageSummary(content) {
 
     // Handle encrypted messages (Matrix doesn't send content for these usually in push)
     if (content.msgtype === undefined && content.algorithm) {
-        return 'Encrypted message';
+        return 'New encrypted message';
     }
 
     // Custom game state events
@@ -305,9 +305,9 @@ sw.addEventListener('push', (event) => {
         }
 
         // --- 3. Protocol Decryption (Matrix Level) ---
-        // If content is still "Encrypted message", try a background fetch + decrypt
+        // If content is still "New encrypted message", try a background fetch + decrypt
         // ONLY if show content is enabled
-        if (effectiveShowContent && data.room_id && data.event_id && (data.content?.algorithm || getMessageSummary(data.content) === 'Encrypted message')) {
+        if (effectiveShowContent && data.room_id && data.event_id && (data.content?.algorithm || getMessageSummary(data.content) === 'New encrypted message')) {
             try {
                 const decryptedContent = await fetchAndDecryptMatrixEvent(data.room_id, data.event_id);
                 if (decryptedContent) {
@@ -337,20 +337,18 @@ sw.addEventListener('push', (event) => {
         const sender = data.sender_display_name || 'Someone';
         const roomName = data.room_name;
         const bodyText = getMessageSummary(data.content);
+        const isDirect = data.is_direct || (roomName === sender);
 
         // Formatting (Prefer server-sent title/body if available, fallback to required styling)
-        let title = data.title || (roomName ? `${sender} in ${roomName}` : sender);
+        let title = data.title || ((roomName && !isDirect) ? `${sender} in ${roomName}` : sender);
         let notificationBody = data.body || bodyText;
 
         if (!effectiveShowContent) {
             title = 'New Message';
             notificationBody = 'Tap to read';
-        } else if (notificationBody === 'Encrypted message' || notificationBody === 'New message') {
-            // Content toggle is ON but we couldn't decrypt — give useful context
-            // We still know who sent it and where, just not what they said
-            notificationBody = (data.is_direct || (roomName === sender))
-                ? 'Tap to read message'                        // DM: "Alice — Tap to read message"
-                : `New message in ${roomName || 'a room'}`;    // Group: "Alice in General — New message in General"
+        } else if (notificationBody === 'New encrypted message' || notificationBody === 'New message') {
+            // Content toggle is ON but we couldn't decrypt — show 'New encrypted message'
+            notificationBody = 'New encrypted message';
         } else if (debugError) {
             notificationBody = `${notificationBody} (${debugError})`;
         }
