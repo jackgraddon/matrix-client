@@ -14,6 +14,10 @@ export default defineNuxtConfig({
         lang: 'en'
       },
       title: 'Tumult',
+      meta: [
+        { name: 'theme-color', content: '#f5f5f5', media: '(prefers-color-scheme: light)' },
+        { name: 'theme-color', content: '#000000', media: '(prefers-color-scheme: dark)' },
+      ],
       link: [
         { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
         { rel: 'icon', type: 'image/png', sizes: '32x32', href: '/pwa-32x32.png' },
@@ -170,8 +174,8 @@ export default defineNuxtConfig({
       name: 'Tumult',
       short_name: 'Tumult',
       description: 'Own your noise. A smart, rebellious friend for your conversations.',
-      theme_color: '#f5f5f5',
-      background_color: '#f5f5f5',
+      theme_color: '#000000',
+      background_color: '#000000',
       display: 'standalone',
       orientation: 'any',
       scope: '/',

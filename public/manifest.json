@@ -13,8 +13,8 @@
     "standalone"
   ],
   "orientation": "any",
-  "background_color": "#f8f9fa",
-  "theme_color": "#2d6a4f",
+  "background_color": "#000000",
+  "theme_color": "#000000",
   "prefer_related_applications": false,
   "launch_handler": {
     "client_mode": "focus-existing"
