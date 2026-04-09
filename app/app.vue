@@ -102,26 +102,6 @@ watch(() => store.ui.themePreset, (newTheme: string) => {
 onMounted(async () => {
   console.log("[App] onMounted started. isTauri:", isTauri);
 
-  // PWA Update Handling
-  if (import.meta.client && 'serviceWorker' in navigator) {
-    const { useRegisterSW } = await import('virtual:pwa-register/vue');
-    const { updateServiceWorker } = useRegisterSW({
-      onNeedRefresh() {
-        toast('A new version is available', {
-          description: 'Click update to reload the app.',
-          action: {
-            label: 'Update',
-            onClick: () => updateServiceWorker(true),
-          },
-          duration: Infinity,
-        });
-      },
-      onOfflineReady() {
-        toast.success('App ready for offline use');
-      },
-    });
-  }
-
   if (isTauri) {
     // Sync theme with Tauri's native API on startup
     await applyTauriTheme();
