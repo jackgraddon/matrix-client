@@ -157,6 +157,7 @@ async function handleMediaProxy(request) {
 }
 
 // Helper to extract a readable summary of the message
+// Mirror of app/utils/matrix-content.ts — keep in sync
 function getMessageSummary(content) {
     if (!content) return 'New message';
 
@@ -343,7 +344,13 @@ sw.addEventListener('push', (event) => {
 
         if (!effectiveShowContent) {
             title = 'New Message';
-            notificationBody = 'Tap to view message content';
+            notificationBody = 'Tap to read';
+        } else if (notificationBody === 'Encrypted message' || notificationBody === 'New message') {
+            // Content toggle is ON but we couldn't decrypt — give useful context
+            // We still know who sent it and where, just not what they said
+            notificationBody = (data.is_direct || (roomName === sender))
+                ? 'Tap to read message'                        // DM: "Alice — Tap to read message"
+                : `New message in ${roomName || 'a room'}`;    // Group: "Alice in General — New message in General"
         } else if (debugError) {
             notificationBody = `${notificationBody} (${debugError})`;
         }
@@ -386,13 +393,13 @@ const KEY_NAME = 'notification-decryption-key';
 async function openCryptoDB() {
     return new Promise((resolve, reject) => {
         const request = indexedDB.open(CRYPTO_DB_NAME, 3);
-        request.onupgradeneeded = (event) => {
+        request.onupgradeneeded = () => {
             const db = request.result;
             if (!db.objectStoreNames.contains(CRYPTO_STORE_NAME)) db.createObjectStore(CRYPTO_STORE_NAME);
             if (!db.objectStoreNames.contains(AUTH_STORE_NAME)) db.createObjectStore(AUTH_STORE_NAME);
-            if (!db.objectStoreNames.contains('megolm_sessions')) db.createObjectStore('megolm_sessions');
-            if (!db.objectStoreNames.contains('decrypted_events')) db.createObjectStore('decrypted_events');
             if (!db.objectStoreNames.contains(SHARE_STORE_NAME)) db.createObjectStore(SHARE_STORE_NAME);
+            if (!db.objectStoreNames.contains('decrypted_events')) db.createObjectStore('decrypted_events');
+            // NOTE: NO megolm_sessions store — keys never leave the device
         };
         request.onsuccess = () => resolve(request.result);
         request.onerror = () => reject(request.error);
@@ -512,112 +519,61 @@ async function cacheDecryptedEventInSw(eventId, content) {
     }
 }
 
-async function tryDecryptWithStoredSession(encryptedEvent) {
-    try {
-        const content = encryptedEvent.content;
-        const roomId = encryptedEvent.room_id || content?.room_id;
-        const sessionId = content?.session_id;
-        if (!sessionId || !roomId) return null;
-
-        const sessionKey = `${roomId}:${sessionId}`;
-        const db = await openCryptoDB();
-
-        const sessionData = await new Promise((resolve) => {
-            const tx = db.transaction('megolm_sessions', 'readonly');
-            const req = tx.objectStore('megolm_sessions').get(sessionKey);
-            req.onsuccess = () => resolve(req.result || null);
-            req.onerror = () => resolve(null);
-        });
-
-        if (!sessionData) {
-            console.log('[SW] No stored session for', sessionKey);
-            return null;
-        }
-
-        // --- Future: Full Megolm JS/WASM path ---
-        // if (typeof Olm !== 'undefined') { ... }
-
-        return null; // For now, we still need the app open for direct Megolm
-    } catch (e) {
-        console.error('[SW] tryDecryptWithStoredSession error:', e);
-        return null;
-    }
-}
-
 async function fetchAndDecryptMatrixEvent(roomId, eventId) {
     try {
-        // 1. Check decrypted event cache first (populated by app when open)
+        // 1. Check the decrypted event cache (written by the app when it WAS open)
         const cached = await getDecryptedEventCache(eventId);
         if (cached) {
-            console.log('[SW] Using cached decrypted content for', eventId);
+            console.log('[SW] Cache hit for', eventId);
             return cached;
         }
 
         const { accessToken, homeserverUrl } = await getSwMatrixAuth();
         if (!accessToken || !homeserverUrl) return null;
 
-        // Fetch the event from the homeserver
+        // 2. Fetch the raw event from the homeserver
         const url = `${homeserverUrl}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/event/${encodeURIComponent(eventId)}`;
         const response = await fetch(url, {
-            headers: { 'Authorization': `Bearer ${accessToken}` }
+            headers: { Authorization: `Bearer ${accessToken}` }
         });
-
         if (!response.ok) return null;
         const event = await response.json();
 
-        // If it's not encrypted, just return the content
+        // 3. If it came back unencrypted (non-E2EE room), use it directly
         if (event.type !== 'm.room.encrypted') return event.content;
 
-        // 2. Try open windows (app is open path)
+        // 4. App is open — ask a window to decrypt it
         const clients = await sw.clients.matchAll({ type: 'window' });
-        
         if (clients.length > 0) {
-            // Race all open windows for the decryption
-            const decryptionPromises = clients.map(client => {
-                return new Promise((resolve) => {
+            const decryptionPromises = clients.map(client =>
+                new Promise(resolve => {
                     const channel = new MessageChannel();
-                    channel.port1.onmessage = (msg) => {
-                        if (msg.data.decrypted) resolve(msg.data.decrypted);
-                        else resolve(null);
-                    };
-                    client.postMessage({
-                        type: 'DECRYPT_EVENT',
-                        event
-                    }, [channel.port2]);
-
-                    // Individual client timeout
+                    channel.port1.onmessage = msg => resolve(msg.data?.decrypted || null);
+                    client.postMessage({ type: 'DECRYPT_EVENT', event }, [channel.port2]);
                     setTimeout(() => resolve(null), 2000);
-                });
-            });
+                })
+            );
 
-            // Add a global timeout promise
-            const globalTimeout = new Promise(resolve => setTimeout(() => resolve(null), 2500));
-
-            const result = await Promise.race([
-                ...decryptionPromises,
-                globalTimeout
+            const results = await Promise.race([
+                Promise.all(decryptionPromises),
+                new Promise(resolve => setTimeout(() => resolve([]), 2500))
             ]);
 
-            if (result) {
-                // Cache it for next time app is closed
-                await cacheDecryptedEventInSw(eventId, result);
-                return result;
-            }
+            const decrypted = Array.isArray(results)
+                ? results.find(r => !!r)
+                : results;
 
-            // Fallback: Filter for any truthy results
-            const allResults = await Promise.all(decryptionPromises);
-            const successfulResult = allResults.find(r => !!r);
-            if (successfulResult) {
-                await cacheDecryptedEventInSw(eventId, successfulResult);
-                return successfulResult;
+            if (decrypted) {
+                await cacheDecryptedEventInSw(eventId, decrypted);
+                return decrypted;
             }
         }
 
-        // 3. App is closed — try megolm session from IDB
-        const standaloneDecrypted = await tryDecryptWithStoredSession(event);
-        if (standaloneDecrypted) return standaloneDecrypted;
+        // 5. App is closed and event is encrypted — return null gracefully
+        // The push handler will fall back to showing sender name only.
+        console.log('[SW] App closed, cannot decrypt E2EE event', eventId);
+        return null;
 
-        throw new Error('No active window could decrypt the event');
     } catch (e) {
         console.error('[SW] fetchAndDecryptMatrixEvent error:', e);
         return null;

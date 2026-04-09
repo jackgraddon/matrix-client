@@ -235,47 +235,6 @@ onMounted(async () => {
     store.checkPendingShare();
   }
 
-  // Service Worker Decryption Handler
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.addEventListener('message', async (event) => {
-      if (event.data?.type === 'DECRYPT_EVENT') {
-        const { event: matrixEventData } = event.data;
-        if (!store.client) {
-            console.warn('[App] Service worker requested decryption but client not initialized');
-            event.ports[0]?.postMessage({ decrypted: null });
-            return;
-        }
-
-        try {
-          console.log('[App] Decrypting Matrix event for Service Worker:', matrixEventData.event_id);
-          const sdkEvent = new sdk.MatrixEvent(matrixEventData);
-          await sdkEvent.attemptDecryption(store.client.getCrypto() as any);
-          const content = sdkEvent.getClearContent();
-
-          if (content && matrixEventData.event_id) {
-            const { cacheDecryptedEvent } = await import('~/utils/crypto-db');
-            await cacheDecryptedEvent(matrixEventData.event_id, content);
-          }
-
-          // Mark this event as displayed to prevent the app from showing a duplicate notification
-          // if it happens to be syncing this event at the same time.
-          if (matrixEventData.event_id) {
-            if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-              navigator.serviceWorker.controller.postMessage({
-                type: 'MARK_EVENT_DISPLAYED',
-                eventId: matrixEventData.event_id
-              });
-            }
-          }
-
-          event.ports[0]?.postMessage({ decrypted: content });
-        } catch (e) {
-          console.error('[App] Background decryption failed:', e);
-          event.ports[0]?.postMessage({ decrypted: null });
-        }
-      }
-    });
-  }
 
   // Debug: Looping console log for active user presence
   // let debugInterval: ReturnType<typeof setInterval>;

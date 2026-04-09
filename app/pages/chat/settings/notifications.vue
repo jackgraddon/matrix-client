@@ -40,6 +40,21 @@
         </div>
         <UiSwitch v-model="showContent" />
       </div>
+      <div v-if="pushEnabled && showContent && !isTauri"
+           class="rounded-lg border bg-blue-500/10 border-blue-500/20 p-4">
+          <div class="flex items-center gap-2 text-blue-600 dark:text-blue-400">
+              <Icon name="solar:lock-bold" class="h-5 w-5" />
+              <p class="text-sm font-medium">E2EE Notification Behaviour</p>
+          </div>
+          <p class="text-xs text-muted-foreground leading-relaxed mt-1">
+              In encrypted rooms, message content appears in notifications when the app
+              is open or recently used. When the app is fully closed, notifications will
+              show the sender's name only — this is by design to protect your encryption keys.
+              For full background notifications, use the
+              <strong>desktop app</strong>.
+          </p>
+      </div>
+
       <div v-if="!isTauri" class="rounded-lg border p-4 space-y-4">
           <div class="flex items-center gap-3">
               <Icon name="solar:server-bold" class="h-5 w-5 text-muted-foreground" />
