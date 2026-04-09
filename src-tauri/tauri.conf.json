@@ -24,7 +24,8 @@
         "decorations": true,
         "hiddenTitle": true,
         "titleBarStyle": "Overlay",
-        "visible": true
+        "visible": true,
+        "theme": null
       },
       {
         "label": "guard",
@@ -33,7 +34,8 @@
         "height": 0,
         "visible": false,
         "decorations": false,
-        "skipTaskbar": true
+        "skipTaskbar": true,
+        "theme": null
       }
     ],
     "security": {

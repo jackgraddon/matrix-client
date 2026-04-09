@@ -160,10 +160,38 @@ pub fn run() {
             // rsRPC
             start_rsrpc_server,
             stop_rsrpc_server,
-            is_failover,
-            get_cli_args
+            get_cli_args,
+            get_os_theme
         ])
         .setup(move |app| {
+            // dark_light::subscribe does not exist in the published crate, and
+            // dark_light::detect() misses Control Center toggles on macOS because
+            // those update NSApplication.effectiveAppearance rather than the
+            // AppleInterfaceStyle UserDefaults key. Shelling out to `defaults read`
+            // reads the live value and catches all theme change paths.
+            let app_handle = app.handle().clone();
+            std::thread::spawn(move || {
+                fn read_macos_theme() -> &'static str {
+                    let is_dark = std::process::Command::new("defaults")
+                        .args(["read", "-g", "AppleInterfaceStyle"])
+                        .output()
+                        .map(|o| String::from_utf8_lossy(&o.stdout).trim().eq_ignore_ascii_case("dark"))
+                        .unwrap_or(false);
+                    if is_dark { "dark" } else { "light" }
+                }
+
+                let mut last_theme = read_macos_theme();
+                loop {
+                    std::thread::sleep(std::time::Duration::from_millis(500));
+                    let theme = read_macos_theme();
+                    if theme != last_theme {
+                        last_theme = theme;
+                        log::info!("[theme] OS theme changed: {}", theme);
+                        let _ = app_handle.emit("os-theme-changed", theme);
+                    }
+                }
+            });
+
             let window = app.get_webview_window("main").unwrap();
             
             // Register the main window in our generalized manager to ensure longevity
@@ -664,6 +692,16 @@ fn is_failover(state: tauri::State<'_, FailoverState>) -> bool {
 #[tauri::command]
 fn get_cli_args(state: tauri::State<'_, CliArgs>) -> bool {
     state.minimized
+}
+
+#[tauri::command]
+fn get_os_theme() -> String {
+    let is_dark = std::process::Command::new("defaults")
+        .args(["read", "-g", "AppleInterfaceStyle"])
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().eq_ignore_ascii_case("dark"))
+        .unwrap_or(false);
+    if is_dark { "dark".to_string() } else { "light".to_string() }
 }
 
 #[tauri::command]

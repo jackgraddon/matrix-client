@@ -71,6 +71,7 @@ import { toast } from 'vue-sonner';
 const { $isTauri: isTauri } = useNuxtApp();
 const colorMode = useColorMode();
 const store = useMatrixStore();
+const { applyTauriTheme } = useTauriTheme();
 
 // Dynamic theme-color meta tag for PWA/Mobile
 // We precisely match the oklch(0.96 0 0) (#f5f5f5) and oklch(0 0 0) (#000000)
@@ -122,6 +123,9 @@ onMounted(async () => {
   }
 
   if (isTauri) {
+    // Sync theme with Tauri's native API on startup
+    await applyTauriTheme();
+
     // Check for failover flag from Rust via Tauri command
     try {
       const { invoke } = await import('@tauri-apps/api/core');
@@ -252,12 +256,12 @@ onMounted(async () => {
   //   }, 10000); // Every 10 seconds
   // }
 
-  onBeforeUnmount(() => {
-    window.removeEventListener('mousemove', resetIdleTimer);
-    window.removeEventListener('keydown', resetIdleTimer);
-    clearTimeout(idleTimer);
-    // if (debugInterval) clearInterval(debugInterval);
-  });
+    onBeforeUnmount(() => {
+      window.removeEventListener('mousemove', resetIdleTimer);
+      window.removeEventListener('keydown', resetIdleTimer);
+      clearTimeout(idleTimer);
+      // if (debugInterval) clearInterval(debugInterval);
+    });
 });
 </script>
 
