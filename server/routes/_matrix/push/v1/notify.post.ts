@@ -190,7 +190,7 @@ function getMessageSummary(content: any) {
 
     // Handle encrypted messages
     if (content.msgtype === undefined && content.algorithm) {
-        return 'Encrypted message';
+        return 'New encrypted message';
     }
 
     switch (content.msgtype) {

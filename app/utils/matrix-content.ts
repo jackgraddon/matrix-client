@@ -7,7 +7,7 @@ export function getMessageSummary(content: any): string {
 
     // Handle encrypted messages (Matrix doesn't send content for these usually in push)
     if (content.msgtype === undefined && content.algorithm) {
-        return 'Encrypted message';
+        return 'New encrypted message';
     }
 
     // Custom game state events

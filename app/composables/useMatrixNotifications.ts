@@ -28,7 +28,7 @@ export function useMatrixNotifications() {
                 });
             } else {
                 await sendTauriNotification({
-                    title: 'New message',
+                    title: 'New Message',
                     body:  'Tap to read',
                     roomId: room.roomId,
                     eventId: event.getId()!,
