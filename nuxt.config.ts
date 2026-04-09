@@ -1,4 +1,10 @@
-import { resolve } from 'node:path'
+import { resolve, dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import process from 'node:process'
+
+import { defineNuxtConfig } from 'nuxt/config'
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
 
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
@@ -162,86 +168,10 @@ export default defineNuxtConfig({
     'shadcn-nuxt',
     '@nuxtjs/tailwindcss',
     '@nuxtjs/color-mode',
-    '@vite-pwa/nuxt'
   ],
 
-  pwa: {
-    strategies: 'injectManifest',
-    filename: 'sw.js',
-    registerType: 'prompt',
-    injectRegister: 'script',
-    manifest: {
-      name: 'Tumult',
-      short_name: 'Tumult',
-      description: 'Own your noise. A smart, rebellious friend for your conversations.',
-      theme_color: '#000000',
-      background_color: '#000000',
-      display: 'standalone',
-      orientation: 'any',
-      scope: '/',
-      start_url: '/',
-      categories: ['social', 'chat', 'communications'],
-      share_target: {
-        action: '/share-target',
-        method: 'POST',
-        enctype: 'multipart/form-data',
-        params: {
-          title: 'title',
-          text: 'text',
-          url: 'url',
-          files: [
-            {
-              name: 'media',
-              accept: ['image/*', 'video/*', 'audio/*', 'application/pdf', '.txt']
-            }
-          ]
-        }
-      },
-      icons: [
-        {
-          src: 'pwa-64x64.png',
-          sizes: '64x64',
-          type: 'image/png'
-        },
-        {
-          src: 'pwa-192x192.png',
-          sizes: '192x192',
-          type: 'image/png',
-          purpose: 'any maskable'
-        },
-        {
-          src: 'pwa-512x512.png',
-          sizes: '512x512',
-          type: 'image/png',
-          purpose: 'any maskable'
-        }
-      ]
-    },
-    workbox: {
-      globPatterns: ['**/*.{js,css,html,png,svg,ico}'],
-      maximumFileSizeToCacheInBytes: 5000000,
-    },
-    injectManifest: {
-      swSrc: resolve('public/sw.js'),
-      globPatterns: ['**/*.{js,css,html,png,svg,ico}'],
-      maximumFileSizeToCacheInBytes: 5000000,
-    },
-    client: {
-      installPrompt: true,
-    },
-    devOptions: {
-      enabled: false,
-      suppressWarnings: true,
-      navigateFallback: '/',
-      navigateFallbackAllowlist: [new RegExp('^\\/$')],
-      type: 'module',
-    },
-  },
-
   typescript: {
-    tsConfig: {
-      include: ['./app/declarations.d.ts']
-    }
+    shim: false
   },
 
   colorMode: {
