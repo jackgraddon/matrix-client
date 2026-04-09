@@ -170,8 +170,8 @@ jobs:
               }
             };
 
-            fs.mkdirSync('app/public', { recursive: true });
-            fs.writeFileSync('app/public/update.json', JSON.stringify(data, null, 2));
+            fs.mkdirSync('public', { recursive: true });
+            fs.writeFileSync('public/update.json', JSON.stringify(data, null, 2));
             console.log('update.json written for version ' + version);
             console.log('  macOS asset  : ' + macAsset);
             console.log('  Windows asset: ' + winAsset);
@@ -182,7 +182,7 @@ jobs:
         run: |
           git config --global user.name  "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add app/public/update.json
+          git add public/update.json
           # Only commit if the file actually changed
           if git diff --cached --quiet; then
             echo "update.json unchanged, nothing to commit."

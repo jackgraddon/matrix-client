@@ -59,12 +59,20 @@
 
 <script setup lang="ts">
 import { useMatrixStore } from '~/stores/matrix';
-import packageJson from '~/../package.json';
 
 const store = useMatrixStore();
 const config = useRuntimeConfig();
-const version = packageJson.version;
 const buildDate = config.public.buildDate;
+
+const version = ref('');
+onMounted(async () => {
+  if (process.client && (window as any).__TAURI_INTERNALS__) {
+    const { getVersion } = await import('@tauri-apps/api/app');
+    version.value = await getVersion();
+  } else {
+    version.value = '999.999.999';
+  }
+});
 
 const openUrl = async (url: string) => {
   if (process.client && (window as any).__TAURI_INTERNALS__) {
