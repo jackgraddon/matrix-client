@@ -112,7 +112,7 @@ const participants = shallowRef<Participant[]>([]);
 
 const gridDimensions = computed(() => {
   const count = participants.value.length;
-  const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
+  const isMobile = import.meta.client && window.innerWidth < 768;
 
   if (count === 0) return { columns: 1, rows: 1 };
   if (count === 1) return { columns: 1, rows: 1 };
