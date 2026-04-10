@@ -161,18 +161,21 @@ function openUserProfileCard(event: MouseEvent, userId: string) {
   
   let pos: { top: string, right: string, left?: string };
 
-  if (window.innerWidth < 768) {
+  const innerWidth = import.meta.client ? window.innerWidth : 0;
+  const innerHeight = import.meta.client ? window.innerHeight : 0;
+
+  if (innerWidth < 768) {
     // On mobile, center the card on the screen
     pos = {
-      top: `${(window.innerHeight - estimatedCardHeight) / 2}px`,
-      left: `${(window.innerWidth - estimatedCardWidth) / 2}px`,
+      top: `${(innerHeight - estimatedCardHeight) / 2}px`,
+      left: `${(innerWidth - estimatedCardWidth) / 2}px`,
       right: 'auto'
     };
   } else {
     // On desktop, spawn to the left of the sidebar
     pos = {
-      top: `${Math.min(rect.top, window.innerHeight - estimatedCardHeight - 20)}px`,
-      right: `${window.innerWidth - rect.left + spacingGap}px`,
+      top: `${Math.min(rect.top, innerHeight - estimatedCardHeight - 20)}px`,
+      right: `${innerWidth - rect.left + spacingGap}px`,
       left: 'auto'
     };
   }
