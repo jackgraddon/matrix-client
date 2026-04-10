@@ -42,5 +42,5 @@ futures-util = "0.3"
 dark-light = "1.1"
 
 [target.'cfg(windows)'.dependencies]
-tauri-plugin-decorum = "1.1.1"
+tauri-plugin-frame = "1.1.6"
 windows-sys = { version = "0.59", features = ["Win32_UI_WindowsAndMessaging", "Win32_Foundation", "Win32_System_Threading"] }
