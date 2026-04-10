@@ -12,7 +12,7 @@ use tauri_plugin_shell::ShellExt;
 use tokio::sync::Notify;
 use tauri_plugin_store::StoreExt;
 #[cfg(target_os = "windows")]
-use tauri_plugin_decorum::WebviewWindowExt;
+use tauri_plugin_frame::WebviewWindowExt;
 
 mod game_scanner;
 
@@ -125,7 +125,7 @@ pub fn run() {
     let builder = tauri::Builder::default();
 
     #[cfg(target_os = "windows")]
-    let builder = builder.plugin(tauri_plugin_decorum::init());
+    let builder = builder.plugin(tauri_plugin_frame::init());
 
     builder
         .plugin(tauri_plugin_os::init())
