@@ -1,19 +1,19 @@
 {
-  "version": "0.4.9-2",
-  "notes": "Release 0.4.9-2",
-  "pub_date": "2026-04-09T17:56:01Z",
+  "version": "0.4.10-1",
+  "notes": "Release 0.4.10-1",
+  "pub_date": "2026-04-10T20:18:55Z",
   "platforms": {
     "darwin-aarch64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSQTVYTXBHWDFSa21td2ZWS1NEdjVUWElHcVJtRGZMaUJjSUU2UjNMRUY2WFVBQjEvRHFlM1JiaDZRQml5UXU1WUtVaFA0OUpDaE5scFlrQWhjNW11d1B5SW81SDN5MmdJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc1NzU2ODk2CWZpbGU6VHVtdWx0LmFwcC50YXIuZ3oKN1U1ZmlpbXJDYzFQMjdiQ0xDT0pVL0RaaHVLTFcyZzJJU0N0UXg0L1FrZzF5RlRDcDVLcytUZjd2d1B6NUhaN3l2N2pVY2dhN0VZbzRWL0dhTE9xRFE9PQo=",
-      "url": "https://github.com/jackgraddon/tumult/releases/download/0.4.9-2/Tumult.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSQTVYTXBHWDFSa2tRNzNkcUdYRkZrSE5TbkZISGozUWo0MVhmNEtXTnBqenlCOGNNOW5jb1JhZU9ZYTJQRnJHcG9OWFplZ3BZSHNUcFlUQzlkYkxqVHZSRjZwOFJnTWdNPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc1ODUxODAyCWZpbGU6VHVtdWx0LmFwcC50YXIuZ3oKY0NRNExUT2lxWkY5RFpqb3NGZGROUDhHR0dVM1ZMTUl1ZTU0czZkTHRFYUFoRnNZNVJVdHR5S0RVYU5PajdDWHJmWVJmekRoWXo4V0J2am1QYWw2Q2c9PQo=",
+      "url": "https://github.com/jackgraddon/tumult/releases/download/0.4.10-1/Tumult.app.tar.gz"
     },
     "darwin-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSQTVYTXBHWDFSa21td2ZWS1NEdjVUWElHcVJtRGZMaUJjSUU2UjNMRUY2WFVBQjEvRHFlM1JiaDZRQml5UXU1WUtVaFA0OUpDaE5scFlrQWhjNW11d1B5SW81SDN5MmdJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc1NzU2ODk2CWZpbGU6VHVtdWx0LmFwcC50YXIuZ3oKN1U1ZmlpbXJDYzFQMjdiQ0xDT0pVL0RaaHVLTFcyZzJJU0N0UXg0L1FrZzF5RlRDcDVLcytUZjd2d1B6NUhaN3l2N2pVY2dhN0VZbzRWL0dhTE9xRFE9PQo=",
-      "url": "https://github.com/jackgraddon/tumult/releases/download/0.4.9-2/Tumult.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSQTVYTXBHWDFSa2tRNzNkcUdYRkZrSE5TbkZISGozUWo0MVhmNEtXTnBqenlCOGNNOW5jb1JhZU9ZYTJQRnJHcG9OWFplZ3BZSHNUcFlUQzlkYkxqVHZSRjZwOFJnTWdNPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc1ODUxODAyCWZpbGU6VHVtdWx0LmFwcC50YXIuZ3oKY0NRNExUT2lxWkY5RFpqb3NGZGROUDhHR0dVM1ZMTUl1ZTU0czZkTHRFYUFoRnNZNVJVdHR5S0RVYU5PajdDWHJmWVJmekRoWXo4V0J2am1QYWw2Q2c9PQo=",
+      "url": "https://github.com/jackgraddon/tumult/releases/download/0.4.10-1/Tumult.app.tar.gz"
     },
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSQTVYTXBHWDFSa21LSXZsWlpzWWFLNlp2VXgzRTdjMDk3aUg1TG13aSsxVlNkbmYyNEgxRU9vSGdtZ1QzK3QxT3RWTG55c3RhbFg2KzFkSnJLb2s0N3NNMzVOT2wvRkF3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc1NzU3MzI4CWZpbGU6VHVtdWx0XzAuNC45LTJfeDY0X2VuLVVTLm1zaQpmZ0ZJMUhyVjFOWlhCSjNFdTVQSW1vOVJ3Z25VU3ZXQmV6V3pKYUtKcHY2dWhQdnppekt3YmszaTdFVGc1WmJoaUNpUWNSd0pXNzZJZkVTQ3F3M2lEQT09Cg==",
-      "url": "https://github.com/jackgraddon/tumult/releases/download/0.4.9-2/Tumult_0.4.9-2_x64_en-US.msi"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSQTVYTXBHWDFSa3U2Y2xlN1BXdkVvdFh1T0ZYcWU1eEV4Q0VMb2xyTk9Yem5rNCt3TE1zV2ljblBhSkRWM3BjRnBLZ01VU2tIUFNLbEZaL25RRDFBeSswOHg4QjhqZEFrPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc1ODUyMzA1CWZpbGU6VHVtdWx0XzAuNC4xMC0xX3g2NF9lbi1VUy5tc2kKclIyL1BscUM5TmcvV3lJU0hMWWV3K0M3dHdpSVBJaHBiMFVyaTNJWUZWM3QwN1JBQzhidll0MDlrTVJxTXNLcTdiNFpEWEJIeVBreE14Umt0ZWV4RGc9PQo=",
+      "url": "https://github.com/jackgraddon/tumult/releases/download/0.4.10-1/Tumult_0.4.10-1_x64_en-US.msi"
     }
   }
 }
