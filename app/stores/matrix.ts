@@ -1272,13 +1272,6 @@ export const useMatrixStore = defineStore('matrix', {
         isCriticalChange = true;
       }
 
-      // Save to account data on every critical change, BEFORE the presence throttle check.
-      // The account data write is for own-device sync; it is not rate-limited by the
-      // homeserver and should not be gated on the same timer used to throttle m.presence events.
-      if (isCriticalChange) {
-        this.saveActivityToAccountData();
-      }
-
       const now = Date.now();
       const throttleMs = 20 * 1000; // 20 seconds
 
@@ -1298,6 +1291,11 @@ export const useMatrixStore = defineStore('matrix', {
         await this.client.setPresence({ presence: presence as any, status_msg });
         this.lastPresenceUpdate = now;
         this.lastPresenceState = { presence, status_msg };
+
+        // Also sync rich activity to account data for other sessions of the SAME user
+        if (stateChanged) {
+          this.saveActivityToAccountData();
+        }
       } catch (err: any) {
         if (err?.errcode === 'M_LIMIT_EXCEEDED') {
           console.warn('[MatrixStore] Presence update rate limited by server');
@@ -2330,12 +2328,7 @@ export const useMatrixStore = defineStore('matrix', {
         }
         if (event.getType() === 'cc.jackg.ruby.pinned_spaces') this.updatePinnedSpaces();
         if (event.getType() === 'cc.jackg.ruby.ui_order') this.loadUIOrderFromAccountData();
-        if (event.getType() === 'cc.jackg.tumult.activity_details') {
-          // Pass the incoming event's content directly to avoid reading the stale SDK cache.
-          // The cache is updated AFTER this handler returns.
-          const content = event.getContent();
-          this.loadRichActivityFromAccountData(content);
-        }
+        if (event.getType() === 'cc.jackg.tumult.activity_details') this.loadRichActivityFromAccountData();
         if (event.getType() === 'cc.tumult.jellyfin.config') this.loadJellyfinConfigFromAccountData();
       });
       // Listen for parent/child changes
@@ -2544,64 +2537,58 @@ export const useMatrixStore = defineStore('matrix', {
       }
     },
 
-    async loadRichActivityFromAccountData(content?: Record<string, any>) {
+    async loadRichActivityFromAccountData() {
       if (!this.client) return;
       const userId = this.client.getUserId();
       if (!userId) return;
 
-      // Use the provided content if available (live from event), otherwise fall back to
-      // the SDK cache. The cache is only guaranteed to be current after the event handler
-      // returns, not during it.
-      let resolvedContent = content;
-      if (!resolvedContent) {
-        const event = (this.client as any).getAccountData('cc.jackg.tumult.activity_details');
-        if (!event) return;
-        resolvedContent = event.getContent();
-      }
+      const event = (this.client as any).getAccountData('cc.jackg.tumult.activity_details');
+      if (event) {
+        const content = event.getContent();
+        if (content && typeof content === 'object') {
+          // Map of deviceId -> { game, music } OR deviceId -> Activity (legacy)
+          let activities: Record<string, any> = {};
 
-      if (!resolvedContent || typeof resolvedContent !== 'object') return;
-
-      // Map of deviceId -> { game, music } OR deviceId -> Activity (legacy)
-      let activities: Record<string, any> = {};
-
-      if (resolvedContent.is_running !== undefined) {
-        activities['legacy'] = resolvedContent;
-      } else {
-        activities = resolvedContent;
-      }
-
-      let bestGame: any = null;
-      let bestMusic: any = null;
-      const currentDeviceId = this.client.getDeviceId();
-
-      for (const [deviceId, data] of Object.entries(activities)) {
-        if (deviceId === currentDeviceId) continue;
-
-        // Handle nested format { game, music }
-        if (data.game || data.music) {
-          if (data.game?.is_running && (!bestGame || (data.game.last_updated || 0) > (bestGame.last_updated || 0))) {
-            bestGame = data.game;
-          }
-          if (data.music?.is_running && (!bestMusic || (data.music.last_updated || 0) > (bestMusic.last_updated || 0))) {
-            bestMusic = data.music;
-          }
-        } else if (data.is_running) {
-          // Handle legacy single-activity format
-          if (data.type === 'music') {
-            if (!bestMusic || (data.last_updated || 0) > (bestMusic.last_updated || 0)) bestMusic = data;
+          if (content.is_running !== undefined) {
+            activities['legacy'] = content;
           } else {
-            if (!bestGame || (data.last_updated || 0) > (bestGame.last_updated || 0)) bestGame = data;
+            activities = content;
           }
+
+          let bestGame: any = null;
+          let bestMusic: any = null;
+          const currentDeviceId = this.client.getDeviceId();
+
+          for (const [deviceId, data] of Object.entries(activities)) {
+            if (deviceId === currentDeviceId) continue;
+
+            // Handle nested format { game, music }
+            if (data.game || data.music) {
+              if (data.game?.is_running && (!bestGame || (data.game.last_updated || 0) > (bestGame.last_updated || 0))) {
+                bestGame = data.game;
+              }
+              if (data.music?.is_running && (!bestMusic || (data.music.last_updated || 0) > (bestMusic.last_updated || 0))) {
+                bestMusic = data.music;
+              }
+            } else if (data.is_running) {
+              // Handle legacy single-activity format
+              if (data.type === 'music') {
+                if (!bestMusic || (data.last_updated || 0) > (bestMusic.last_updated || 0)) bestMusic = data;
+              } else {
+                if (!bestGame || (data.last_updated || 0) > (bestGame.last_updated || 0)) bestGame = data;
+              }
+            }
+          }
+
+          this.remoteActivityDetails[userId] = {
+            game: bestGame,
+            music: bestMusic
+          };
+
+          this.gameTrigger++;
+          this.refreshPresence();
         }
       }
-
-      this.remoteActivityDetails[userId] = {
-        game: bestGame,
-        music: bestMusic
-      };
-
-      this.gameTrigger++;
-      this.refreshPresence();
     },
 
     async saveActivityToAccountData() {
