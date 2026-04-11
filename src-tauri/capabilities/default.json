@@ -50,6 +50,13 @@
     "autostart:default",
     "autostart:allow-enable",
     "autostart:allow-disable",
-    "autostart:allow-is-enabled"
+    "autostart:allow-is-enabled",
+    "stronghold:default",
+    "stronghold:allow-load-client",
+    "stronghold:allow-load-stronghold",
+    "stronghold:allow-save-stronghold",
+    "stronghold:allow-get-store-entry",
+    "stronghold:allow-insert-store-entry",
+    "stronghold:allow-remove-store-entry"
   ]
 }

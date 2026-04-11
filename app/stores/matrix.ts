@@ -12,6 +12,8 @@ import { decodeRecoveryKey } from 'matrix-js-sdk/lib/crypto-api/recovery-key';
 import type { IdTokenClaims } from 'oidc-client-ts';
 import { getPendingShare, clearPendingShare } from '~/utils/crypto-db';
 import { getOidcConfig, registerClient, getLoginUrl, completeLoginFlow, getHomeserverUrl, getDeviceDisplayName } from '~/utils/matrix-auth';
+import { getSecureStore } from '~/lib/secure-store';
+import { fromBase64, toBase64, isTauri } from '~/utils/base64';
 import { MsgType, EventType, IndexedDBStore, IndexedDBCryptoStore, MemoryStore, LocalStorageCryptoStore } from 'matrix-js-sdk';
 import { useRouter } from '#app';
 import { useVoiceStore } from './voice';
@@ -210,35 +212,41 @@ function generateNonce(): string {
 // Outside your Pinia store, create a memory cache
 const secretStorageKeys = new Map<string, Uint8Array<ArrayBuffer>>();
 
-// Helper to persist keys to localStorage (encoded as Base64)
-function persistSecretStorageKey(keyId: string, privateKey: Uint8Array) {
+// Helper to persist keys to SecureStore (encoded as Base64)
+async function persistSecretStorageKey(keyId: string, privateKey: Uint8Array) {
   if (typeof window === 'undefined') return;
   try {
-    const base64 = btoa(String.fromCharCode(...privateKey));
-    localStorage.setItem(`matrix_ssss_key_${keyId}`, base64);
-    console.log(`[SecretStorage] Persisted key ${keyId} to localStorage`);
+    const secureStore = await getSecureStore();
+    const base64 = toBase64(privateKey);
+    await secureStore.set(`matrix_ssss_key_${keyId}`, base64);
+    console.log(`[SecretStorage] Persisted key ${keyId} to SecureStore`);
   } catch (err) {
     console.warn('[SecretStorage] Failed to persist key:', err);
   }
 }
 
-// Helper to load persisted keys from localStorage
-function loadPersistedSecretStorageKeys() {
+// Helper to load persisted keys from SecureStore
+async function loadPersistedSecretStorageKeys() {
   if (typeof window === 'undefined') return;
   try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key?.startsWith('matrix_ssss_key_')) {
-        const keyId = key.replace('matrix_ssss_key_', '');
-        const base64 = localStorage.getItem(key);
-        if (base64) {
-          const binaryString = atob(base64);
-          const bytes = new Uint8Array(binaryString.length);
-          for (let j = 0; j < binaryString.length; j++) {
-            bytes[j] = binaryString.charCodeAt(j);
+    const secureStore = await getSecureStore();
+
+    if (isTauri) {
+      // For Tauri, we don't have a list of keys, but we can try to get the default key if we know it
+      // Actually, it's better to let the cryptoCallbacks.getSecretStorageKey handle it on-demand
+      // since Stronghold doesn't expose a 'list' of keys easily.
+      console.log('[SecretStorage] Tauri: Will load keys on-demand from Stronghold');
+    } else {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key?.startsWith('matrix_ssss_key_')) {
+          const keyId = key.replace('matrix_ssss_key_', '');
+          const base64 = localStorage.getItem(key);
+          if (base64) {
+            const bytes = fromBase64(base64);
+            secretStorageKeys.set(keyId, bytes as Uint8Array<ArrayBuffer>);
+            console.log(`[SecretStorage] Loaded persisted key ${keyId} from localStorage`);
           }
-          secretStorageKeys.set(keyId, bytes as Uint8Array<ArrayBuffer>);
-          console.log(`[SecretStorage] Loaded persisted key ${keyId}`);
         }
       }
     }
@@ -1791,7 +1799,7 @@ export const useMatrixStore = defineStore('matrix', {
       });
 
       // Load persisted SSSS keys before starting
-      loadPersistedSecretStorageKeys();
+      await loadPersistedSecretStorageKeys();
 
       // 1.1 Request persistent storage (iOS/PWA optimization)
       if (typeof navigator !== 'undefined' && navigator.storage && navigator.storage.persist) {
@@ -1832,6 +1840,22 @@ export const useMatrixStore = defineStore('matrix', {
             const cachedKeyId = keyIds.find(id => secretStorageKeys.has(id));
             if (cachedKeyId) {
               return [cachedKeyId, secretStorageKeys.get(cachedKeyId)!] as [string, Uint8Array<ArrayBuffer>];
+            }
+
+            // Try to load from SecureStore before prompting
+            try {
+              const secureStore = await getSecureStore();
+              for (const id of keyIds) {
+                const base64 = await secureStore.get(`matrix_ssss_key_${id}`);
+                if (base64) {
+                  const bytes = fromBase64(base64);
+                  secretStorageKeys.set(id, bytes as Uint8Array<ArrayBuffer>);
+                  console.log(`[SecretStorage] Loaded key ${id} from SecureStore`);
+                  return [id, bytes as Uint8Array<ArrayBuffer>];
+                }
+              }
+            } catch (err) {
+              console.warn('[SecretStorage] Failed to load from SecureStore:', err);
             }
 
             // Suppress automatic modal on refresh if we are already verified and cross-signing is ready.

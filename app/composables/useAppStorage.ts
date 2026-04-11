@@ -29,10 +29,9 @@
  */
 
 import type { LazyStore } from '@tauri-apps/plugin-store';
+import { isTauri, toBase64, fromBase64 } from '~/utils/base64';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-const isTauri = import.meta.client && !!(window as any).__TAURI_INTERNALS__;
 
 const DB_NAME = 'tumult-storage';
 const PREF_STORE = 'preferences';
@@ -163,17 +162,6 @@ async function getSecretStore(): Promise<LazyStore> {
     return _secretStore;
 }
 
-/** Base64 encode/decode helpers using browser APIs. */
-function toBase64(buf: ArrayBuffer): string {
-    return btoa(String.fromCharCode(...new Uint8Array(buf)));
-}
-
-function fromBase64(b64: string): Uint8Array {
-    const bin = atob(b64);
-    const bytes = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-    return bytes;
-}
 
 /**
  * Initialise the AES-256-GCM key. On first launch this generates a new key
@@ -287,10 +275,9 @@ async function _decrypt(blob: EncryptedBlob): Promise<string> {
 
 export async function setSecret(key: string, value: string): Promise<void> {
     if (isTauri) {
-        const store = await getSecretStore();
-        const encrypted = await _encrypt(value);
-        await store.set(key, encrypted);
-        await store.save();
+        const { getSecureStore } = await import('~/lib/secure-store');
+        const secureStore = await getSecureStore();
+        await secureStore.set(key, value);
     } else {
         try {
             const encrypted = await _encrypt(value);
@@ -302,10 +289,9 @@ export async function setSecret(key: string, value: string): Promise<void> {
 export async function getSecret(key: string): Promise<string | null> {
     if (isTauri) {
         try {
-            const store = await getSecretStore();
-            const blob = await store.get<EncryptedBlob>(key);
-            if (!blob || !blob.iv || !blob.ct) return null;
-            return await _decrypt(blob);
+            const { getSecureStore } = await import('~/lib/secure-store');
+            const secureStore = await getSecureStore();
+            return await secureStore.get(key);
         } catch (e) {
             console.warn(`[AppStorage] getSecret("${key}") failed:`, e);
             return null;
@@ -321,11 +307,11 @@ export async function getSecret(key: string): Promise<string | null> {
 export async function deleteSecrets(keys: string[]): Promise<void> {
     if (isTauri) {
         try {
-            const store = await getSecretStore();
+            const { getSecureStore } = await import('~/lib/secure-store');
+            const secureStore = await getSecureStore();
             for (const key of keys) {
-                await store.delete(key);
+                await secureStore.remove(key);
             }
-            await store.save();
         } catch (e) {
             console.warn('[AppStorage] deleteSecrets() failed:', e);
         }
