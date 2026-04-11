@@ -701,6 +701,8 @@ export const useMatrixStore = defineStore('matrix', {
       let game: any = null;
       let music: any = null;
 
+      const isTauri = (process as any).client && !!(window as any).__TAURI_INTERNALS__;
+
       // 1. Local data (highest priority for self)
       if (isSelf) {
         if (this.activityDetails?.is_running && this.activityDetails?.type !== 'music') {
@@ -738,7 +740,12 @@ export const useMatrixStore = defineStore('matrix', {
       }
 
       // 3. Presence fallback (if still missing)
-      if (!game || !music) {
+      // Special case: if we are on Tauri and we are self, we trust our local activityDetails.
+      // If activityDetails is null/not running, it means NO game is running on this device.
+      // We skip presence fallback for 'game' to prevent the "stuck activity" bug.
+      const shouldSkipGamePresenceFallback = isSelf && isTauri && this.gameDetectionLevel !== 'off';
+
+      if ((!game && !shouldSkipGamePresenceFallback) || !music) {
         let presenceMsg: string | undefined;
         if (isSelf && this.lastPresenceState !== null) {
           presenceMsg = this.lastPresenceState.status_msg;
@@ -1108,10 +1115,14 @@ export const useMatrixStore = defineStore('matrix', {
       // Update local remoteActivityDetails immediately to prevent stale fallbacks
       const userId = this.client?.getUserId();
       if (userId) {
+        if (!this.remoteActivityDetails[userId]) {
+          this.remoteActivityDetails[userId] = {};
+        }
+
         if (this.activityDetails) {
-          this.remoteActivityDetails[userId] = { ...this.activityDetails };
+          this.remoteActivityDetails[userId].game = { ...this.activityDetails };
         } else {
-          delete this.remoteActivityDetails[userId];
+          this.remoteActivityDetails[userId].game = null;
         }
       }
 
@@ -2535,38 +2546,45 @@ export const useMatrixStore = defineStore('matrix', {
       if (event) {
         const content = event.getContent();
         if (content && typeof content === 'object') {
-          // New format: Map of deviceId -> Activity
-          // Old format: Single Activity object
+          // Map of deviceId -> { game, music } OR deviceId -> Activity (legacy)
           let activities: Record<string, any> = {};
 
           if (content.is_running !== undefined) {
-            // Legacy format conversion
             activities['legacy'] = content;
           } else {
             activities = content;
           }
 
-          // Pick the "best" activity: most recent is_running one.
-          let bestActivity: any = null;
+          let bestGame: any = null;
+          let bestMusic: any = null;
           const currentDeviceId = this.client.getDeviceId();
 
-          for (const [deviceId, act] of Object.entries(activities)) {
-            // Ignore our own current device's synced data to avoid feedback loops
+          for (const [deviceId, data] of Object.entries(activities)) {
             if (deviceId === currentDeviceId) continue;
 
-            if (act && act.is_running) {
-              if (!bestActivity || (act.last_updated || 0) > (bestActivity.last_updated || 0)) {
-                bestActivity = act;
+            // Handle nested format { game, music }
+            if (data.game || data.music) {
+              if (data.game?.is_running && (!bestGame || (data.game.last_updated || 0) > (bestGame.last_updated || 0))) {
+                bestGame = data.game;
+              }
+              if (data.music?.is_running && (!bestMusic || (data.music.last_updated || 0) > (bestMusic.last_updated || 0))) {
+                bestMusic = data.music;
+              }
+            } else if (data.is_running) {
+              // Handle legacy single-activity format
+              if (data.type === 'music') {
+                if (!bestMusic || (data.last_updated || 0) > (bestMusic.last_updated || 0)) bestMusic = data;
+              } else {
+                if (!bestGame || (data.last_updated || 0) > (bestGame.last_updated || 0)) bestGame = data;
               }
             }
           }
 
-          if (bestActivity) {
-            this.remoteActivityDetails[userId] = { ...bestActivity };
-          } else {
-            // If no other devices are running anything, check if we had a legacy one or if we should clear
-            delete this.remoteActivityDetails[userId];
-          }
+          this.remoteActivityDetails[userId] = {
+            game: bestGame,
+            music: bestMusic
+          };
+
           this.gameTrigger++;
           this.refreshPresence();
         }
@@ -2593,11 +2611,15 @@ export const useMatrixStore = defineStore('matrix', {
         }
 
         // 2. Prepare our current activity
-        let myActivity: any = null;
+        let myGame: any = null;
+        let myMusic: any = null;
+
         if (this.activityDetails?.is_running) {
-          myActivity = { ...this.activityDetails };
-        } else if (this.musicActivity) {
-          myActivity = {
+          myGame = { ...this.activityDetails };
+        }
+
+        if (this.musicActivity) {
+          myMusic = {
             name: `${this.musicActivity.title} by ${this.musicActivity.artist}`,
             details: this.musicActivity.album,
             coverUrl: this.musicActivity.coverUrl,
@@ -2612,8 +2634,11 @@ export const useMatrixStore = defineStore('matrix', {
         }
 
         // 3. Update map
-        if (myActivity) {
-          activities[deviceId] = myActivity;
+        if (myGame || myMusic) {
+          activities[deviceId] = {
+            game: myGame,
+            music: myMusic
+          };
         } else {
           delete activities[deviceId];
         }
