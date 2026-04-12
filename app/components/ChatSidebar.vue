@@ -591,8 +591,6 @@ const friends = computed(() => {
   matrixStore.unreadTrigger;
   
   const { directMessages } = matrixStore.hierarchy;
-  const directEvent = matrixStore.client.getAccountData(EventType.Direct);
-  const directContent: Record<string, string[]> = directEvent ? directEvent.getContent() as Record<string, string[]> : {};
 
   // Filter out empty rooms unless the setting is enabled
   const filteredDMs = matrixStore.ui.showEmptyRooms
@@ -603,9 +601,8 @@ const friends = computed(() => {
     const mapped = mapRoom(room);
     
     // Robustly find the DM partner's user ID
-    // 1. Try account data (m.direct)
-    let dmUserId = Object.entries(directContent)
-      .find(([, ids]) => ids.includes(room.roomId))?.[0];
+    // 1. Try pre-calculated mapping from m.direct account data (O(1) lookup)
+    let dmUserId = matrixStore.roomToUserMap[room.roomId];
       
     // 2. Fallback: find the first member that isn't us
     if (!dmUserId && matrixStore.client) {

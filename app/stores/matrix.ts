@@ -345,6 +345,7 @@ export const useMatrixStore = defineStore('matrix', {
     lastPresenceUpdate: 0,
     lastPresenceState: null as { presence: string; status_msg: string } | null,
     directMessageMap: {} as Record<string, string>,
+    roomToUserMap: {} as Record<string, string>,
     matrixRTCBoundSessions: new Set<string>(),
 
     // Centralized UI State
@@ -2481,12 +2482,17 @@ export const useMatrixStore = defineStore('matrix', {
       if (!dmEvent) return;
       const content = dmEvent.getContent();
       const newMap: Record<string, string> = {};
+      const newRoomToUserMap: Record<string, string> = {};
       for (const [userId, roomIds] of Object.entries(content)) {
         if (Array.isArray(roomIds) && roomIds.length > 0) {
           newMap[userId] = roomIds[0];
+          roomIds.forEach(roomId => {
+            newRoomToUserMap[roomId] = userId;
+          });
         }
       }
       this.directMessageMap = newMap;
+      this.roomToUserMap = newRoomToUserMap;
     },
 
     async loadUIOrderFromAccountData() {
