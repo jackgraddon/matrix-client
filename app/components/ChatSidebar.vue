@@ -602,12 +602,10 @@ const friends = computed(() => {
   return filteredDMs.map(room => {
     const mapped = mapRoom(room);
     
-    // Robustly find the DM partner's user ID
-    // 1. Try account data (m.direct)
-    let dmUserId = Object.entries(directContent)
-      .find(([, ids]) => ids.includes(room.roomId))?.[0];
+    // Optimized DM partner lookup using O(1) store map
+    let dmUserId = matrixStore.roomToUserMap[room.roomId];
       
-    // 2. Fallback: find the first member that isn't us
+    // Fallback: find the first member that isn't us (only if map lookup fails)
     if (!dmUserId && matrixStore.client) {
         const myUserId = matrixStore.client.getUserId();
         const otherMember = room.getJoinedMembers().find(m => m.userId !== myUserId);
