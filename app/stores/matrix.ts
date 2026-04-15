@@ -340,6 +340,7 @@ export const useMatrixStore = defineStore('matrix', {
     lastVisitedRooms: { dm: null, rooms: null, spaces: {} } as LastVisitedRooms,
     hierarchyTrigger: 0,
     spaceHierarchies: {} as Record<string, any[]>,
+    spaceUnreadCounts: {} as Record<string, number>,
     isIdle: false,
     pinnedSpaces: [] as string[],
     lastPresenceUpdate: 0,
@@ -414,45 +415,8 @@ export const useMatrixStore = defineStore('matrix', {
       }, 0);
     },
     getSpaceUnreadCount: (state) => (spaceId: string): number => {
-      state.unreadTrigger; // trigger reactivity
-      if (!state.client) return 0;
-
-      const roomIds = new Set<string>();
-      const queue = [spaceId];
-      const visited = new Set<string>();
-
-      while (queue.length > 0) {
-        const currentId = queue.shift()!;
-        if (visited.has(currentId)) continue;
-        visited.add(currentId);
-
-        const room = state.client.getRoom(currentId);
-        if (!room) continue;
-
-        if (room.isSpaceRoom()) {
-          const children = room.currentState.getStateEvents('m.space.child');
-          children.forEach(ev => {
-            const content = ev.getContent();
-            if (content && Array.isArray(content.via) && content.via.length > 0) {
-              const childId = ev.getStateKey();
-              if (childId) queue.push(childId);
-            }
-          });
-        } else {
-          roomIds.add(currentId);
-        }
-      }
-
-      let total = 0;
-      roomIds.forEach(id => {
-        const room = state.client?.getRoom(id);
-        if (room && (room.getMyMembership() === 'join' || room.getMyMembership() === 'invite')) {
-          const count = room.getUnreadNotificationCount(state.unreadCountType) || 0;
-          const manual = state.manualUnread[id] ? 1 : 0;
-          total += Math.max(count, manual);
-        }
-      });
-      return total;
+      // Return cached value populated by calculateAllSpaceUnreadCounts()
+      return state.spaceUnreadCounts[spaceId] || 0;
     },
     getVoiceParticipants: (state) => (roomId: string) => {
       // Access hierarchyTrigger for reactivity
@@ -2076,6 +2040,7 @@ export const useMatrixStore = defineStore('matrix', {
 
           // Run post-sync tasks in background
           this.refreshPresence();
+          this.calculateAllSpaceUnreadCounts();
           this.forceRecalculateVoiceMemberships();
           this.checkSecretStorageSetup();
           // Note: cryptoReady is a local variable in initClient scope
@@ -2226,10 +2191,12 @@ export const useMatrixStore = defineStore('matrix', {
       // delivering dozens of stale membership events back-to-back).
       const debouncedHierarchyTrigger = useDebounceFn(() => {
         this.hierarchyTrigger++;
+        this.calculateAllSpaceUnreadCounts();
       }, 150);
 
       const debouncedUnreadTrigger = useDebounceFn(() => {
         this.unreadTrigger++;
+        this.calculateAllSpaceUnreadCounts();
       }, 200);
 
       this.client.on(sdk.RoomEvent.Receipt, () => {
@@ -2710,6 +2677,61 @@ export const useMatrixStore = defineStore('matrix', {
 
     updateHierarchy() {
       this.hierarchyTrigger++;
+    },
+
+    /**
+     * Optimised space unread count calculation.
+     * Uses an iterative BFS approach to traverse the hierarchy of all root and pinned spaces,
+     * caching the total unread counts to avoid O(N^2) work in the UI.
+     */
+    calculateAllSpaceUnreadCounts() {
+      if (!this.client || !this.isClientReady) return;
+
+      const newCounts: Record<string, number> = {};
+      const allSpaces = this.client.getRooms().filter(r => r.isSpaceRoom() && (r.getMyMembership() === 'join' || r.getMyMembership() === 'invite'));
+
+      for (const space of allSpaces) {
+        const spaceId = space.roomId;
+        let total = 0;
+        const roomIds = new Set<string>();
+        const queue = [spaceId];
+        const visited = new Set<string>();
+
+        while (queue.length > 0) {
+          const currentId = queue.shift()!;
+          if (visited.has(currentId)) continue;
+          visited.add(currentId);
+
+          const room = this.client.getRoom(currentId);
+          if (!room) continue;
+
+          if (room.isSpaceRoom()) {
+            const children = room.currentState.getStateEvents('m.space.child');
+            children.forEach(ev => {
+              const content = ev.getContent();
+              if (content && Array.isArray(content.via) && content.via.length > 0) {
+                const childId = ev.getStateKey();
+                if (childId) queue.push(childId);
+              }
+            });
+          } else {
+            roomIds.add(currentId);
+          }
+        }
+
+        roomIds.forEach(id => {
+          const room = this.client?.getRoom(id);
+          if (room && (room.getMyMembership() === 'join' || room.getMyMembership() === 'invite')) {
+            const count = room.getUnreadNotificationCount(this.unreadCountType) || 0;
+            const manual = this.manualUnread[id] ? 1 : 0;
+            total += Math.max(count, manual);
+          }
+        });
+
+        newCounts[spaceId] = total;
+      }
+
+      this.spaceUnreadCounts = newCounts;
     },
 
     showInviteNotification(room: sdk.Room) {
