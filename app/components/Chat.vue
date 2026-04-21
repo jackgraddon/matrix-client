@@ -169,7 +169,7 @@
                 <span class="text-sm font-bold text-foreground">{{ msg.senderName }}</span>
                 <span class="text-sm text-muted-foreground">started a voice call</span>
               </div>
-              <span class="text-[10px] text-muted-foreground">{{ formatTime(msg.timestamp) }}</span>
+              <span class="text-[10px] text-muted-foreground">{{ msg.formattedTime }}</span>
             </div>
             <div class="ml-4 pl-4 border-l border-border/50">
               <UiButton size="sm" variant="outline" class="h-8 rounded-full text-xs font-semibold hover:bg-green-500/10 hover:text-green-600 hover:border-green-500/30 transition-all px-4" @click="handleJoinCall(toRaw(room) as any)">
@@ -202,7 +202,7 @@
           >
             <!-- Avatar -->
             <MatrixAvatar 
-              v-if="!isPreviousSameSender(index)"
+              v-if="!msg.isSameSenderAsPrevious"
               :mxc-url="msg.avatarUrl" 
               :name="msg.senderName" 
               class="h-8 w-8 border hidden md:block"
@@ -217,7 +217,7 @@
                  (edited)
                </span>
                <span class="whitespace-nowrap">
-                 {{ formatTime(msg.timestamp) }}
+                 {{ msg.formattedTime }}
                </span>
             </div>
           </div>
@@ -231,7 +231,7 @@
             <div class="flex flex-col max-w-[90%] md:max-w-[75%] min-w-0 relative group/message order-1 md:order-none" :class="msg.isOwn ? 'items-end' : 'items-start'">
               <!-- Sender name (only for first in a group) -->
               <span
-                v-if="!msg.isOwn && !isPreviousSameSender(index)"
+                v-if="!msg.isOwn && !msg.isSameSenderAsPrevious"
                 class="text-xs font-medium text-muted-foreground mb-1 px-1"
               >
                 {{ msg.senderName }}
@@ -774,13 +774,15 @@ interface ChatMessage {
   isGameOver?: boolean;
   rawEvent?: MatrixEvent;
   roomId?: string;
+  isSameSenderAsPrevious?: boolean;
+  formattedTime?: string;
 }
 
 function getMatrixEvent(msg: ChatMessage): MatrixEvent | undefined {
   return msg.rawEvent;
 }
 
-const messages = ref<ChatMessage[]>([]);
+const messages = shallowRef<ChatMessage[]>([]);
 const newMessage = computed({
   get: () => store.ui.composerStates[roomId.value ?? '']?.text || '',
   set: (val: string) => {
@@ -824,11 +826,9 @@ const roomId = computed(() => {
 
 // Create a reactive, newest-first array for the template
 const displayMessages = computed(() => {
-  return messages.value.map(msg => ({
-    ...msg,
-    urls: extractUrls(msg.body),
-    isUrlOnly: isUrlOnly(msg.body)
-  } as ChatMessage)).reverse();
+  // We perform a shallow copy and reverse because the underlying 'messages'
+  // is now a shallowRef and already contains pre-calculated metadata.
+  return [...messages.value].reverse();
 });
 
 const latestGameEventMap = computed(() => {
@@ -1188,6 +1188,9 @@ function mapEvent(event: MatrixEvent): ChatMessage | null {
       });
   }
 
+  const body = contentSafe.body || (isDecryptionError ? 'Encryption error: This message cannot be decrypted.' : '');
+  const urls = extractUrls(body);
+
   return {
     eventId: event.getId() || '',
     roomId: event.getRoomId(),
@@ -1195,7 +1198,7 @@ function mapEvent(event: MatrixEvent): ChatMessage | null {
     senderName,
     senderInitials: senderName.replace(/^[@!]/, '').slice(0, 2).toUpperCase(),
     avatarUrl,
-    body: contentSafe.body || (isDecryptionError ? 'Encryption error: This message cannot be decrypted.' : ''),
+    body,
     // Strip the reply fallback from body when formatted HTML is available
     formattedBody: contentSafe.format === 'org.matrix.custom.html' ? contentSafe.formatted_body : undefined,
     timestamp: event.getTs(),
@@ -1215,6 +1218,8 @@ function mapEvent(event: MatrixEvent): ChatMessage | null {
     msgtype: contentSafe.msgtype,
     mimetype: contentSafe.info?.mimetype,
     info: contentSafe.info,
+    urls,
+    isUrlOnly: isUrlOnly(body),
   };
 }
 
@@ -1244,6 +1249,20 @@ function refreshMessagesFromWindow() {
     const mapped = mapEvent(event);
     if (mapped) {
       newMessages.push(mapped);
+    }
+  }
+
+  // Pre-calculate grouping and timing for the entire timeline in one pass
+  for (let i = 0; i < newMessages.length; i++) {
+    const current = newMessages[i];
+    const previous = newMessages[i - 1];
+
+    current.formattedTime = formatTime(current.timestamp);
+
+    if (previous && current.senderId === previous.senderId && isSameDay(current.timestamp, previous.timestamp)) {
+      current.isSameSenderAsPrevious = true;
+    } else {
+      current.isSameSenderAsPrevious = false;
     }
   }
 
