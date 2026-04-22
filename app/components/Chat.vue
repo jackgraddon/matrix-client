@@ -169,7 +169,7 @@
                 <span class="text-sm font-bold text-foreground">{{ msg.senderName }}</span>
                 <span class="text-sm text-muted-foreground">started a voice call</span>
               </div>
-              <span class="text-[10px] text-muted-foreground">{{ formatTime(msg.timestamp) }}</span>
+              <span class="text-[10px] text-muted-foreground">{{ msg.formattedTime }}</span>
             </div>
             <div class="ml-4 pl-4 border-l border-border/50">
               <UiButton size="sm" variant="outline" class="h-8 rounded-full text-xs font-semibold hover:bg-green-500/10 hover:text-green-600 hover:border-green-500/30 transition-all px-4" @click="handleJoinCall(toRaw(room) as any)">
@@ -202,7 +202,7 @@
           >
             <!-- Avatar -->
             <MatrixAvatar 
-              v-if="!isPreviousSameSender(index)"
+              v-if="!msg.isSameSenderAsPrevious"
               :mxc-url="msg.avatarUrl" 
               :name="msg.senderName" 
               class="h-8 w-8 border hidden md:block"
@@ -217,7 +217,7 @@
                  (edited)
                </span>
                <span class="whitespace-nowrap">
-                 {{ formatTime(msg.timestamp) }}
+                 {{ msg.formattedTime }}
                </span>
             </div>
           </div>
@@ -231,7 +231,7 @@
             <div class="flex flex-col max-w-[90%] md:max-w-[75%] min-w-0 relative group/message order-1 md:order-none" :class="msg.isOwn ? 'items-end' : 'items-start'">
               <!-- Sender name (only for first in a group) -->
               <span
-                v-if="!msg.isOwn && !isPreviousSameSender(index)"
+                v-if="!msg.isOwn && !msg.isSameSenderAsPrevious"
                 class="text-xs font-medium text-muted-foreground mb-1 px-1"
               >
                 {{ msg.senderName }}
@@ -734,6 +734,7 @@ interface ChatMessage {
   body: string;
   formattedBody?: string;
   timestamp: number;
+  formattedTime: string;
   isOwn: boolean;
   type: string;
   url?: string;
@@ -743,8 +744,9 @@ interface ChatMessage {
   imageWidth?: number;
   imageHeight?: number;
   isEdited?: boolean;
-  urls?: string[];
-  isUrlOnly?: boolean;
+  urls: string[];
+  isUrlOnly: boolean;
+  isSameSenderAsPrevious: boolean;
   replyTo?: {
     eventId: string;
     senderName: string;
@@ -780,7 +782,7 @@ function getMatrixEvent(msg: ChatMessage): MatrixEvent | undefined {
   return msg.rawEvent;
 }
 
-const messages = ref<ChatMessage[]>([]);
+const messages = shallowRef<ChatMessage[]>([]);
 const newMessage = computed({
   get: () => store.ui.composerStates[roomId.value ?? '']?.text || '',
   set: (val: string) => {
@@ -823,23 +825,12 @@ const roomId = computed(() => {
 });
 
 // Create a reactive, newest-first array for the template
+// messages.value is already pre-processed and shallow, so we just reverse it.
 const displayMessages = computed(() => {
-  return messages.value.map(msg => ({
-    ...msg,
-    urls: extractUrls(msg.body),
-    isUrlOnly: isUrlOnly(msg.body)
-  } as ChatMessage)).reverse();
+  return [...messages.value].reverse();
 });
 
-const latestGameEventMap = computed(() => {
-  const map: Record<string, string> = {};
-  for (const msg of messages.value) {
-    if (msg.gameId) {
-      map[msg.gameId] = msg.eventId;
-    }
-  }
-  return map;
-});
+const latestGameEventMap = ref<Record<string, string>>({});
 
 const roomAvatarUrl = computed(() => {
   if (!room.value || !store.client) return null;
@@ -944,69 +935,89 @@ function mapEvent(event: MatrixEvent): ChatMessage | null {
     const memberships = contentSafe.memberships || [];
     if (memberships.length === 0) return null;
 
+    const body = 'started a call';
     return {
       eventId: event.getId()!,
       senderId,
       senderName,
       senderInitials: senderName.substring(0, 1),
       avatarUrl,
-      body: 'started a call',
+      body,
       timestamp: event.getTs(),
+      formattedTime: formatTime(event.getTs()),
       isOwn: senderId === store.client?.getUserId(),
       type: 'm.rtc.member',
-      isCallEvent: true
+      isCallEvent: true,
+      urls: [],
+      isUrlOnly: false,
+      isSameSenderAsPrevious: false
     };
   }
 
   if (isGameInvite) {
+    const body = contentSafe.body || 'Game Invite';
     return {
       eventId: event.getId()!,
       senderId,
       senderName,
       senderInitials: senderName.substring(0, 1),
       avatarUrl,
-      body: contentSafe.body || 'Game Invite',
+      body,
       timestamp: event.getTs(),
+      formattedTime: formatTime(event.getTs()),
       isOwn: senderId === store.client?.getUserId(),
       type: contentSafe.msgtype || '',
       isGameInvite: true,
       gameId: contentSafe.game_id,
       gameType: contentSafe.game_type,
-      rawEvent: event
+      rawEvent: event,
+      urls: extractUrls(body),
+      isUrlOnly: isUrlOnly(body),
+      isSameSenderAsPrevious: false
     };
   }
 
   if (isGameAction) {
+    const body = 'Game Action';
     return {
       eventId: event.getId()!,
       senderId,
       senderName,
       senderInitials: senderName.substring(0, 1),
       avatarUrl,
-      body: 'Game Action',
+      body,
       timestamp: event.getTs(),
+      formattedTime: formatTime(event.getTs()),
       isOwn: senderId === store.client?.getUserId(),
       type: 'cc.jackg.ruby.game.action',
       isGameAction: true,
       gameId: contentSafe.game_id,
-      rawEvent: event
+      rawEvent: event,
+      urls: [],
+      isUrlOnly: false,
+      isSameSenderAsPrevious: false
     };
   }
 
   if (isGameOver) {
+    const body = 'Game Over';
     return {
       eventId: event.getId()!,
       senderId,
       senderName,
       senderInitials: senderName.substring(0, 1),
       avatarUrl,
-      body: 'Game Over',
+      body,
       timestamp: event.getTs(),
+      formattedTime: formatTime(event.getTs()),
       isOwn: senderId === store.client?.getUserId(),
       type: 'cc.jackg.ruby.game.over',
       isGameOver: true,
       gameId: contentSafe.game_id,
-      rawEvent: event
+      rawEvent: event,
+      urls: [],
+      isUrlOnly: false,
+      isSameSenderAsPrevious: false
     };
   }
 
@@ -1188,6 +1199,8 @@ function mapEvent(event: MatrixEvent): ChatMessage | null {
       });
   }
 
+  const body = contentSafe.body || (isDecryptionError ? 'Encryption error: This message cannot be decrypted.' : '');
+
   return {
     eventId: event.getId() || '',
     roomId: event.getRoomId(),
@@ -1195,10 +1208,11 @@ function mapEvent(event: MatrixEvent): ChatMessage | null {
     senderName,
     senderInitials: senderName.replace(/^[@!]/, '').slice(0, 2).toUpperCase(),
     avatarUrl,
-    body: contentSafe.body || (isDecryptionError ? 'Encryption error: This message cannot be decrypted.' : ''),
+    body,
     // Strip the reply fallback from body when formatted HTML is available
     formattedBody: contentSafe.format === 'org.matrix.custom.html' ? contentSafe.formatted_body : undefined,
     timestamp: event.getTs(),
+    formattedTime: formatTime(event.getTs()),
     isOwn: senderId === store.client?.getUserId(),
     type: isSticker ? 'm.sticker' : (contentSafe.msgtype || MsgType.Text),
     url: contentSafe.url,
@@ -1215,18 +1229,24 @@ function mapEvent(event: MatrixEvent): ChatMessage | null {
     msgtype: contentSafe.msgtype,
     mimetype: contentSafe.info?.mimetype,
     info: contentSafe.info,
+    urls: extractUrls(body),
+    isUrlOnly: isUrlOnly(body),
+    isSameSenderAsPrevious: false // Set during refreshMessagesFromWindow pass
   };
 }
 
 /**
  * Rebuild the messages array entirely from the TimelineWindow.
  * This is the ONLY function that should mutate `messages.value`.
+ *
+ * Optimized to perform grouping and game event mapping in a single pass.
  */
 function refreshMessagesFromWindow() {
   if (!timelineWindow.value) return;
 
   const events = timelineWindow.value.getEvents();
   const newMessages: ChatMessage[] = [];
+  const newGameEventMap: Record<string, string> = {};
 
   for (const event of events) {
     if (event.isEncrypted() && !event.getClearContent()) {
@@ -1243,22 +1263,23 @@ function refreshMessagesFromWindow() {
     }
     const mapped = mapEvent(event);
     if (mapped) {
+      // Single-pass calculation of grouping and game mapping
+      const previous = newMessages[newMessages.length - 1];
+      if (previous && mapped.senderId === previous.senderId && isSameDay(mapped.timestamp, previous.timestamp)) {
+        mapped.isSameSenderAsPrevious = true;
+      }
+
+      if (mapped.gameId) {
+        newGameEventMap[mapped.gameId] = mapped.eventId;
+      }
+
       newMessages.push(mapped);
     }
   }
 
+  // Update both state refs in one go to minimize re-renders
+  latestGameEventMap.value = newGameEventMap;
   messages.value = newMessages;
-}
-
-function isPreviousSameSender(index: number): boolean {
-  // We are looking at the newest-first displayMessages array
-  const current = displayMessages.value[index];
-  const older = displayMessages.value[index + 1]; // The message visually ABOVE it
-  
-  if (!current || !older) return false;
-  
-  return current.senderId === older.senderId
-    && isSameDay(current.timestamp, older.timestamp);
 }
 
 function isSameDay(a: number, b: number): boolean {
