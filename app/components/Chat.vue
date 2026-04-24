@@ -169,7 +169,7 @@
                 <span class="text-sm font-bold text-foreground">{{ msg.senderName }}</span>
                 <span class="text-sm text-muted-foreground">started a voice call</span>
               </div>
-              <span class="text-[10px] text-muted-foreground">{{ formatTime(msg.timestamp) }}</span>
+              <span class="text-[10px] text-muted-foreground">{{ msg.formattedTime }}</span>
             </div>
             <div class="ml-4 pl-4 border-l border-border/50">
               <UiButton size="sm" variant="outline" class="h-8 rounded-full text-xs font-semibold hover:bg-green-500/10 hover:text-green-600 hover:border-green-500/30 transition-all px-4" @click="handleJoinCall(toRaw(room) as any)">
@@ -202,7 +202,7 @@
           >
             <!-- Avatar -->
             <MatrixAvatar 
-              v-if="!isPreviousSameSender(index)"
+              v-if="!msg.isSameSenderAsPrevious"
               :mxc-url="msg.avatarUrl" 
               :name="msg.senderName" 
               class="h-8 w-8 border hidden md:block"
@@ -217,7 +217,7 @@
                  (edited)
                </span>
                <span class="whitespace-nowrap">
-                 {{ formatTime(msg.timestamp) }}
+                 {{ msg.formattedTime }}
                </span>
             </div>
           </div>
@@ -231,7 +231,7 @@
             <div class="flex flex-col max-w-[90%] md:max-w-[75%] min-w-0 relative group/message order-1 md:order-none" :class="msg.isOwn ? 'items-end' : 'items-start'">
               <!-- Sender name (only for first in a group) -->
               <span
-                v-if="!msg.isOwn && !isPreviousSameSender(index)"
+                v-if="!msg.isOwn && !msg.isSameSenderAsPrevious"
                 class="text-xs font-medium text-muted-foreground mb-1 px-1"
               >
                 {{ msg.senderName }}
@@ -425,14 +425,14 @@
         
         </div>
 
-        <!-- Date separator (Now logic looks forward to next older message) -->
+        <!-- Date separator (Using pre-calculated metadata) -->
         <div
-          v-if="index === displayMessages.length - 1 || !isSameDay(msg.timestamp, displayMessages[index + 1]?.timestamp || 0)"
+          v-if="msg.isFirstOfDate"
           class="flex items-center gap-3 py-3 w-full"
         >
           <div class="flex-1 h-px bg-border" />
           <span class="text-xs text-muted-foreground font-medium shrink-0">
-            {{ formatDate(msg.timestamp) }}
+            {{ msg.formattedDate }}
           </span>
           <div class="flex-1 h-px bg-border" />
         </div>
@@ -743,8 +743,12 @@ interface ChatMessage {
   imageWidth?: number;
   imageHeight?: number;
   isEdited?: boolean;
-  urls?: string[];
-  isUrlOnly?: boolean;
+  urls: string[];
+  isUrlOnly: boolean;
+  formattedTime: string;
+  formattedDate?: string;
+  isSameSenderAsPrevious: boolean;
+  isFirstOfDate: boolean;
   replyTo?: {
     eventId: string;
     senderName: string;
@@ -780,7 +784,11 @@ function getMatrixEvent(msg: ChatMessage): MatrixEvent | undefined {
   return msg.rawEvent;
 }
 
-const messages = ref<ChatMessage[]>([]);
+// Persistent formatters for performance
+const timeFormatter = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
+const dateFormatter = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+
+const messages = shallowRef<ChatMessage[]>([]);
 const newMessage = computed({
   get: () => store.ui.composerStates[roomId.value ?? '']?.text || '',
   set: (val: string) => {
@@ -824,22 +832,10 @@ const roomId = computed(() => {
 
 // Create a reactive, newest-first array for the template
 const displayMessages = computed(() => {
-  return messages.value.map(msg => ({
-    ...msg,
-    urls: extractUrls(msg.body),
-    isUrlOnly: isUrlOnly(msg.body)
-  } as ChatMessage)).reverse();
+  return [...messages.value].reverse();
 });
 
-const latestGameEventMap = computed(() => {
-  const map: Record<string, string> = {};
-  for (const msg of messages.value) {
-    if (msg.gameId) {
-      map[msg.gameId] = msg.eventId;
-    }
-  }
-  return map;
-});
+const latestGameEventMap = ref<Record<string, string>>({});
 
 const roomAvatarUrl = computed(() => {
   if (!room.value || !store.client) return null;
@@ -1188,6 +1184,9 @@ function mapEvent(event: MatrixEvent): ChatMessage | null {
       });
   }
 
+  const body = contentSafe.body || (isDecryptionError ? 'Encryption error: This message cannot be decrypted.' : '');
+  const urls = extractUrls(body);
+
   return {
     eventId: event.getId() || '',
     roomId: event.getRoomId(),
@@ -1195,7 +1194,7 @@ function mapEvent(event: MatrixEvent): ChatMessage | null {
     senderName,
     senderInitials: senderName.replace(/^[@!]/, '').slice(0, 2).toUpperCase(),
     avatarUrl,
-    body: contentSafe.body || (isDecryptionError ? 'Encryption error: This message cannot be decrypted.' : ''),
+    body,
     // Strip the reply fallback from body when formatted HTML is available
     formattedBody: contentSafe.format === 'org.matrix.custom.html' ? contentSafe.formatted_body : undefined,
     timestamp: event.getTs(),
@@ -1208,6 +1207,11 @@ function mapEvent(event: MatrixEvent): ChatMessage | null {
     imageWidth: contentSafe.info?.w,
     imageHeight: contentSafe.info?.h,
     isEdited,
+    urls,
+    isUrlOnly: isUrlOnly(body),
+    formattedTime: timeFormatter.format(event.getTs()),
+    isSameSenderAsPrevious: false, // Calculated in refreshMessagesFromWindow
+    isFirstOfDate: false, // Calculated in refreshMessagesFromWindow
     replyTo,
     reactions: reactions.length > 0 ? reactions : undefined,
     readReceipts: readReceipts.length > 0 ? readReceipts : undefined,
@@ -1227,8 +1231,10 @@ function refreshMessagesFromWindow() {
 
   const events = timelineWindow.value.getEvents();
   const newMessages: ChatMessage[] = [];
+  const gameMap: Record<string, string> = {};
 
-  for (const event of events) {
+  for (let i = 0; i < events.length; i++) {
+    const event = events[i];
     if (event.isEncrypted() && !event.getClearContent()) {
       const eventId = event.getId();
       if (eventId && !decryptionListenerIds.has(eventId)) {
@@ -1243,22 +1249,29 @@ function refreshMessagesFromWindow() {
     }
     const mapped = mapEvent(event);
     if (mapped) {
+      // Calculate grouping metadata in a single pass
+      const previous = newMessages[newMessages.length - 1];
+      if (previous) {
+        mapped.isSameSenderAsPrevious = mapped.senderId === previous.senderId && isSameDay(mapped.timestamp, previous.timestamp);
+        mapped.isFirstOfDate = !isSameDay(mapped.timestamp, previous.timestamp);
+      } else {
+        mapped.isFirstOfDate = true;
+      }
+
+      if (mapped.isFirstOfDate) {
+        mapped.formattedDate = formatDate(mapped.timestamp);
+      }
+
+      if (mapped.gameId) {
+        gameMap[mapped.gameId] = mapped.eventId;
+      }
+
       newMessages.push(mapped);
     }
   }
 
+  latestGameEventMap.value = gameMap;
   messages.value = newMessages;
-}
-
-function isPreviousSameSender(index: number): boolean {
-  // We are looking at the newest-first displayMessages array
-  const current = displayMessages.value[index];
-  const older = displayMessages.value[index + 1]; // The message visually ABOVE it
-  
-  if (!current || !older) return false;
-  
-  return current.senderId === older.senderId
-    && isSameDay(current.timestamp, older.timestamp);
 }
 
 function isSameDay(a: number, b: number): boolean {
@@ -1278,11 +1291,7 @@ function formatDate(ts: number): string {
   yesterday.setDate(yesterday.getDate() - 1);
   if (isSameDay(ts, yesterday.getTime())) return 'Yesterday';
 
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-}
-
-function formatTime(ts: number): string {
-  return new Date(ts).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  return dateFormatter.format(d);
 }
 
 function forceScrollToBottom() {
