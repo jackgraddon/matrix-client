@@ -77,8 +77,8 @@ async function loadHome() {
       Limit: 12,
       Fields: ['ArtistItems', 'PrimaryImageAspectRatio', 'UserData']
     }
-  }).then(data => {
-    if (data && 'Items' in data) mostPlayed.value = data.Items as BaseItemDto[];
+  }).then((data: any) => {
+    if (data && data.Items) mostPlayed.value = data.Items as BaseItemDto[];
   }).finally(() => loading.mostPlayed = false);
 
   // Explore (Random)
@@ -92,8 +92,8 @@ async function loadHome() {
       Limit: 12,
       Fields: ['ArtistItems', 'PrimaryImageAspectRatio', 'UserData']
     }
-  }).then(data => {
-    if (data && 'Items' in data) explore.value = data.Items as BaseItemDto[];
+  }).then((data: any) => {
+    if (data && data.Items) explore.value = data.Items as BaseItemDto[];
   }).finally(() => loading.explore = false);
 
   // Recently Added
@@ -108,8 +108,8 @@ async function loadHome() {
       Limit: 12,
       Fields: ['ArtistItems', 'AlbumArtist', 'PrimaryImageAspectRatio', 'UserData', 'ProductionYear']
     }
-  }).then(data => {
-    if (data && 'Items' in data) recentlyAdded.value = data.Items as BaseItemDto[];
+  }).then((data: any) => {
+    if (data && data.Items) recentlyAdded.value = data.Items as BaseItemDto[];
   }).finally(() => loading.recentlyAdded = false);
 
   // Recently Played (using Users/Items with SortBy PlayDate)
@@ -124,8 +124,8 @@ async function loadHome() {
       Limit: 12,
       Fields: ['ArtistItems', 'PrimaryImageAspectRatio', 'UserData']
     }
-  }).then(data => {
-    if (data && 'Items' in data) recentlyPlayed.value = data.Items as BaseItemDto[];
+  }).then((data: any) => {
+    if (data && data.Items) recentlyPlayed.value = data.Items as BaseItemDto[];
   }).finally(() => loading.recentlyPlayed = false);
 
   // Once all done, cache the result

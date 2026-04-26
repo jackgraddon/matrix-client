@@ -4,7 +4,7 @@
       <UiButton variant="ghost" size="icon" @click="$router.back()" v-if="$route.fullPath != '/chat/music'">
         <Icon name="solar:alt-arrow-left-line-duotone" />
       </UiButton>
-      <UiButton variant="ghost" size="icon" class="md:hidden" v-else @click="matrixStore.toggleSidebar(true)">
+      <UiButton variant="ghost" size="icon" class="md:hidden" v-else @click="uiStore.toggleSidebar(true)">
         <Icon name="solar:hamburger-menu-linear" />
       </UiButton>
       <h1 class="text-lg font-semibold ml-2">Music Library</h1>
@@ -17,7 +17,5 @@
 </template>
 
 <script setup lang="ts">
-import { useMatrixStore } from '~/stores/matrix';
-
-const matrixStore = useMatrixStore();
+const uiStore = useUIStore();
 </script>

@@ -79,8 +79,14 @@
 
 <script lang="ts" setup>
 const matrixStore = useMatrixStore();
+import { useUIStore } from "~/stores/ui";
+import { useMatrixService, useAudioService, useJellyfinService, usePresenceService } from "~/composables/useServices";
 const { isAuthenticated, isRestoringSession } = storeToRefs(matrixStore);
-const { logout } = matrixStore; // Actions can be destructured directly
+const { matrixService } = useServices();
+
+function logout() {
+  matrixService.logout();
+}
 
 const deferredPrompt = ref<any>(null);
 const showInstallButton = ref(false);

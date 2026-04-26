@@ -10,6 +10,9 @@ export function useAuthenticatedMedia(
     const isLoading = ref(false);
     const error = ref<unknown>(null);
     const store = useMatrixStore();
+const uiStore = useUIStore();
+const matrixService = useMatrixService();
+const presenceStore = usePresenceStore();
 
     let activeUrl: string | null = null;
 

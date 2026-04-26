@@ -15,7 +15,7 @@ export const useRegionDetection = () => {
                 'nl', 'pl', 'pt', 'ro', 'se', 'si', 'sk'
             ];
 
-            const localeCountry = locale.split('-')[1]?.toLowerCase();
+            const localeCountry = locale.split('-')[1]?.toLowerCase() || '';
             if (euLocales.includes(localeCountry)) {
                 isEU.value = true;
                 return;

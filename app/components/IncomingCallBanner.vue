@@ -29,6 +29,9 @@ const props = defineProps<{
 }>();
 
 const store = useMatrixStore();
+const uiStore = useUIStore();
+const matrixService = useMatrixService();
+const presenceStore = usePresenceStore();
 const voiceStore = useVoiceStore();
 
 const isCallIncoming = computed(() => {

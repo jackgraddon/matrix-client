@@ -3,16 +3,33 @@
 import { SLANG_TILES, BOARD_MULTIPLIERS, type MultiplierType, validatePlacement, calculateScore, shuffle } from '~/utils/slangtiles';
 import { toast } from 'vue-sonner';
 
+interface SlangTilesState {
+  players: Record<string, string>;
+  board: any[][];
+  scores: Record<string, number>;
+  racks: Record<string, string[]>;
+  bag: string[];
+  current_turn: string;
+  status: string;
+  last_move?: any;
+  turns_since_empty?: number;
+  challenger_id?: string;
+  challenge_votes?: { valid: string[]; invalid: string[] };
+}
+
 const props = defineProps<{
   gameId: string;
   roomId: string;
 }>();
 
 const store = useMatrixStore();
+const activityStore = useActivityStore();
+const uiStore = useUIStore();
+const matrixService = useMatrixService();
 const { sendGameAction, getGameState, updateGameState } = useMatrixGame(props.roomId);
 
-const state = computed(() => {
-  store.gameTrigger;
+const state = computed<SlangTilesState | null>(() => {
+  activityStore.gameTrigger;
   const s = getGameState(props.gameId);
   if (!s) {
     const { findGameState } = useMatrixGame(props.roomId);
@@ -21,7 +38,7 @@ const state = computed(() => {
   return s;
 });
 
-const myUserId = store.client?.getUserId();
+const myUserId = store.client?.getUserId() || '';
 const players = computed(() => state.value?.players || {});
 const board = computed(() => state.value?.board || Array(15).fill(null).map(() => Array(15).fill(null)));
 const scores = computed(() => state.value?.scores || {});
@@ -32,7 +49,7 @@ const status = computed(() => state.value?.status || 'active');
 const lastMove = computed(() => state.value?.last_move);
 
 const isMyTurn = computed(() => currentTurn.value === myUserId && status.value === 'active');
-const myRack = computed(() => (myUserId ? racks.value[myUserId] || [] : []));
+const myRack = computed<string[]>(() => (myUserId ? racks.value[myUserId] || [] : []));
 
 const placedTiles = ref<{ r: number; c: number; letter: string; isBlank: boolean; assigned?: string; rackIndex: number }[]>([]);
 const selectedRackIndex = ref<number | null>(null);
@@ -69,7 +86,7 @@ function getMultiplierLabel(m: MultiplierType | undefined) {
 
 function getTileAt(r: number, c: number) {
   if (board.value[r] && board.value[r][c]) return board.value[r][c];
-  return placedTiles.value.find(p => p.r === r && p.c === c);
+  return (placedTiles.value as any[]).find((p: any) => p.r === r && p.c === c);
 }
 
 function handleSquareClick(r: number, c: number) {
@@ -79,7 +96,6 @@ function handleSquareClick(r: number, c: number) {
   if (existing) {
     const placedIndex = placedTiles.value.findIndex(p => p.r === r && p.c === c);
     if (placedIndex !== -1) {
-      // Fix: Null safety for removed tile [Error 18048]
       placedTiles.value.splice(placedIndex, 1);
     }
     return;
@@ -97,7 +113,7 @@ function handleSquareClick(r: number, c: number) {
     if (letter === ' ') {
       pendingBlankTile.value = { r, c, rackIndex: rackIdx };
       showBlankModal.value = true;
-    } else {
+    } else if (letter) {
       placedTiles.value.push({ r, c, letter, isBlank: false, rackIndex: rackIdx });
     }
     selectedRackIndex.value = null;
@@ -118,7 +134,7 @@ function assignBlank(letter: string) {
 }
 
 const rackWithIndices = computed(() => {
-  return myRack.value.map((letter: string, index: number) => ({
+  return (myRack.value as string[]).map((letter: string, index: number) => ({
     letter,
     index,
     isPlaced: placedTiles.value.some(p => p.rackIndex === index)
@@ -154,19 +170,21 @@ async function playMove() {
 
   const newBoard = JSON.parse(JSON.stringify(board.value));
   placedTiles.value.forEach(p => {
-    newBoard[p.r][p.c] = { letter: p.letter, assigned: p.assigned, isBlank: p.isBlank, player: myUserId };
+    if (newBoard[p.r]) {
+      newBoard[p.r][p.c] = { letter: p.letter, assigned: p.assigned || null, isBlank: p.isBlank, player: myUserId };
+    }
   });
 
-  const newRacks = { ...racks.value };
+  const newRacks = { ...racks.value } as Record<string, string[]>;
   const rackIndicesToKeep = rackWithIndices.value
-    .filter(item => !item.isPlaced)
-    .map(item => item.index);
+    .filter((item: any) => !item.isPlaced)
+    .map((item: any) => item.index);
   
-  newRacks[myUserId] = rackIndicesToKeep.map(idx => myRack.value[idx]);
+  newRacks[myUserId] = rackIndicesToKeep.map(idx => (myRack.value as string[])[idx]).filter((l): l is string => l !== undefined);
   
-  const newBag = [...bag.value];
-  while (newRacks[myUserId].length < 7 && newBag.length > 0) {
-    const nextTile = newBag.pop();
+  const newBag = [...(bag.value as string[])];
+  while (newRacks[myUserId] && newRacks[myUserId].length < 7 && newBag.length > 0) {
+    const nextTile = (newBag as string[]).pop();
     if (nextTile) newRacks[myUserId].push(nextTile);
   }
 
@@ -187,7 +205,7 @@ async function playMove() {
   let finalWinnerId: string | undefined = undefined;
 
   if (finishedTiles || maxTurnsReached) {
-    const finalScores = { ...newScores };
+    const finalScores = { ...newScores } as Record<string, number>;
     const playerIds = Object.keys(players.value);
     
     const penalties: Record<string, number> = {};
@@ -195,20 +213,20 @@ async function playMove() {
       const rack = newRacks[pid] || [];
       const penalty = rack.reduce((sum: number, l: string) => sum + (SLANG_TILES[l]?.value || 0), 0);
       penalties[pid] = penalty;
-      finalScores[pid] -= penalty;
+    if (finalScores[pid] !== undefined) finalScores[pid] -= penalty;
     });
 
     if (finishedTiles) {
       const totalPenalties = Object.values(penalties).reduce((a, b) => a + b, 0);
-      finalScores[myUserId] += totalPenalties;
+      if (finalScores[myUserId] !== undefined) finalScores[myUserId] += totalPenalties;
     }
 
     playerIds.forEach(pid => {
-      newScores[pid] = finalScores[pid];
+      if (finalScores[pid] !== undefined) newScores[pid] = finalScores[pid];
     });
 
-    const s0 = finalScores[playerIds[0]];
-    const s1 = finalScores[playerIds[1]];
+    const s0 = finalScores[playerIds[0]] || 0;
+    const s1 = finalScores[playerIds[1]] || 0;
 
     if (s0 > s1) {
       newStatus = 'won';
@@ -253,7 +271,7 @@ async function playMove() {
     await store.client?.sendEvent(props.roomId, 'cc.jackg.ruby.game.over' as any, {
       game_id: props.gameId,
       status: newStatus,
-      winner: finalWinnerId,
+      winner: finalWinnerId || null,
       game_type: 'slangtiles',
       scores: newScores
     });
@@ -283,15 +301,15 @@ async function passTurn() {
     playerIds.forEach(pid => {
       const rack = racks.value[pid] || [];
       const penalty = rack.reduce((sum: number, l: string) => sum + (SLANG_TILES[l]?.value || 0), 0);
-      finalScores[pid] -= penalty;
+      if (finalScores[pid] !== undefined) finalScores[pid] -= penalty;
     });
 
     playerIds.forEach(pid => {
-      newScores[pid] = finalScores[pid];
+      if (finalScores[pid] !== undefined) newScores[pid] = finalScores[pid];
     });
 
-    const s0 = finalScores[playerIds[0]];
-    const s1 = finalScores[playerIds[1]];
+    const s0 = finalScores[playerIds[0]] || 0;
+    const s1 = finalScores[playerIds[1]] || 0;
 
     if (s0 > s1) {
       newStatus = 'won';
@@ -319,7 +337,7 @@ async function passTurn() {
     await store.client?.sendEvent(props.roomId, 'cc.jackg.ruby.game.over' as any, {
       game_id: props.gameId,
       status: newStatus,
-      winner: finalWinnerId,
+      winner: finalWinnerId || null,
       game_type: 'slangtiles',
       scores: newScores
     });
@@ -335,7 +353,7 @@ async function swapTiles() {
 
   for (const idx of indices) {
     const char = newRack.splice(idx, 1)[0];
-    newBag.push(char);
+    if (char) newBag.push(char);
   }
 
   const shuffledBag = shuffle(newBag);
@@ -353,8 +371,8 @@ async function swapTiles() {
     ...state.value,
     racks: newRacks,
     bag: shuffledBag,
-    current_turn: opponentId,
-    last_move: { type: 'swap', player: myUserId, count: swapSelection.value.length, timestamp: Date.now() }
+    current_turn: opponentId || '',
+    last_move: { type: 'swap', player: myUserId, count: (swapSelection.value as number[]).length, timestamp: Date.now() }
   });
 
   await sendGameAction(props.gameId, { action: 'swap', player: myUserId, count: swapSelection.value.length });
@@ -364,9 +382,9 @@ async function swapTiles() {
 }
 
 function toggleSwapSelection(index: number) {
-  const i = swapSelection.value.indexOf(index);
-  if (i === -1) swapSelection.value.push(index);
-  else swapSelection.value.splice(i, 1);
+  const i = (swapSelection.value as number[]).indexOf(index);
+  if (i === -1) (swapSelection.value as number[]).push(index);
+  else (swapSelection.value as number[]).splice(i, 1);
 }
 
 function clearPlaced() {
@@ -401,13 +419,15 @@ async function challengeMove() {
 async function voteChallenge(vote: 'valid' | 'invalid') {
   if (status.value !== 'challenged' || !myUserId) return;
   
-  const votes = { ...state.value.challenge_votes };
+  if (!state.value) return;
+  const votes = JSON.parse(JSON.stringify(state.value.challenge_votes || { valid: [], invalid: [] }));
   const userId = myUserId;
 
   votes.valid = (votes.valid || []).filter((id: string) => id !== userId);
   votes.invalid = (votes.invalid || []).filter((id: string) => id !== userId);
 
-  votes[vote].push(userId);
+  if (vote === 'valid') votes.valid.push(userId);
+  else votes.invalid.push(userId);
 
   await updateGameState(props.gameId, {
     ...state.value,

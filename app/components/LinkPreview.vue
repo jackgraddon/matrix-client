@@ -68,6 +68,9 @@ const props = defineProps<{
 }>();
 
 const store = useMatrixStore();
+const uiStore = useUIStore();
+const matrixService = useMatrixService();
+const presenceStore = usePresenceStore();
 const preview = ref<IPreviewUrlResponse | null>(null);
 
 const resolvedTitle = computed(() => preview.value?.['og:title'] || preview.value?.['title'] || preview.value?.['twitter:title']);

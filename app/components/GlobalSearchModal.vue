@@ -1,5 +1,5 @@
 <template>
-  <UiCommandDialog :open="store.globalSearchModalOpen" @update:open="(val) => { if(!val) { store.closeGlobalSearchModal(); store.setInviteRoomId(null); } }" :filter-function="customFilter">
+  <UiCommandDialog :open="uiStore.globalSearchModalOpen" @update:open="(val: boolean) => { if(!val) { uiStore.closeGlobalSearchModal(); store.setInviteRoomId(null); } }" :filter-function="customFilter">
     <UiCommandInput v-model="searchQuery" :placeholder="store.inviteRoomId ? 'Type a Matrix ID to invite...' : 'Type a name, Matrix ID, or room alias...'" />
     <UiCommandList>
       <UiCommandEmpty>No results found.</UiCommandEmpty>
@@ -55,7 +55,7 @@
           </UiCommandItem>
           <UiCommandItem 
             value="action_create_room" 
-            @select="(e) => { e.preventDefault(); store.openCreateRoomModal(); }"
+            @select="(e) => { e.preventDefault(); uiStore.openCreateRoomModal(); }"
           >
              <Icon name="solar:add-circle-bold" class="mr-2 h-4 w-4" />
              <span>Create Room</span>
@@ -84,6 +84,9 @@ const props = defineProps<{
 }>();
 
 const store = useMatrixStore();
+const uiStore = useUIStore();
+const matrixService = useMatrixService();
+const presenceStore = usePresenceStore();
 const searchQuery = ref('');
 const isSubmitting = ref(false);
 const createError = ref('');
@@ -133,7 +136,7 @@ const inviteRoomName = computed(() => {
 });
 
 const navigateToRoom = (roomId: string) => {
-    store.closeGlobalSearchModal();
+    uiStore.closeGlobalSearchModal();
     searchQuery.value = '';
     
     const isFriend = props.friends.some(f => f.roomId === roomId);
@@ -151,7 +154,7 @@ const inviteToRoom = async (userId: string) => {
     try {
         await store.client?.invite(store.inviteRoomId, userId);
         import('vue-sonner').then(({ toast }) => toast.success(`Invited ${userId}`));
-        store.closeGlobalSearchModal();
+        uiStore.closeGlobalSearchModal();
         store.setInviteRoomId(null);
         searchQuery.value = '';
     } catch (e: any) {
@@ -168,9 +171,9 @@ const createChatFromQuery = async () => {
     isSubmitting.value = true;
     createError.value = '';
     try {
-        const roomId = await store.createDirectRoom(parsedQuery.value);
+        const roomId = await matrixService.createDirectRoom(parsedQuery.value);
         if (roomId) {
-            store.closeGlobalSearchModal();
+            uiStore.closeGlobalSearchModal();
             searchQuery.value = '';
             await navigateTo(`/chat/dms/${roomId}`);
         }
@@ -188,9 +191,9 @@ const joinRoomFromQuery = async () => {
     isSubmitting.value = true;
     joinError.value = '';
     try {
-        const result = await store.joinRoom(parsedQuery.value);
+        const result = await matrixService.joinRoom(parsedQuery.value);
         if (result && result.roomId) {
-            store.closeGlobalSearchModal();
+            uiStore.closeGlobalSearchModal();
             searchQuery.value = '';
             await navigateTo(`/chat/rooms/${result.roomId}`);
         }

@@ -1,5 +1,9 @@
+import { ActivityService } from '~/services/activity.service';
+
 export function useGameActivity() {
     const store = useMatrixStore();
+    const activityStore = useActivityStore();
+    const activityService = ActivityService.getInstance();
 
     // Check for Tauri support
     const { $isTauri: isTauri } = useNuxtApp();
@@ -24,7 +28,7 @@ export function useGameActivity() {
         reconnectTimer = setTimeout(() => {
             reconnectTimer = null;
             // Only reconnect if still enabled
-            if (store.gameDetectionLevel !== 'off') connectRpc();
+            if (activityStore.gameDetectionLevel !== 'off') connectRpc();
         }, RECONNECT_INTERVAL);
     }
 
@@ -55,7 +59,7 @@ export function useGameActivity() {
                     const data = decodeMessage(event.data);
                     // rsRPC sends the full activity payload — write it into the store
                     // so the rest of the app (presence broadcasting, UI) reacts normally
-                    store.handleRpcActivity(data);
+                    activityService.handleRpcActivity(data);
                 } catch (e) {
                     console.error('[useGameActivity] Failed to decode rsRPC message:', e);
                 }
@@ -75,12 +79,12 @@ export function useGameActivity() {
         ws?.close();
         ws = null;
         // Clear activity from the store when RPC is disabled
-        store.activityDetails = null;
+        activityStore.setActivityDetails(null);
     }
 
     function toggle() {
-        const next = store.gameDetectionLevel === 'off' ? 'basic' : 'off';
-        store.setGameDetectionLevel(next);
+        const next = activityStore.gameDetectionLevel === 'off' ? 'basic' : 'off';
+        activityService.setGameDetectionLevel(next);
         // Drive the connection based on the new level
         if (next === 'off') {
             disconnectRpc();
@@ -90,7 +94,7 @@ export function useGameActivity() {
     }
 
     // Connect immediately if already enabled (e.g. composable mounted after app init)
-    if (isTauri && store.gameDetectionLevel !== 'off') {
+    if (isTauri && activityStore.gameDetectionLevel !== 'off') {
         connectRpc();
     }
 
@@ -98,10 +102,10 @@ export function useGameActivity() {
     onUnmounted(disconnectRpc);
 
     return {
-        isEnabled: computed(() => store.gameDetectionLevel !== 'off'),
-        gameDetectionLevel: computed(() => store.gameDetectionLevel),
+        isEnabled: computed(() => activityStore.gameDetectionLevel !== 'off'),
+        gameDetectionLevel: computed(() => activityStore.gameDetectionLevel),
         isSupported: computed(() => isSupported.value),
-        currentActivity: computed(() => store.activityDetails?.name || null),
+        currentActivity: computed(() => activityStore.activityDetails?.name || null),
         toggle,
     };
 }

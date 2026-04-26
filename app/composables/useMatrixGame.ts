@@ -1,6 +1,7 @@
 import { EventType, MatrixEvent, Direction } from 'matrix-js-sdk'
 import type { TimelineEvents } from 'matrix-js-sdk'
 import { useMatrixStore } from '~/stores/matrix'
+import { useActivityStore } from '~/stores/activity'
 
 // Custom game event type strings not present in the SDK's TimelineEvents map.
 // We cast them once here so every sendEvent call stays clean.
@@ -11,10 +12,11 @@ const GameEventType = {
 
 export function useMatrixGame(roomId: string) {
   const store = useMatrixStore()
+  const activityStore = useActivityStore()
   const matrixClient = store.client
 
   // Send a game invite into the timeline
-  async function inviteToGame(gameType: string, opponentId: string) {
+  async function inviteToGame(gameType: string, opponentId: string | null) {
     if (!matrixClient) return
     const gameId = `game_${crypto.randomUUID()}`
     await matrixClient.sendEvent(roomId, EventType.RoomMessage, {
@@ -47,7 +49,7 @@ export function useMatrixGame(roomId: string) {
 
   // Read current game state (Scan timeline for the latest state event)
   function getGameState(gameId: string) {
-    if (store.gameStates[gameId]) return store.gameStates[gameId]
+    if (activityStore.gameStates[gameId]) return activityStore.gameStates[gameId]
     if (!matrixClient) return null
     const room = matrixClient.getRoom(roomId)
     if (!room) return null
@@ -63,8 +65,7 @@ export function useMatrixGame(roomId: string) {
         const type = isEncrypted ? content?.type : ev?.getType()
 
         if (type === 'cc.jackg.ruby.game.state' && content?.game_id === gameId) {
-          store.gameStates[gameId] = content
-          store.gameTrigger++
+          activityStore.updateGameState(gameId, content)
           return content
         }
       }
@@ -75,7 +76,7 @@ export function useMatrixGame(roomId: string) {
 
   // Deep search for game state in room history (paginated API call)
   async function findGameState(gameId: string) {
-    if (store.gameStates[gameId]) return store.gameStates[gameId]
+    if (activityStore.gameStates[gameId]) return activityStore.gameStates[gameId]
     if (!matrixClient) return null
 
     // 1. Try local timeline scan first
@@ -105,8 +106,7 @@ export function useMatrixGame(roomId: string) {
 
           if (type === 'cc.jackg.ruby.game.state' && content?.game_id === gameId) {
             console.log(`[GameGame] Found state for ${gameId} in history`)
-            store.gameStates[gameId] = content
-            store.gameTrigger++
+            activityStore.updateGameState(gameId, content)
             return content
           }
         }

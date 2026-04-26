@@ -5,11 +5,15 @@ const props = defineProps<{
 }>();
 
 const store = useMatrixStore();
+const activityStore = useActivityStore();
+const uiStore = useUIStore();
+const matrixService = useMatrixService();
+const presenceStore = usePresenceStore();
 const { sendGameAction, getGameState, updateGameState } = useMatrixGame(props.roomId);
 
 // Re-evaluate whenever gameTrigger changes in store
 const state = computed(() => {
-  store.gameTrigger;
+  activityStore.gameTrigger;
   return getGameState(props.gameId);
 });
 
@@ -63,7 +67,7 @@ async function makeMove(index: number) {
   if (newStatus !== 'active') {
     const matrixClient = store.client;
     if (matrixClient) {
-      await matrixClient.sendEvent(props.roomId, 'cc.jackg.ruby.game.over', {
+      await matrixClient.sendEvent(props.roomId, 'cc.jackg.ruby.game.over' as any, {
         game_id: props.gameId,
         status: newStatus,
         winner: winner ? myUserId : null,

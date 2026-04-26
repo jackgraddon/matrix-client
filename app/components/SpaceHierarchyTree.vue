@@ -4,7 +4,7 @@
             <div v-if="isSpace" class="flex-1 min-w-0">
                 <button 
                     @click="isCollapsed = !isCollapsed"
-                    @contextmenu.capture="store.openRoomContextMenu(roomData.room_id)"
+                    @contextmenu.capture="uiStore.openRoomContextMenu(roomData.room_id)"
                     class="flex items-center gap-2 text-xs font-bold uppercase text-muted-foreground hover:text-foreground transition-colors group w-full mt-2"
                 >
                     <MatrixAvatar
@@ -23,7 +23,7 @@
             <div v-else class="flex-1 min-w-0">
                 <div 
                     class="flex items-center gap-2 flex-1 min-w-0 group/room p-3 rounded-xl border bg-card/50 hover:bg-muted/50 transition-all cursor-pointer"
-                    @contextmenu.capture="store.openRoomContextMenu(roomData.room_id)"
+                    @contextmenu.capture="uiStore.openRoomContextMenu(roomData.room_id)"
                 >
                     <MatrixAvatar
                         :mxc-url="roomData.avatar_url"
@@ -52,7 +52,7 @@
                             </UiButton>
                         </template>
                         <template v-else-if="membership === 'invite'">
-                            <UiButton size="sm" variant="default" @click.stop="store.acceptInvite(roomData.room_id)" class="rounded-lg h-8 px-3">
+                            <UiButton size="sm" variant="default" @click.stop="matrixService.acceptInvite(roomData.room_id)" class="rounded-lg h-8 px-3">
                                 Accept
                             </UiButton>
                         </template>
@@ -102,6 +102,9 @@ const props = defineProps<{
 }>();
 
 const store = useMatrixStore();
+const uiStore = useUIStore();
+const matrixService = useMatrixService();
+const presenceStore = usePresenceStore();
 const isCollapsed = ref(false);
 const isJoining = ref(false);
 
@@ -121,7 +124,7 @@ const children = computed(() => {
 
 const sortedChildren = computed(() => {
     const items = [...children.value];
-    const order = store.ui.uiOrder.categories[props.roomData.room_id] || store.ui.uiOrder.rooms[props.roomData.room_id];
+    const order = uiStore.uiOrder.categories[props.roomData.room_id] || uiStore.uiOrder.rooms[props.roomData.room_id];
     
     if (order && order.length > 0) {
         items.sort((a, b) => {
@@ -145,7 +148,7 @@ const sortedChildren = computed(() => {
 const joinRoom = async () => {
     isJoining.value = true;
     try {
-        await store.joinRoom(props.roomData.room_id);
+        await matrixService.joinRoom(props.roomData.room_id);
     } catch (e) {
         console.error('Failed to join room:', e);
     } finally {
@@ -157,8 +160,8 @@ const navigateToRoom = () => {
     const room = store.client?.getRoom(props.roomData.room_id);
     if (!room) return;
 
-    store.toggleSidebar(false);
-    store.ui.memberListVisible = false;
+    uiStore.toggleSidebar(false);
+    uiStore.memberListVisible = false;
     navigateTo(`/chat/spaces/${props.spaceId}/${room.roomId}`);
 };
 </script>

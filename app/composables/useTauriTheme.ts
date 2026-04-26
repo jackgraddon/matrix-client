@@ -10,7 +10,7 @@ export function useTauriTheme() {
     const theme = await invoke<string>('get_os_theme');
     console.log('[Theme] initial OS theme from Rust:', theme);
     if (theme) {
-      colorMode.value = theme
+      (colorMode as any).preference = theme;
     }
 
     // Listen for OS theme changes from Rust side
@@ -18,7 +18,7 @@ export function useTauriTheme() {
     await listen<'light' | 'dark'>('os-theme-changed', ({ payload }) => {
       console.log('[Theme] Received os-theme-changed from Rust:', payload);
       if (colorMode.preference === 'system') {
-        colorMode.value = payload;
+        (colorMode as any).preference = payload;
       }
     });
 
@@ -28,7 +28,7 @@ export function useTauriTheme() {
       if (pref === 'system') {
         const theme = await invoke<string>('get_os_theme');
         console.log('[Theme] preference switched to system, new theme:', theme);
-        if (theme) colorMode.value = theme;
+        if (theme) (colorMode as any).preference = theme;
       }
     });
   }

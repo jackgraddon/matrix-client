@@ -6,7 +6,7 @@
                     variant="ghost" 
                     size="icon" 
                     class="md:hidden" 
-                    @click="matrixStore.toggleSidebar(false)"
+                    @click="uiStore.toggleSidebar(false)"
                 >
                     <Icon name="solar:close-circle-linear" />
                 </UiButton>
@@ -19,7 +19,7 @@
                 v-if="activeSpaceId && isLinkActive('/chat/spaces')"
                 variant="ghost" 
                 size="icon-sm" 
-                @click="matrixStore.openSpaceSettingsModal(activeSpaceId)"
+                @click="uiStore.openSpaceSettingsModal(activeSpaceId)"
                 title="Space Settings"
             > 
                 <Icon name="solar:settings-minimalistic-bold-duotone"/>
@@ -30,7 +30,7 @@
                 <!-- Sidebar Home actions -->
                 <template v-if="isLinkActive('/chat')">
                     <div class="flex flex-col gap-2">
-                        <UiButton variant="default" @click="matrixStore.openGlobalSearchModal()" class="w-full">
+                        <UiButton variant="default" @click="uiStore.openGlobalSearchModal()" class="w-full">
                             <Icon name="solar:add-circle-line-duotone" class="h-4 w-4" />
                             Find or start a chat
                         </UiButton>
@@ -38,7 +38,7 @@
                         <UiButton
                             v-if="jellyfinStore.isAuthenticated"
                             variant="secondary"
-                            @click="() => { navigateTo('/chat/music'); matrixStore.toggleSidebar(false); }"
+                            @click="() => { navigateTo('/chat/music'); uiStore.toggleSidebar(false); }"
                         >
                             <Icon name="solar:music-note-bold-duotone" />
                             Music Library
@@ -86,8 +86,8 @@
                             v-for="friend in friends" :key="friend.roomId"
                             :variant="(isLinkActive(`/chat/dms/${friend.roomId}`) || voiceStore.activeRoomId === friend.roomId) ? 'secondary' : 'ghost'"
                             class="justify-start px-2 h-10 w-full group relative"
-                            @contextmenu.capture="matrixStore.openRoomContextMenu(friend.roomId)"
-                            v-long-press="() => { if (matrixStore.ui.hapticFeedbackEnabled) trigger('medium'); matrixStore.openRoomContextMenu(friend.roomId); }"
+                            @contextmenu.capture="uiStore.openRoomContextMenu(friend.roomId)"
+                            v-long-press="() => { if (uiStore.hapticFeedbackEnabled) trigger('medium'); uiStore.openRoomContextMenu(friend.roomId); }"
                             as-child
                         >
                             <NuxtLink
@@ -138,8 +138,8 @@
                             v-for="room in rooms" :key="room.roomId"
                             :variant="(isLinkActive(`/chat/rooms/${room.roomId}`) || voiceStore.activeRoomId === room.roomId) ? 'secondary' : 'ghost'"
                             class="justify-start px-2 h-10 w-full group relative"
-                            @contextmenu.capture="matrixStore.openRoomContextMenu(room.roomId)"
-                            v-long-press="() => { if (matrixStore.ui.hapticFeedbackEnabled) trigger('medium'); matrixStore.openRoomContextMenu(room.roomId); }"
+                            @contextmenu.capture="uiStore.openRoomContextMenu(room.roomId)"
+                            v-long-press="() => { if (uiStore.hapticFeedbackEnabled) trigger('medium'); uiStore.openRoomContextMenu(room.roomId); }"
                             as-child
                         >
                             <NuxtLink
@@ -185,8 +185,8 @@
                             :class="[(page.path === '/chat/settings' ? route.path === '/chat/settings' : isLinkActive(page.path)) ? 'bg-secondary text-secondary-foreground' : '']"
                             @click="() => {
                                 navigateTo(page.path);
-                                matrixStore.toggleSidebar(false);
-                                matrixStore.ui.memberListVisible = false;
+                                uiStore.toggleSidebar(false);
+                                uiStore.memberListVisible = false;
                             }"
                         >
                             <Icon :name="page.icon" class="h-4 w-4 mr-2 text-muted-foreground" />
@@ -213,7 +213,7 @@
                             role="button"
                             class="inline-flex items-center justify-start px-2 h-10 w-full rounded-md text-sm font-medium transition-colors cursor-pointer hover:bg-muted"
                             :class="[route.path === item.path ? 'bg-secondary text-secondary-foreground' : '']"
-                            @click="() => { navigateTo(item.path); matrixStore.toggleSidebar(false); }"
+                            @click="() => { navigateTo(item.path); uiStore.toggleSidebar(false); }"
                         >
                             <Icon :name="item.icon" class="h-4 w-4 mr-2 text-muted-foreground" />
                             <span class="truncate">{{ item.label }}</span>
@@ -229,7 +229,7 @@
                             :key="playlist.Id"
                             role="button"
                             class="group inline-flex items-center justify-start px-2 h-10 w-full rounded-md text-sm font-medium transition-colors cursor-pointer hover:bg-muted relative"
-                            @click="() => { navigateTo(`/chat/music/playlist/${playlist.Id}`); matrixStore.toggleSidebar(false); }"
+                            @click="() => { navigateTo(`/chat/music/playlist/${playlist.Id}`); uiStore.toggleSidebar(false); }"
                         >
                             <Icon name="solar:playlist-minimalistic-bold-duotone" class="h-4 w-4 mr-2 text-muted-foreground shrink-0 group-hover:hidden" />
                             <UiButton
@@ -251,7 +251,7 @@
                     <!-- Return to Lobby Button -->
                     <UiButton 
                         :variant="isLobby ? 'default' : 'secondary'" 
-                        @click="() => { navigateTo(`/chat/spaces/${activeSpaceId}`); matrixStore.toggleSidebar(false); matrixStore.ui.memberListVisible = false; }"
+                        @click="() => { navigateTo(`/chat/spaces/${activeSpaceId}`); uiStore.toggleSidebar(false); uiStore.memberListVisible = false; }"
                         class="w-full mb-2 justify-start gap-2"
                     >
                         <Icon name="solar:home-2-bold" class="h-4 w-4" />
@@ -360,6 +360,8 @@ import MatrixAvatar from '~/components/MatrixAvatar.vue';
 import ChatSidebarCategory from '~/components/ChatSidebarCategory.vue';
 import { isVoiceChannel } from '~/utils/room';
 import { useMatrixStore } from '~/stores/matrix';
+import { useUIStore } from "~/stores/ui";
+import { useServices } from "~/composables/useServices";
 import { useVoiceStore } from '~/stores/voice';
 import { useMusicStore } from '~/stores/music';
 import { useJellyfinStore } from '~/stores/jellyfin';
@@ -421,8 +423,10 @@ const settingsGroups = computed(() => {
 });
 
 const matrixStore = useMatrixStore();
+const uiStore = useUIStore();
+const { matrixService, audioService } = useServices();
 const { trigger } = useWebHaptics({
-    debug: matrixStore.ui.hapticsDebugEnabled
+    debug: uiStore.hapticsDebugEnabled
 });
 const voiceStore = useVoiceStore();
 const musicStore = useMusicStore();
@@ -440,8 +444,8 @@ function handleRoomClick(e: MouseEvent, roomId: string) {
         voiceStore.joinVoiceRoom(room!);
     }
 
-    matrixStore.toggleSidebar(false);
-    matrixStore.ui.memberListVisible = false;
+    uiStore.toggleSidebar(false);
+    uiStore.memberListVisible = false;
 }
 
 function doSearch() {
@@ -470,8 +474,8 @@ async function loadPlaylists() {
                 Fields: ['PrimaryImageAspectRatio', 'UserData']
             }
         });
-        if (data && 'Items' in data) {
-            playlists.value = data.Items as any[];
+        if (data && typeof data === 'object' && 'Items' in data) {
+            playlists.value = (data as any).Items as any[];
         }
     } catch (e) {
         console.error('[Sidebar] Failed to load playlists:', e);
@@ -490,8 +494,8 @@ async function quickPlayPlaylist(playlist: any) {
             }
         });
 
-        if (data && 'Items' in data && Array.isArray(data.Items) && data.Items.length > 0) {
-            const songs = data.Items.map((item: any) => {
+        if (data && typeof data === 'object' && 'Items' in data && Array.isArray((data as any).Items) && (data as any).Items.length > 0) {
+            const songs = (data as any).Items.map((item: any) => {
                 const streamUrl = `${jellyfinStore.serverUrl}/Audio/${item.Id}/stream?static=true&api_key=${jellyfinStore.accessToken}`;
                 const coverUrl = item.ImageTags?.Primary
                     ? `${jellyfinStore.serverUrl}/Items/${item.Id}/Images/Primary?tag=${item.ImageTags.Primary}&maxWidth=100&api_key=${jellyfinStore.accessToken}`
@@ -508,9 +512,12 @@ async function quickPlayPlaylist(playlist: any) {
             }).filter(s => !!s.id);
 
             if (songs.length > 0) {
-                musicStore.playSong(songs[0]);
-                if (songs.length > 1) {
-                    musicStore.addToQueue(songs.slice(1));
+                const first = songs[0];
+                if (first) {
+                    audioService.playSong(first);
+                    if (songs.length > 1) {
+                        musicStore.addToQueue(songs.slice(1));
+                    }
                 }
             }
         }
@@ -595,7 +602,7 @@ const friends = computed(() => {
   const directContent: Record<string, string[]> = directEvent ? directEvent.getContent() as Record<string, string[]> : {};
 
   // Filter out empty rooms unless the setting is enabled
-  const filteredDMs = matrixStore.ui.showEmptyRooms
+  const filteredDMs = uiStore.showEmptyRooms
     ? directMessages
     : directMessages.filter(room => !isEmptyRoom(room));
 
@@ -634,7 +641,7 @@ const rooms = computed(() => {
   
   const { orphanRooms } = matrixStore.hierarchy;
   // Filter out empty rooms unless the setting is enabled
-  const filtered = matrixStore.ui.showEmptyRooms
+  const filtered = uiStore.showEmptyRooms
     ? orphanRooms
     : orphanRooms.filter(room => !isEmptyRoom(room));
   return filtered.map(mapRoom).sort((a, b) => b.lastActive - a.lastActive);
@@ -648,11 +655,11 @@ const activeSpaceId = computed(() => {
 // Trigger space hierarchy fetching when a space becomes active
 watch(activeSpaceId, (newSpaceId) => {
   if (newSpaceId && isLinkActive('/chat/spaces')) {
-    matrixStore.fetchSpaceHierarchy(newSpaceId);
+    matrixService.fetchSpaceHierarchy(newSpaceId);
   }
 }, { immediate: true });
 
-const collapsedCategories = computed(() => new Set(matrixStore.ui.collapsedCategories));
+const collapsedCategories = computed(() => new Set(uiStore.collapsedCategories));
 
 const isCategoryEditMode = ref(false);
 
@@ -661,13 +668,13 @@ const navigateToInvite = (room: Room) => {
   const myMember = room.getMember(myUserId!);
   const isDirect = myMember?.events.member?.getContent().is_direct;
   const path = isDirect ? `/chat/dms/${room.roomId}` : `/chat/rooms/${room.roomId}`;
-  matrixStore.toggleSidebar(false);
-  matrixStore.ui.memberListVisible = false;
+  uiStore.toggleSidebar(false);
+  uiStore.memberListVisible = false;
   navigateTo(path);
 };
 
 const toggleCategory = (categoryId: string) => {
-  matrixStore.toggleUICategory(categoryId);
+  uiStore.toggleUICategory(categoryId);
 };
 
 const isCategoryCollapsed = (categoryId: string) => collapsedCategories.value.has(categoryId);
@@ -692,7 +699,7 @@ const buildSpaceHierarchy = (spaceId: string, visited: Set<string> = new Set()):
         // Filter out empty rooms unless the setting is enabled
         if (room.isSpaceRoom()) {
           subSpaces.push(room);
-        } else if (matrixStore.ui.showEmptyRooms || !isEmptyRoom(room) || isVoiceChannel(room)) {
+        } else if (uiStore.showEmptyRooms || !isEmptyRoom(room) || isVoiceChannel(room)) {
           // Always show voice channels in spaces to avoid hiding active calls
           directRooms.push(room);
         }
@@ -750,7 +757,7 @@ const spaceCategories = computed(() => {
 
 const draggableCategories = computed({
     get: () => {
-        const order = activeSpaceId.value ? matrixStore.ui.uiOrder.categories[activeSpaceId.value] : [];
+        const order = activeSpaceId.value ? uiStore.uiOrder.categories[activeSpaceId.value] : [];
         if (!order || order.length === 0) return spaceCategories.value;
         
         return [...spaceCategories.value].sort((a, b) => {

@@ -3,7 +3,7 @@
     class="group relative flex flex-col gap-2 p-2 rounded-lg hover:bg-accent/50 transition-all cursor-pointer content-visibility-auto"
     style="contain-intrinsic-size: 0 240px;"
     @click="handleClick"
-    @contextmenu.capture="matrixStore.openMusicItemContextMenu(item)"
+    @contextmenu.capture="(uiStore as any).openMusicItemContextMenu(item)"
   >
     <div class="aspect-square rounded-lg overflow-hidden bg-muted shadow-sm relative">
       <img
@@ -15,13 +15,13 @@
       />
       <div v-else class="h-full w-full flex items-center justify-center">
         <Icon
-          :name="item.Type === 'Artist' ? 'solar:user-bold' : 'solar:music-note-bold'"
+          :name="(item.Type as string) === 'Artist' ? 'solar:user-bold' : 'solar:music-note-bold'"
           class="h-12 w-12 text-muted-foreground/30"
         />
       </div>
 
       <div
-        v-if="item.Type === 'Audio' || item.Type === 'MusicAlbum' || item.Type === 'Playlist'"
+        v-if="(item.Type as string) === 'Audio' || (item.Type as string) === 'MusicAlbum' || (item.Type as string) === 'Playlist'"
         class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2"
       >
         <UiButton
@@ -38,7 +38,7 @@
         >
           <Icon :name="isShuffling ? 'solar:shuffle-bold' : 'solar:play-bold'" class="h-6 w-6 ml-0.5 text-[#AA5CC3]" />
         </UiButton>
-        <UiButton v-if="item.Type === 'Audio'" size="icon-sm" variant="secondary" class="rounded-full shadow-lg scale-90 group-hover:scale-100 transition-transform" @click.stop="addToQueue" title="Add to Queue">
+        <UiButton v-if="(item.Type as string) === 'Audio'" size="icon-sm" variant="secondary" class="rounded-full shadow-lg scale-90 group-hover:scale-100 transition-transform" @click.stop="addToQueue" title="Add to Queue">
           <Icon name="solar:list-line-duotone" class="h-4 w-4 text-[#AA5CC3]" />
         </UiButton>
       </div>
@@ -64,7 +64,9 @@ const props = defineProps<{
 
 const jellyfinStore = useJellyfinStore();
 const musicStore = useMusicStore();
-const matrixStore = useMatrixStore();
+const uiStore = useUIStore();
+const matrixStore = useMatrixStore(); // Needed for types if used
+import { useMatrixService, useAudioService, useJellyfinService, usePresenceService } from "~/composables/useServices";
 const { fetcher } = useJellyfin();
 
 let holdTimer: any = null;
@@ -78,8 +80,8 @@ const imageUrl = computed(() => {
 });
 
 const subText = computed(() => {
-  if (props.item.Type === 'Artist') return 'Artist';
-  if (props.item.Type === 'MusicAlbum') {
+  if ((props.item.Type as string) === 'Artist') return 'Artist';
+  if ((props.item.Type as string) === 'MusicAlbum') {
     const artist = props.item.AlbumArtist || props.item.ArtistItems?.[0]?.Name || 'Unknown Artist';
     return `${artist}${props.item.ProductionYear ? ` • ${props.item.ProductionYear}` : ''}`;
   }
@@ -87,25 +89,26 @@ const subText = computed(() => {
 });
 
 function handleClick() {
-  if (props.item.Type === 'Audio') {
+  if ((props.item.Type as string) === 'Audio') {
     // Navigate to the album the song is in if available
     if (props.item.AlbumId) {
       navigateTo(`/chat/music/albums/${props.item.AlbumId}`);
     }
-  } else if (props.item.Type === 'Artist' || props.item.Type === 'MusicArtist') {
+  } else if ((props.item.Type as string) === 'Artist' || (props.item.Type as string) === 'MusicArtist') {
     navigateTo(`/chat/music/artists/${props.item.Id}`);
-  } else if (props.item.Type === 'MusicAlbum') {
+  } else if ((props.item.Type as string) === 'MusicAlbum') {
     navigateTo(`/chat/music/albums/${props.item.Id}`);
-  } else if (props.item.Type === 'Playlist') {
+  } else if ((props.item.Type as string) === 'Playlist') {
     navigateTo(`/chat/music/playlist/${props.item.Id}`);
   }
 }
 
 async function play(item: BaseItemDto, shuffle = false) {
-  if (item.Type === 'Audio') {
+  const audioService = useAudioService();
+  if ((item.Type as string) === 'Audio') {
     const song = mapToSong(item);
-    if (song) musicStore.playSong(song);
-  } else if (item.Type === 'MusicAlbum' || item.Type === 'Playlist' || item.Type === 'Artist') {
+    if (song) audioService.playSong(song);
+  } else if ((item.Type as string) === 'MusicAlbum' || (item.Type as string) === 'Playlist' || (item.Type as string) === 'Artist') {
     try {
       const query: any = {
         IncludeItemTypes: ['Audio'],
@@ -132,10 +135,7 @@ async function play(item: BaseItemDto, shuffle = false) {
         }
 
         if (songs.length > 0) {
-          musicStore.playSong(songs[0]);
-          if (songs.length > 1) {
-            musicStore.addToQueue(songs.slice(1));
-          }
+          audioService.playSong(songs);
         }
       }
     } catch (e) {
@@ -161,10 +161,11 @@ function clearHoldTimer() {
 }
 
 async function addToQueue() {
-  if (props.item.Type === 'Audio') {
+  const audioService = useAudioService();
+  if ((props.item.Type as string) === 'Audio') {
     const song = mapToSong(props.item);
-    if (song) musicStore.addToQueue(song);
-  } else if (props.item.Type === 'MusicAlbum' || props.item.Type === 'Playlist' || props.item.Type === 'Artist') {
+    if (song) audioService.addToQueue(song);
+  } else if ((props.item.Type as string) === 'MusicAlbum' || (props.item.Type as string) === 'Playlist' || (props.item.Type as string) === 'Artist') {
     try {
       const query: any = {
         IncludeItemTypes: ['Audio'],
@@ -185,7 +186,7 @@ async function addToQueue() {
       if (data && 'Items' in data && Array.isArray(data.Items)) {
         const songs = data.Items.map(t => mapToSong(t)).filter((s): s is any => !!s);
         if (songs.length > 0) {
-          musicStore.addToQueue(songs);
+          audioService.addToQueue(songs);
         }
       }
     } catch (e) {

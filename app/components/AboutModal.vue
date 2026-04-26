@@ -1,5 +1,5 @@
 <template>
-  <UiDialog v-model:open="store.aboutModalOpen">
+  <UiDialog v-model:open="uiStore.aboutModalOpen">
     <UiDialogContent class="sm:max-w-[425px]">
       <UiDialogHeader>
         <div class="flex flex-col items-center gap-4 py-4">
@@ -60,7 +60,7 @@
 <script setup lang="ts">
 import { useMatrixStore } from '~/stores/matrix';
 
-const store = useMatrixStore();
+const uiStore = useUIStore();
 const config = useRuntimeConfig();
 const buildDate = config.public.buildDate;
 

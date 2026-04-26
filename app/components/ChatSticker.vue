@@ -55,6 +55,9 @@ const emit = defineEmits<{
 }>();
 
 const store = useMatrixStore();
+const uiStore = useUIStore();
+const matrixService = useMatrixService();
+const presenceStore = usePresenceStore();
 const isHovered = ref(false);
 
 // --- Mimetype helper ---

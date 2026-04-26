@@ -1,3 +1,5 @@
+import { ActivityService } from "~/services/activity.service";
+
 export default defineNuxtPlugin(() => {
     console.log('[GameDetectionPlugin] Plugin loaded!');
 
@@ -6,11 +8,9 @@ export default defineNuxtPlugin(() => {
         return;
     }
 
-    const store = useMatrixStore();
-
     console.log('[GameDetectionPlugin] Initializing game detection...');
 
-    // Initialize state from localStorage and sync with backend
-    store.initGameDetection();
-
+    // The ActivityService instance is already initialized in services.client.ts
+    // but we can ensure it's synced if needed here, or just rely on the service.
+    ActivityService.getInstance().init();
 });

@@ -318,12 +318,14 @@ definePageMeta({
   place: 1
 })
 
-import { ref, reactive } from 'vue';
+import { ref, reactive, computed } from 'vue';
 import { useMatrixStore } from '~/stores/matrix';
-import { Method } from 'matrix-js-sdk';
+import { useUIStore } from "~/stores/ui";
+import { useMatrixService } from "~/composables/useServices";
 
-const { $isTauri: isTauri } = useNuxtApp();
 const matrixStore = useMatrixStore();
+const uiStore = useUIStore();
+const matrixService = useMatrixService();
 const config = useRuntimeConfig();
 
 const isRunning = ref(false);
@@ -334,8 +336,8 @@ const pusherList = ref<any[]>([]);
 const pusherResetStatus = ref<{ ok: boolean; message: string } | null>(null);
 
 const hapticsDebugToggle = computed({
-  get: () => matrixStore.ui.hapticsDebugEnabled,
-  set: (val) => matrixStore.setHapticsDebugEnabled(val)
+  get: () => uiStore.hapticsDebugEnabled,
+  set: (val) => uiStore.setHapticsDebugEnabled(val)
 });
 
 // The correct URL is the Nuxt server route path directly.
@@ -401,10 +403,6 @@ async function getPushers() {
 
 /**
  * Directly overwrites the Tumult pusher on the homeserver with the correct URL.
- * 
- * We do NOT delete-and-reload because that just re-registers using the same
- * broken NUXT_PUBLIC_PUSH_RELAY_URL env var, ending up back at the Sygnal address.
- * Instead, setPusher with the same app_id overwrites the existing entry in-place.
  */
 async function resetPusher() {
   console.log('[Diagnostics] resetPusher called, client:', !!matrixStore.client);
@@ -418,7 +416,6 @@ async function resetPusher() {
   pusherResetStatus.value = null;
 
   try {
-    // Always fetch fresh from the server so we have the exact pushkey
     const { pushers } = await matrixStore.client.getPushers();
     pusherList.value = pushers;
 
@@ -429,12 +426,9 @@ async function resetPusher() {
       return;
     }
 
-    // Re-use the existing pushkey exactly as stored — no SW lookup needed.
-    // Ensure we have a notification key
     const { getOrCreateNotificationKey } = await import('~/utils/crypto-db');
     const { jwk } = await getOrCreateNotificationKey();
 
-    // setPusher with the same app_id overwrites the entry in-place on the homeserver.
     await (matrixStore.client as any).setPusher({
       app_id: 'cc.jackg',
       app_display_name: 'Tumult',
@@ -445,11 +439,10 @@ async function resetPusher() {
       data: {
         url: CORRECT_PUSHER_URL,
         include_content: true,
-        ek: jwk, // Ensure Zero-Knowledge is enabled
+        ek: jwk,
       },
     });
 
-    // Refresh and verify
     const after = await matrixStore.client.getPushers();
     pusherList.value = after.pushers;
 
@@ -473,9 +466,6 @@ async function resetPusher() {
   }
 }
 
-/**
- * Hard Reset: Unsubscribes from push entirely and re-subscribes to force a fresh JSON pushkey.
- */
 async function hardResetPush() {
   console.log('[Diagnostics] hardResetPush called');
 
@@ -502,7 +492,6 @@ async function hardResetPush() {
 
     console.log('[Diagnostics] Re-subscribing...');
     
-    // Convert base64 VAPID key to Uint8Array for cross-browser support
     const vapidBase64 = config.public.push.vapidPublicKey;
     const binaryString = atob(vapidBase64.replace(/-/g, '+').replace(/_/g, '/'));
     const vapidKey = new Uint8Array(binaryString.length);
@@ -515,11 +504,9 @@ async function hardResetPush() {
       applicationServerKey: vapidKey
     });
 
-    console.log('[Diagnostics] Ensuring notification key exists...');
     const { getOrCreateNotificationKey } = await import('~/utils/crypto-db');
     const { jwk } = await getOrCreateNotificationKey();
 
-    console.log('[Diagnostics] Registering new pusher on homeserver...');
     await (matrixStore.client as any).setPusher({
       app_id: 'cc.jackg',
       app_display_name: 'Tumult',
@@ -530,7 +517,7 @@ async function hardResetPush() {
       data: {
         url: CORRECT_PUSHER_URL,
         include_content: true,
-        ek: jwk, // Enable Zero-Knowledge for the new subscription
+        ek: jwk,
       },
     });
 
@@ -548,7 +535,6 @@ async function hardResetPush() {
   }
 }
 
-// Maps boolean | null to a display status
 function getStatus(val: boolean | null): 'pending' | 'pass' | 'fail' {
   if (val === null) return 'pending';
   return val ? 'pass' : 'fail';
@@ -561,7 +547,6 @@ async function runDiagnostics() {
   diagnostics.successes = [];
   diagnostics.recommendations = [];
 
-  // Reset all checks to null (pending)
   Object.keys(diagnostics.browser).forEach(k => (diagnostics.browser as any)[k] = null);
   Object.keys(diagnostics.network).forEach(k => (diagnostics.network as any)[k] = null);
   Object.keys(diagnostics.matrixRTC).forEach(k => (diagnostics.matrixRTC as any)[k] = null);
@@ -634,7 +619,6 @@ async function checkNetworkConnectivity() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ room: 'test', device_id: 'test', openid_token: 'test' })
     });
-    // A 400 means the service is reachable but rejected the invalid test payload — that's expected
     diagnostics.network.livekit = response.status === 400 || response.ok;
     if (!diagnostics.network.livekit) {
       diagnostics.errors.push(`LiveKit service returned unexpected status: ${response.status}`);
@@ -655,10 +639,8 @@ async function checkMatrixRTC() {
   diagnostics.matrixRTC.available = !!(matrixStore.client.matrixRTC);
 
   try {
-    // 1. Try the SDK first
     let wellKnown = await matrixStore.client.getClientWellKnown();
     
-    // 2. If SDK says undefined, force a fresh fetch to verify the Worker
     if (!wellKnown) {
       const response = await fetch(`${await matrixStore.client.getHomeserverUrl()}/.well-known/matrix/client`);
       if (response.ok) {
@@ -705,7 +687,6 @@ async function checkLiveKit() {
 }
 
 async function checkPushNotifications() {
-  // Service Worker
   diagnostics.push.serviceWorker = 'serviceWorker' in navigator;
   if (!diagnostics.push.serviceWorker) {
     diagnostics.errors.push('Service Worker not supported — background push is impossible');
@@ -718,13 +699,11 @@ async function checkPushNotifications() {
     return;
   }
 
-  // Push Manager
   diagnostics.push.pushManager = 'PushManager' in window;
   if (!diagnostics.push.pushManager) {
     diagnostics.errors.push('PushManager not available — this browser cannot receive push notifications');
   }
 
-  // Notification Permission
   const permission = Notification.permission;
   diagnostics.push.permission = permission === 'granted';
   if (permission === 'denied') {
@@ -733,7 +712,6 @@ async function checkPushNotifications() {
     diagnostics.errors.push('Notification permission not yet granted');
   }
 
-  // Push Subscription
   try {
     const swReg = await navigator.serviceWorker.ready;
     const sub = await swReg.pushManager.getSubscription();
@@ -746,7 +724,6 @@ async function checkPushNotifications() {
     diagnostics.errors.push(`Push subscription check failed: ${e instanceof Error ? e.message : String(e)}`);
   }
 
-  // Matrix Pusher & URL check
   if (!matrixStore.client) {
     diagnostics.push.pusherRegistered = false;
     diagnostics.push.pusherKeyValid = false;
@@ -756,7 +733,7 @@ async function checkPushNotifications() {
 
   try {
     const { pushers } = await matrixStore.client.getPushers();
-    pusherList.value = pushers; // keep the list in sync
+    pusherList.value = pushers;
     const tumultPusher = pushers.find((p: any) => p.app_id === 'cc.jackg');
 
     diagnostics.push.pusherRegistered = !!tumultPusher;
@@ -836,6 +813,7 @@ function dumpRoomState() {
     }
   });
 }
+
 async function purgeAllData() {
   const confirmed = confirm(
     "This will delete ALL local data and log you out. This is the only way to stop recurring macOS keychain prompts if they are 'stuck' in your history. Proceed?"
@@ -859,7 +837,7 @@ async function purgeAllData() {
     sessionStorage.clear();
 
     try {
-      await matrixStore.logout();
+      await matrixService.logout();
     } catch (e) {
       console.warn("[Purge] Matrix logout failed (data may already be gone):", e);
     }

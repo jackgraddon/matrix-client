@@ -66,7 +66,7 @@
               :key="song.Id"
               class="flex items-center gap-4 p-2 rounded-md hover:bg-accent/50 group cursor-pointer transition-colors"
               @click="play(song)"
-              @contextmenu.capture="matrixStore.openMusicItemContextMenu(song)"
+              @contextmenu.capture="uiStore.openMusicItemContextMenu(song)"
             >
               <span class="w-6 text-sm text-muted-foreground text-center font-medium group-hover:hidden">{{ index + 1 }}</span>
               <Icon name="solar:play-bold" class="w-6 h-6 text-[#AA5CC3] hidden group-hover:block" />
@@ -115,11 +115,13 @@
 </template>
 
 <script setup lang="ts">
+import { ref, reactive, computed, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import { useJellyfin } from '~/composables/useJellyfin';
 import { useJellyfinStore } from '~/stores/jellyfin';
 import { useMusicStore } from '~/stores/music';
-import { useMatrixStore } from '~/stores/matrix';
+import { useUIStore } from "~/stores/ui";
+import { useServices } from "~/composables/useServices";
 import type { BaseItemDto } from '~/types/jellyfin';
 import MusicSection from '~/components/music/MusicSection.vue';
 
@@ -127,7 +129,8 @@ const route = useRoute();
 const { fetcher } = useJellyfin();
 const jellyfinStore = useJellyfinStore();
 const musicStore = useMusicStore();
-const matrixStore = useMatrixStore();
+const uiStore = useUIStore();
+const { audioService } = useServices();
 
 const artistId = route.params.id as string;
 const artist = ref<BaseItemDto | null>(null);
@@ -178,8 +181,8 @@ async function loadArtist() {
       Limit: 10,
       Fields: ['ArtistItems', 'PrimaryImageAspectRatio', 'UserData']
     }
-  }).then(data => {
-    if (data && 'Items' in data) topSongs.value = data.Items as BaseItemDto[];
+  }).then((data: any) => {
+    if (data && data.Items) topSongs.value = data.Items as BaseItemDto[];
   }).finally(() => loading.topSongs = false);
 
   loading.albums = true;
@@ -193,8 +196,8 @@ async function loadArtist() {
       SortOrder: 'Descending',
       Fields: ['ArtistItems', 'PrimaryImageAspectRatio', 'UserData']
     }
-  }).then(data => {
-    if (data && 'Items' in data) albums.value = data.Items as BaseItemDto[];
+  }).then((data: any) => {
+    if (data && data.Items) albums.value = data.Items as BaseItemDto[];
   }).finally(() => loading.albums = false);
 }
 
@@ -237,12 +240,12 @@ function mapToSong(item: BaseItemDto) {
 
 function play(item: BaseItemDto) {
   const song = mapToSong(item);
-  if (song) musicStore.playSong(song);
+  if (song) audioService.playSong(song);
 }
 
 async function playAll(shuffle = false) {
   try {
-    const data = await fetcher('/Items', {
+    const data: any = await fetcher('/Items', {
       method: 'GET',
       query: {
         ArtistIds: [artistId],
@@ -252,14 +255,14 @@ async function playAll(shuffle = false) {
       }
     });
 
-    if (data && 'Items' in data && Array.isArray(data.Items) && data.Items.length > 0) {
-      let songsToPlay = data.Items.map(t => mapToSong(t)).filter((s): s is any => !!s);
+    if (data && data.Items && Array.isArray(data.Items) && data.Items.length > 0) {
+      let songsToPlay = data.Items.map((t: BaseItemDto) => mapToSong(t)).filter((s: any): s is any => !!s);
 
       if (shuffle) {
         songsToPlay = songsToPlay.sort(() => Math.random() - 0.5);
       }
 
-      musicStore.playSong(songsToPlay[0]);
+      audioService.playSong(songsToPlay[0]);
       if (songsToPlay.length > 1) {
         musicStore.addToQueue(songsToPlay.slice(1));
       }
@@ -287,7 +290,7 @@ function clearHoldTimer() {
 
 async function addAllToQueue() {
   try {
-    const data = await fetcher('/Items', {
+    const data: any = await fetcher('/Items', {
       method: 'GET',
       query: {
         ArtistIds: [artistId],
@@ -297,8 +300,8 @@ async function addAllToQueue() {
       }
     });
 
-    if (data && 'Items' in data && Array.isArray(data.Items)) {
-      const songs = data.Items.map(t => mapToSong(t)).filter((s): s is any => !!s);
+    if (data && data.Items && Array.isArray(data.Items)) {
+      const songs = data.Items.map((t: BaseItemDto) => mapToSong(t)).filter((s: any): s is any => !!s);
       if (songs.length > 0) {
         musicStore.addToQueue(songs);
       }

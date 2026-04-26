@@ -13,17 +13,17 @@
           variant="ghost"
           size="icon-sm"
           class="md:hidden shrink-0"
-          @click="store.toggleSidebar(true)"
-          v-if="!store.ui.sidebarOpen && !store.ui.memberListVisible"
+          @click="uiStore.toggleSidebar(true)"
+          v-if="!uiStore.sidebarOpen && !uiStore.memberListVisible"
         >
           <Icon name="solar:hamburger-menu-linear" class="h-6 w-6" />
         </UiButton>
 
-        <div :class="{'hidden md:block': store.ui.memberListVisible}" class="flex-1 min-w-0">
+        <div :class="{'hidden md:block': uiStore.memberListVisible}" class="flex-1 min-w-0">
           <div 
             class="cursor-pointer group/header"
-            @contextmenu.capture="store.openRoomContextMenu(roomId as string)"
-            v-long-press="() => { if (store.ui.hapticFeedbackEnabled) trigger('medium'); store.openRoomContextMenu(roomId as string); }"
+            @contextmenu.capture="uiStore.openRoomContextMenu(roomId as string)"
+            v-long-press="() => { if (uiStore.hapticFeedbackEnabled) trigger('medium'); uiStore.openRoomContextMenu(roomId as string); }"
           >
             <RoomHeader 
               v-if="!isDm"
@@ -79,8 +79,8 @@
             <UiButton
               variant="ghost"
               size="icon-sm"
-              @click="() => { store.toggleMemberList(); store.toggleSidebar(false); }"
-              :class="{ 'bg-accent text-accent-foreground': store.ui.memberListVisible }"
+              @click="() => { uiStore.toggleMemberList(); uiStore.toggleSidebar(false); }"
+              :class="{ 'bg-accent text-accent-foreground': uiStore.memberListVisible }"
               title="Toggle Member List"
               class="rounded-full"
             >
@@ -130,10 +130,10 @@
         </div>
 
         <div class="flex flex-col gap-3">
-          <UiButton size="lg" class="w-full font-bold h-12 text-base" @click="store.acceptInvite(roomId as string)">
+          <UiButton size="lg" class="w-full font-bold h-12 text-base" @click="matrixService.acceptInvite(roomId as string)">
             Accept Invite
           </UiButton>
-          <UiButton variant="outline" size="lg" class="w-full font-semibold h-12 text-base" @click="store.declineInvite(roomId as string)">
+          <UiButton variant="outline" size="lg" class="w-full font-semibold h-12 text-base" @click="matrixService.declineInvite(roomId as string)">
             Decline
           </UiButton>
         </div>
@@ -225,8 +225,8 @@
           <!-- Message content -->
           <div 
             class="contents"
-            @contextmenu.capture="store.openMessageContextMenu(msg)"
-            v-long-press="() => { if (store.ui.hapticFeedbackEnabled) trigger('medium'); store.openMessageContextMenu(msg); }"
+            @contextmenu.capture="uiStore.openMessageContextMenu(msg)"
+            v-long-press="() => { if (uiStore.hapticFeedbackEnabled) trigger('medium'); uiStore.openMessageContextMenu(msg); }"
           >
             <div class="flex flex-col max-w-[90%] md:max-w-[75%] min-w-0 relative group/message order-1 md:order-none" :class="msg.isOwn ? 'items-end' : 'items-start'">
               <!-- Sender name (only for first in a group) -->
@@ -672,8 +672,12 @@ const props = defineProps<{
 
 const route = useRoute();
 const store = useMatrixStore();
+const uiStore = useUIStore();
+const matrixService = useMatrixService();
+const activityStore = useActivityStore();
+const presenceStore = usePresenceStore();
 const { trigger } = useWebHaptics({
-  debug: store.ui.hapticsDebugEnabled
+  debug: uiStore.hapticsDebugEnabled
 });
 const { onTouchStart, onTouchEnd } = useMobileGestures();
 const voiceStore = useVoiceStore();
@@ -714,13 +718,13 @@ async function handleInviteToGame(gameType: string = 'tictactoe') {
 }
 
 function hasGameState(gameId: string): boolean {
-  store.gameTrigger; // reactivity
-  return !!store.gameStates[gameId];
+  activityStore.gameTrigger; // reactivity
+  return !!activityStore.gameStates[gameId];
 }
 
 function getGameTypeFromState(gameId: string): string | undefined {
-  store.gameTrigger; // reactivity
-  return store.gameStates[gameId]?.game_type;
+  activityStore.gameTrigger; // reactivity
+  return activityStore.gameStates[gameId]?.game_type;
 }
 
 // --- Reactive state ---
@@ -782,10 +786,10 @@ function getMatrixEvent(msg: ChatMessage): MatrixEvent | undefined {
 
 const messages = ref<ChatMessage[]>([]);
 const newMessage = computed({
-  get: () => store.ui.composerStates[roomId.value ?? '']?.text || '',
+  get: () => uiStore.composerStates[roomId.value ?? '']?.text || '',
   set: (val: string) => {
     if (roomId.value) {
-      store.setUIComposerState(roomId.value as string, { text: val });
+      uiStore.setUIComposerState(roomId.value as string, { text: val });
     }
   }
 });
@@ -1237,7 +1241,7 @@ function refreshMessagesFromWindow() {
           decryptionListenerIds.delete(eventId!);
           refreshMessagesFromWindow();
           // Force game re-evaluation in case this was a game event
-          store.gameTrigger++;
+          activityStore.gameTrigger++;
         });
       }
     }
@@ -1330,8 +1334,7 @@ function processEventForStore(event: MatrixEvent) {
   const type = isEncrypted ? content?.type : event.getType();
 
   if (type === 'cc.jackg.ruby.game.state' && content?.game_id) {
-    store.gameStates[content.game_id] = content;
-    store.gameTrigger++;
+    activityStore.updateGameState(content.game_id, content);
   }
 }
 
@@ -1364,7 +1367,7 @@ function onRedactionEvent(event: MatrixEvent, _room: Room) {
   }
 }
 
-function onLocalEchoUpdated(event: MatrixEvent, _room: Room, _oldEventId: string | undefined, _newStatus: string | null) {
+function onLocalEchoUpdated(event: MatrixEvent, _room: Room, _oldEventId?: string, _newStatus?: any) {
   if (event.getRoomId() === roomId.value) {
     refreshMessagesFromWindow();
   }
@@ -1542,7 +1545,7 @@ function handleKeydown(e: KeyboardEvent) {
 
 async function sendMessage() {
   if (!canSend.value || !store.client) return;
-  if (store.ui.hapticFeedbackEnabled) trigger('light');
+  if (uiStore.hapticFeedbackEnabled) trigger('light');
   
   const text = newMessage.value.trim();
   const filesToSend = [...stagedFiles.value]; // Copy array
@@ -1569,33 +1572,18 @@ async function sendMessage() {
   try {
     // 1. Upload and send any staged files first
     for (const staged of filesToSend) {
-      await store.uploadFile(currentRoomId, staged.file);
+      await matrixService.uploadFile(currentRoomId, staged.file);
       URL.revokeObjectURL(staged.previewUrl); // Clean up memory
     }
 
     // 2. Send the text message (if there is one)
     if (text) {
       if (currentEdit) {
-        const content = {
-          body: ` * ${text}`, // Fallback
-          msgtype: MsgType.Text,
-          'm.new_content': { body: text, msgtype: MsgType.Text },
-          'm.relates_to': { rel_type: 'm.replace', event_id: currentEdit.eventId }
-        } as any;
-        await store.client.sendEvent(currentRoomId, EventType.RoomMessage, content);
-        
+        await matrixService.sendEdit(currentRoomId, currentEdit.eventId, text);
       } else if (currentReply) {
-         const content = {
-             body: text,
-             msgtype: MsgType.Text,
-             'm.relates_to': { 'm.in_reply_to': { event_id: currentReply.eventId } }
-         } as any;
-         await store.client.sendEvent(currentRoomId, EventType.RoomMessage, content);
+        await matrixService.sendReply(currentRoomId, currentReply.eventId, text);
       } else {
-        await store.client.sendEvent(currentRoomId, EventType.RoomMessage, {
-          body: text,
-          msgtype: MsgType.Text,
-        });
+        await matrixService.sendTextMessage(currentRoomId, text);
       }
     }
   } catch (err) {
@@ -1616,7 +1604,7 @@ async function sendMessage() {
 
 async function refreshRoomUI() {
     if (!roomId.value) return;
-    await store.refreshRoom(roomId.value);
+    await matrixService.refreshRoom(roomId.value);
     await initRoom();
 }
 
@@ -1648,8 +1636,8 @@ watch(topSentinel, (newEl) => {
 });
 
 function checkAndApplyPendingShare() {
-  if (store.ui.pendingShare) {
-    const share = store.ui.pendingShare;
+  if (uiStore.pendingShare) {
+    const share = uiStore.pendingShare;
     console.log('[Chat] Applying pending share to composer:', share);
 
     // Combine title, text, and URL
@@ -1680,7 +1668,7 @@ function checkAndApplyPendingShare() {
     }
 
     // Clear it
-    store.ui.pendingShare = null;
+    uiStore.pendingShare = null;
 
     // Focus the textarea
     nextTick(() => {
@@ -1756,10 +1744,9 @@ async function initRoom() {
       const type = isEncrypted ? content?.type : ev.getType();
 
       if (type === 'cc.jackg.ruby.game.state' && content?.game_id) {
-        store.gameStates[content.game_id] = content;
+        activityStore.updateGameState(content.game_id, content);
       }
     }
-    store.gameTrigger++;
 
   } catch (e) {
     console.error("Failed to load timeline window", e);
@@ -1821,7 +1808,7 @@ watch(room, (newRoom) => {
     }
 
     if (context && !newRoom.isSpaceRoom()) {
-      store.setLastVisitedRoom(context, newRoom.roomId);
+      matrixService.setLastVisitedRoom(context, newRoom.roomId);
     }
   }
 });
@@ -1834,7 +1821,7 @@ watch(roomId, () => {
   }
 });
 
-watch(() => store.ui.pendingShare, (newShare) => {
+watch(() => uiStore.pendingShare, (newShare) => {
   if (newShare && roomId.value) {
     checkAndApplyPendingShare();
   }
@@ -1877,13 +1864,13 @@ onUnmounted(() => {
 // --- Context Menu Actions ---
 
 const replyingTo = computed({
-  get: () => store.ui.composerStates[roomId.value ?? '']?.replyingTo || null,
-  set: (val) => store.setUIComposerState(roomId.value!, { replyingTo: val })
+  get: () => uiStore.composerStates[roomId.value ?? '']?.replyingTo || null,
+  set: (val) => uiStore.setUIComposerState(roomId.value!, { replyingTo: val })
 });
 
 const editingMessage = computed({
-  get: () => store.ui.composerStates[roomId.value ?? '']?.editingMessage || null,
-  set: (val) => store.setUIComposerState(roomId.value!, { editingMessage: val })
+  get: () => uiStore.composerStates[roomId.value ?? '']?.editingMessage || null,
+  set: (val) => uiStore.setUIComposerState(roomId.value!, { editingMessage: val })
 });
 
 function cancelAction() {

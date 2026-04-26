@@ -41,7 +41,7 @@
           :key="track.Id"
           class="flex items-center gap-4 p-2 rounded-md hover:bg-accent/50 group cursor-pointer transition-colors"
           @click="play(track)"
-          @contextmenu.capture="matrixStore.openMusicItemContextMenu(track)"
+          @contextmenu.capture="uiStore.openMusicItemContextMenu(track)"
         >
           <span class="w-8 text-sm text-muted-foreground text-center font-medium group-hover:hidden">{{ index + 1 }}</span>
           <div class="w-8 h-8 flex items-center justify-center hidden group-hover:flex">
@@ -67,18 +67,21 @@
 </template>
 
 <script setup lang="ts">
+import { ref, computed, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import { useJellyfin } from '~/composables/useJellyfin';
 import { useJellyfinStore } from '~/stores/jellyfin';
 import { useMusicStore } from '~/stores/music';
-import { useMatrixStore } from '~/stores/matrix';
+import { useUIStore } from "~/stores/ui";
+import { useServices } from "~/composables/useServices";
 import type { BaseItemDto } from '~/types/jellyfin';
 
 const route = useRoute();
 const { fetcher } = useJellyfin();
 const jellyfinStore = useJellyfinStore();
 const musicStore = useMusicStore();
-const matrixStore = useMatrixStore();
+const uiStore = useUIStore();
+const { audioService } = useServices();
 
 const albumId = route.params.id as string;
 const album = ref<BaseItemDto | null>(null);
@@ -108,8 +111,8 @@ async function loadAlbum() {
       SortBy: ['ParentIndexNumber', 'IndexNumber', 'SortName'],
       Fields: ['ArtistItems', 'PrimaryImageAspectRatio', 'UserData']
     }
-  }).then(data => {
-    if (data && 'Items' in data) tracks.value = data.Items as BaseItemDto[];
+  }).then((data: any) => {
+    if (data && data.Items) tracks.value = data.Items as BaseItemDto[];
   });
 }
 
@@ -123,7 +126,7 @@ function formatDuration(ticks?: number | null) {
 
 function play(item: BaseItemDto) {
   const song = mapToSong(item);
-  if (song) musicStore.playSong(song);
+  if (song) audioService.playSong(song);
 }
 
 function addToQueue(item: BaseItemDto) {
@@ -135,7 +138,7 @@ function playAll() {
   if (tracks.value.length === 0) return;
   const songs = tracks.value.map(t => mapToSong(t)).filter((s): s is any => !!s);
   if (songs.length > 0) {
-    musicStore.playSong(songs[0]);
+    audioService.playSong(songs[0]);
     if (songs.length > 1) {
       musicStore.addToQueue(songs.slice(1));
     }

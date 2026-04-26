@@ -75,6 +75,9 @@ const props = withDefaults(defineProps<{
 });
 
 const store = useMatrixStore();
+const uiStore = useUIStore();
+const matrixService = useMatrixService();
+const presenceStore = usePresenceStore();
 
 const displayUserId = computed(() => props.user?.userId || props.userId);
 const displayName = computed(() => props.user?.displayName || props.name || 'Unknown');

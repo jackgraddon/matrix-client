@@ -1,5 +1,5 @@
 <template>
-  <UiDialog :open="store.verificationModalOpen || !!store.secretStoragePrompt" @update:open="handleClose">
+  <UiDialog :open="uiStore.verificationModalOpen || !!store.secretStoragePrompt" @update:open="handleClose">
     <UiDialogContent class="sm:max-w-md">
       <UiDialogHeader>
         <UiDialogTitle>
@@ -43,11 +43,11 @@
         </div>
 
         <div class="flex flex-col gap-3">
-          <UiButton class="w-full" @click="store.repairCrypto()">
+          <UiButton class="w-full" @click="verificationService.repairCrypto()">
             <Icon name="solar:restart-bold" class="mr-2 size-4" />
             Repair Encryption (Reloads App)
           </UiButton>
-          <UiButton variant="outline" class="w-full" @click="store.resetSecurity()">
+          <UiButton variant="outline" class="w-full" @click="verificationService.resetSecurity()">
             <Icon name="solar:trash-bin-trash-bold" class="mr-2 size-4" />
             Reset & Logout
           </UiButton>
@@ -79,7 +79,7 @@
             </div>
           </UiCard>
 
-          <UiCard class="p-4 cursor-pointer hover:bg-muted/50 transition-colors" @click="store.bootstrapVerification()">
+          <UiCard class="p-4 cursor-pointer hover:bg-muted/50 transition-colors" @click="verificationService.bootstrapVerification()">
             <div class="flex items-center gap-4">
               <div class="bg-muted p-2 rounded-full">
                 <Icon name="solar:key-bold" class="size-6 text-muted-foreground" />
@@ -112,7 +112,7 @@
           <div class="text-5xl">✅</div>
           <p class="font-bold text-lg">Verified!</p>
           <p class="text-sm text-muted-foreground text-center">Your session is now secure.</p>
-          <UiButton class="mt-2" variant="outline" size="sm" @click="store.closeVerificationModal()">
+          <UiButton class="mt-2" variant="outline" size="sm" @click="verificationService.closeVerificationModal()">
             Close
           </UiButton>
         </div>
@@ -135,7 +135,7 @@
           @keyup.enter="submitKey"
         />
         <div class="flex gap-3 justify-end items-center">
-          <UiButton variant="ghost" size="sm" class="text-xs" @click="store.cancelSecretStorageKey()">
+          <UiButton variant="ghost" size="sm" class="text-xs" @click="verificationService.cancelSecretStorageKey()">
             {{ store.isCrossSigningReady ? 'Skip History' : 'Cancel' }}
           </UiButton>
           <UiButton size="sm" @click="submitKey">
@@ -161,11 +161,11 @@
           <div class="flex items-center justify-center gap-2 text-sm text-muted-foreground">
             <span class="animate-pulse">Waiting for other device to accept...</span>
           </div>
-          <UiButton variant="destructive" size="sm" @click="store.cancelVerification()">
+          <UiButton variant="destructive" size="sm" @click="verificationService.cancelVerification()">
             Cancel Request
           </UiButton>
           <div class="text-xs text-muted-foreground italic">or</div>
-          <UiButton variant="outline" size="sm" @click="store.bootstrapVerification()">
+          <UiButton variant="outline" size="sm" @click="verificationService.bootstrapVerification()">
             Use Recovery Key / Passphrase
           </UiButton>
         </div>
@@ -238,10 +238,10 @@
             <span>{{ store.isVerificationInitiatedByMe ? 'Negotiating...' : 'Waiting for initiator...' }}</span>
           </div>
           <!-- Fallback button if auto-negotiation fails -->
-          <UiButton variant="secondary" size="sm" @click="store.acceptVerification()">
+          <UiButton variant="secondary" size="sm" @click="verificationService.acceptVerification()">
              Use Emoji Verification
           </UiButton>
-          <UiButton variant="destructive" size="sm" @click="store.cancelVerification()">
+          <UiButton variant="destructive" size="sm" @click="verificationService.cancelVerification()">
             Cancel
           </UiButton>
         </div>
@@ -254,10 +254,10 @@
           wants to verify with you.
         </p>
         <div class="flex gap-3 justify-end">
-          <UiButton variant="destructive" size="sm" @click="store.cancelVerification()">
+          <UiButton variant="destructive" size="sm" @click="verificationService.cancelVerification()">
             Decline
           </UiButton>
-          <UiButton size="sm" @click="store.acceptVerification()">
+          <UiButton size="sm" @click="verificationService.acceptVerification()">
             Accept Verification
           </UiButton>
         </div>
@@ -289,10 +289,10 @@
           </div>
 
           <div class="flex gap-3 justify-end mt-4">
-            <UiButton variant="destructive" size="sm" @click="store.confirmSasMatch(false)">
+            <UiButton variant="destructive" size="sm" @click="verificationService.confirmSasMatch(false)">
               They Don't Match
             </UiButton>
-            <UiButton size="sm" @click="store.confirmSasMatch(true)">
+            <UiButton size="sm" @click="verificationService.confirmSasMatch(true)">
               They Match
             </UiButton>
           </div>
@@ -312,6 +312,10 @@ import jsQR from 'jsqr';
 import { VerificationPhase } from 'matrix-js-sdk/lib/crypto-api/verification';
 
 const store = useMatrixStore();
+const uiStore = useUIStore();
+const matrixService = useMatrixService();
+const verificationService = useVerificationService();
+const presenceStore = usePresenceStore();
 const backupKeyInput = ref('');
 const qrCodeUrl = ref<string | null>(null);
 
@@ -434,7 +438,7 @@ async function tick() {
         console.log('[QRScanner] Found QR code:', code.data);
         stopScanning();
         // Pass the raw byte data if available for higher accuracy
-        await store.reciprocateQrCode(code.binaryData ? new Uint8ClampedArray(code.binaryData) : code.data);
+        await verificationService.reciprocateQrCode(code.binaryData ? new Uint8ClampedArray(code.binaryData) : code.data);
         return;
       }
     }
@@ -448,26 +452,26 @@ onUnmounted(() => {
 
 async function submitKey() {
   if (!backupKeyInput.value) return;
-  await store.submitSecretStorageKey(backupKeyInput.value);
+  await verificationService.submitSecretStorageKey(backupKeyInput.value);
   backupKeyInput.value = ''; 
 }
 
 async function handleDeviceVerification() {
-  await store.requestVerification();
+  await verificationService.requestVerification();
 }
 
 function switchToDeviceVerification() {
-  store.cancelSecretStorageKey();
+  verificationService.cancelSecretStorageKey();
   handleDeviceVerification();
 }
 
 function handleClose(open: boolean) {
   if (!open) {
     if (store.activeVerificationRequest && !store.isVerificationCompleted && !store.isSasConfirming) {
-      store.cancelVerification();
+      verificationService.cancelVerification();
     }
     stopScanning();
-    store.closeVerificationModal();
+    verificationService.closeVerificationModal();
   }
 }
 </script>

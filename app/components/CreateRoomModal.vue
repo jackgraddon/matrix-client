@@ -1,5 +1,5 @@
 <template>
-  <UiDialog :open="store.createRoomModalOpen" @update:open="(val) => { if(!val) store.closeCreateRoomModal() }">
+  <UiDialog :open="uiStore.createRoomModalOpen" @update:open="(val: boolean) => { if(!val) uiStore.closeCreateRoomModal() }">
     <UiDialogContent class="sm:max-w-[425px] bg-background border-border">
       <UiDialogHeader>
         <UiDialogTitle class="text-2xl font-bold">Create a room</UiDialogTitle>
@@ -104,7 +104,7 @@
       </div>
       
       <UiDialogFooter class="gap-2 sm:gap-0">
-        <UiButton variant="ghost" @click="store.closeCreateRoomModal" :disabled="isSubmitting">Cancel</UiButton>
+        <UiButton variant="ghost" @click="uiStore.closeCreateRoomModal" :disabled="isSubmitting">Cancel</UiButton>
         <UiButton @click="handleCreate" :disabled="!name.trim() || isSubmitting">
           <UiSpinner v-if="isSubmitting" class="mr-2 h-4 w-4" />
           Create room
@@ -119,6 +119,9 @@ import { ref, computed, watch } from 'vue';
 import { toast } from 'vue-sonner';
 
 const store = useMatrixStore();
+const uiStore = useUIStore();
+const matrixService = useMatrixService();
+const presenceStore = usePresenceStore();
 const route = useRoute();
 const name = ref('');
 const topic = ref('');
@@ -137,7 +140,7 @@ const availableSpaces = computed(() => {
 });
 
 // Auto-select space from route if applicable
-watch(() => store.createRoomModalOpen, (open) => {
+watch(() => uiStore.createRoomModalOpen, (open) => {
   if (open) {
     const spaceId = route.params.id;
     if (spaceId && !Array.isArray(spaceId)) {
@@ -168,7 +171,7 @@ const handleCreate = async () => {
   
   isSubmitting.value = true;
   try {
-    const roomId = await store.createRoom({
+    const roomId = await matrixService.createRoom({
       name: name.value.trim(),
       topic: topic.value.trim() || undefined,
       isPublic: isPublic.value,
@@ -178,8 +181,8 @@ const handleCreate = async () => {
     });
     
     if (roomId) {
-      store.closeCreateRoomModal();
-      store.closeGlobalSearchModal();
+      uiStore.closeCreateRoomModal();
+      uiStore.closeGlobalSearchModal();
       
       toast.success('Room created successfully');
       

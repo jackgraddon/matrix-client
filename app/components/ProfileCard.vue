@@ -31,6 +31,9 @@ const props = defineProps<{
 }>();
 
 const store = useMatrixStore();
+const uiStore = useUIStore();
+const matrixService = useMatrixService();
+const presenceStore = usePresenceStore();
 
 const user = computed(() => store.client?.getUser(props.userid));
 const bioCache = ref<string | null>(null);
@@ -84,7 +87,7 @@ async function sendMessage() {
 
   // 3. If room exists, navigate to it
   if (roomId) {
-    store.setUISelectedUser(null);
+    uiStore.setUISelectedUser(null);
     await navigateTo(`/chat/dms/${roomId}`);
     return;
   }
@@ -97,7 +100,7 @@ async function sendMessage() {
       preset: 'trusted_private_chat' as any,
       visibility: 'private' as any,
     });
-    store.setUISelectedUser(null);
+    uiStore.setUISelectedUser(null);
     await navigateTo(`/chat/dms/${response.room_id}`);
   } catch (err) {
     console.error('Failed to create DM:', err);

@@ -5,8 +5,8 @@
         variant="ghost"
         size="icon-sm"
         class="md:hidden shrink-0"
-        @click="store.toggleSidebar(true)"
-        v-if="!store.ui.sidebarOpen"
+        @click="uiStore.toggleSidebar(true)"
+        v-if="!uiStore.sidebarOpen"
       >
         <Icon name="solar:hamburger-menu-linear" class="h-6 w-6" />
       </UiButton>
@@ -20,7 +20,7 @@
         <h2 class="text-xl font-bold">Explore Spaces</h2>
         <p class="text-muted-foreground text-sm">Select a space from the server list on the left to browse its content.</p>
       </div>
-      <UiButton @click="store.toggleSidebar(true)" class="md:hidden">
+      <UiButton @click="uiStore.toggleSidebar(true)" class="md:hidden">
         Open Sidebar
       </UiButton>
     </div>
@@ -29,4 +29,7 @@
 
 <script setup lang="ts">
 const store = useMatrixStore();
+const uiStore = useUIStore();
+const matrixService = useMatrixService();
+const presenceStore = usePresenceStore();
 </script>

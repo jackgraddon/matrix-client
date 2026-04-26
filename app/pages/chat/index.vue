@@ -5,8 +5,8 @@
         variant="ghost"
         size="icon-sm"
         class="md:hidden shrink-0"
-        @click="store.toggleSidebar(true)"
-        v-if="!store.ui.sidebarOpen"
+        @click="uiStore.toggleSidebar(true)"
+        v-if="!uiStore.sidebarOpen"
       >
         <Icon name="solar:hamburger-menu-linear" class="h-6 w-6" />
       </UiButton>
@@ -46,7 +46,7 @@
           :key="room.roomId"
           :to="`/chat/dms/${room.roomId}`"
           class="block group"
-          @click="() => { store.toggleSidebar(false); store.ui.memberListVisible = false; }"
+          @click="() => { uiStore.toggleSidebar(false); uiStore.memberListVisible = false; }"
         >
           <UiCard class="h-full transition-colors hover:bg-muted/50">
             <UiCardHeader class="flex flex-row items-center gap-4 space-y-0 pb-2">
@@ -81,7 +81,7 @@
           :key="room.roomId"
           :to="`/chat/rooms/${room.roomId}`"
           class="block group"
-          @click="() => { store.toggleSidebar(false); store.ui.memberListVisible = false; }"
+          @click="() => { uiStore.toggleSidebar(false); uiStore.memberListVisible = false; }"
         >
           <UiCard class="h-full transition-colors hover:bg-muted/50">
              <UiCardHeader class="flex flex-row items-center gap-4 space-y-0 pb-2">
@@ -115,6 +115,9 @@
 
 <script setup lang="ts">
 const store = useMatrixStore();
+const uiStore = useUIStore();
+const matrixService = useMatrixService();
+const presenceStore = usePresenceStore();
 const jellyfinStore = useJellyfinStore();
 
 import * as sdk from 'matrix-js-sdk';

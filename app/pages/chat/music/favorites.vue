@@ -62,7 +62,7 @@ async function loadFavorites() {
       }
     });
 
-    if (data && 'Items' in data) {
+    if (data && data.Items) {
       const allItems = data.Items as BaseItemDto[];
       albums.value = allItems.filter(i => i.Type === 'MusicAlbum');
       songs.value = allItems.filter(i => i.Type === 'Audio');

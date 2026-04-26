@@ -47,6 +47,8 @@ import { toast } from 'vue-sonner';
 import { useJellyfinStore } from '~/stores/jellyfin';
 import { useJellyfin } from '~/composables/useJellyfin';
 import { useMatrixStore } from '~/stores/matrix';
+import { useUIStore } from "~/stores/ui";
+import { useMatrixService, useAudioService, useJellyfinService, usePresenceService } from "~/composables/useServices";
 
 const props = defineProps<{
   open: boolean;
@@ -107,15 +109,15 @@ async function login() {
           const crypto = matrixStore.client.getCrypto();
           if (crypto && matrixStore.isSecretStorageReady) {
             console.log('[Jellyfin] Storing credentials in Matrix Secret Storage');
-            await crypto.storeSecret('cc.tumult.jellyfin.config', JSON.stringify(config));
+            await (crypto as any).storeSecret('cc.tumult.jellyfin.config', JSON.stringify(config));
           } else {
             console.warn('[Jellyfin] Secret storage not ready, falling back to account data (less secure)');
-            await matrixStore.client.setAccountData('cc.tumult.jellyfin.config', config);
+            await matrixStore.client.setAccountData('cc.tumult.jellyfin.config' as any, config as any);
           }
         } catch (e) {
           console.error('[Jellyfin] Failed to store encrypted credentials:', e);
           // Fallback to plain account data if SSSS fails
-          await matrixStore.client.setAccountData('cc.tumult.jellyfin.config', config);
+          await matrixStore.client.setAccountData('cc.tumult.jellyfin.config' as any, config as any);
         }
       }
 

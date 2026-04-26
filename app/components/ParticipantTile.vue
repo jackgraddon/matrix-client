@@ -83,6 +83,9 @@ const props = withDefaults(defineProps<{
 });
 
 const store = useMatrixStore();
+const uiStore = useUIStore();
+const matrixService = useMatrixService();
+const presenceStore = usePresenceStore();
 const videoElement = ref<HTMLVideoElement | null>(null);
 const audioElement = ref<HTMLAudioElement | null>(null);
 

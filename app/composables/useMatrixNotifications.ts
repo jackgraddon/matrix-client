@@ -5,6 +5,8 @@ import { cacheDecryptedEvent } from '../utils/notification-cache';
 export function useMatrixNotifications() {
     const { $isTauri } = useNuxtApp();
     const store = useMatrixStore();
+    const uiStore = useUIStore();
+    const matrixService = useMatrixService();
 
     async function handleDecryptedEvent(event: MatrixEvent, room: Room) {
         if (!store.pushNotificationsEnabled) return;
@@ -48,7 +50,7 @@ export function useMatrixNotifications() {
         const roomName = room.name;
 
         // Check if it's a DM
-        const mDirectEvent = store.client?.getAccountData('m.direct');
+        const mDirectEvent = store.client?.getAccountData('m.direct' as any);
         const mDirectContent = mDirectEvent ? mDirectEvent.getContent() : {};
         let isDirect = false;
         for (const userRooms of Object.values(mDirectContent)) {

@@ -8,15 +8,15 @@
                 variant="ghost"
                 size="icon-sm"
                 class="md:hidden shrink-0 absolute top-4 left-4 z-10"
-                @click="() => { store.toggleSidebar(true); store.ui.memberListVisible = false; }"
-                v-if="!store.ui.sidebarOpen"
+                @click="() => { uiStore.toggleSidebar(true); uiStore.memberListVisible = false; }"
+                v-if="!uiStore.sidebarOpen"
             >
                 <Icon name="solar:hamburger-menu-linear" class="h-6 w-6" />
             </UiButton>
 
             <div 
                 class="cursor-pointer group/avatar"
-                @contextmenu.capture="store.openRoomContextMenu(space.roomId)"
+                @contextmenu.capture="uiStore.openRoomContextMenu(space.roomId)"
             >
                 <MatrixAvatar 
                     :mxc-url="space.getMxcAvatarUrl()" 
@@ -28,7 +28,7 @@
             <div class="flex-1 mb-2 min-w-0">
                 <div 
                     class="cursor-pointer group/title"
-                    @contextmenu.capture="store.openRoomContextMenu(space.roomId)"
+                    @contextmenu.capture="uiStore.openRoomContextMenu(space.roomId)"
                 >
                     <h1 class="text-3xl font-bold tracking-tight truncate group-hover/title:text-primary transition-colors">{{ space.name }}</h1>
                 </div>
@@ -39,11 +39,11 @@
                     <Icon name="solar:add-circle-bold" class="mr-2 h-4 w-4" />
                     Add Room
                 </UiButton>
-                <UiButton variant="secondary" size="sm" @click="store.openGlobalSearchModal">
+                <UiButton variant="secondary" size="sm" @click="uiStore.openGlobalSearchModal">
                     <Icon name="solar:magnifer-linear" class="mr-2 h-4 w-4" />
                     Search
                 </UiButton>
-                <UiButton variant="default" size="sm" v-if="!isJoined" @click="store.joinRoom(space.roomId)">
+                <UiButton variant="default" size="sm" v-if="!isJoined" @click="matrixService.joinRoom(space.roomId)">
                     Join Space
                 </UiButton>
             </div>
@@ -134,7 +134,7 @@
                     <div v-else class="py-12 text-center">
                         <Icon name="solar:magnifer-linear" class="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
                         <p class="text-muted-foreground">No rooms found in this space.</p>
-                        <UiButton variant="outline" size="sm" class="mt-4" @click="store.fetchSpaceHierarchy(spaceId)">
+                        <UiButton variant="outline" size="sm" class="mt-4" @click="matrixService.fetchSpaceHierarchy(spaceId)">
                             <Icon name="solar:restart-linear" class="mr-2 h-4 w-4" />
                             Retry Loading
                         </UiButton>
@@ -226,6 +226,9 @@ const props = defineProps<{
 }>();
 
 const store = useMatrixStore();
+const uiStore = useUIStore();
+const matrixService = useMatrixService();
+const presenceStore = usePresenceStore();
 const voiceStore = useVoiceStore();
 
 const isHierarchyCollapsed = ref(true);
@@ -335,7 +338,7 @@ const joinableRooms = computed(() => {
 
 const addExistingRoom = async (roomId: string) => {
   try {
-    await store.addRoomToSpace(props.spaceId, roomId);
+    await matrixService.addRoomToSpace(props.spaceId, roomId);
     showAddExistingModal.value = false;
     roomSearch.value = '';
     import('vue-sonner').then(({ toast }) => toast.success('Room added to space'));
@@ -346,7 +349,7 @@ const addExistingRoom = async (roomId: string) => {
 
 watch(() => props.spaceId, (id) => {
     if (id) {
-        store.fetchSpaceHierarchy(id);
+        matrixService.fetchSpaceHierarchy(id);
     }
 }, { immediate: true });
 </script>

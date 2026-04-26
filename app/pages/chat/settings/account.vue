@@ -143,6 +143,9 @@ import { useJellyfinStore } from '~/stores/jellyfin';
 import JellyfinLoginModal from '~/components/JellyfinLoginModal.vue';
 
 const store = useMatrixStore();
+const uiStore = useUIStore();
+const matrixService = useMatrixService();
+const presenceStore = usePresenceStore();
 const jellyfinStore = useJellyfinStore();
 
 const manualStatusInput = ref(store.customStatus || '');
@@ -193,15 +196,15 @@ async function updateProfile() {
   console.log('[AccountSettings] Saving profile changes:', updatedUserInfo.value);
   if (updatedUserInfo.value.displayName && updatedUserInfo.value.displayName !== store.user?.displayName) {
     console.log('[AccountSettings] Updating display name...');
-    await store.setProfileDisplayName(updatedUserInfo.value.displayName);
+    await matrixService.setProfileDisplayName(updatedUserInfo.value.displayName);
   }
   if (updatedUserInfo.value.avatarFile.size > 0) {
     console.log('[AccountSettings] Updating avatar...');
-    await store.uploadAndSetProfileAvatar(updatedUserInfo.value.avatarFile);
+    await matrixService.uploadAndSetProfileAvatar(updatedUserInfo.value.avatarFile);
   }
   if (updatedUserInfo.value.description !== store.user?.description) {
     console.log('[AccountSettings] Updating bio...');
-    await store.setProfileDescription(updatedUserInfo.value.description);
+    await matrixService.setProfileDescription(updatedUserInfo.value.description);
   }
   updatedUserInfo.value.isUpdating = false;
 
@@ -305,7 +308,7 @@ async function manageDevices() {
 }
 
 function logout () {
-    store.logout();
+    matrixService.logout();
 }
 </script>
 

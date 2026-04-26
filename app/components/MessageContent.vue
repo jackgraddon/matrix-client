@@ -31,6 +31,9 @@ const props = defineProps<{
 }>();
 
 const store = useMatrixStore();
+const uiStore = useUIStore();
+const matrixService = useMatrixService();
+const presenceStore = usePresenceStore();
 const contentRef = ref<HTMLElement | null>(null);
 const blobUrls: string[] = [];
 

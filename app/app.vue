@@ -4,11 +4,11 @@
   </div> -->
   <GlobalContextMenu>
     <CustomTitlebar v-if="isTauri" />
-    <component :is="'style'" v-if="store.ui.customCss" v-html="store.ui.customCss" />
+    <component :is="'style'" v-if="uiStore.customCss" v-html="uiStore.customCss" />
     <div 
       class="h-screen w-screen transition-colors overflow-hidden bg-background text-foreground pb-safe md:pb-0"
       :class="[
-        store.ui.themePreset !== 'default' ? 'theme-' + store.ui.themePreset : ''
+        uiStore.themePreset !== 'default' ? 'theme-' + uiStore.themePreset : ''
       ]"
     >
       <!-- Splash Screen / Restoration Overlay -->
@@ -65,12 +65,15 @@ import { useNuxtApp, useHead, navigateTo } from '#app';
 import * as sdk from 'matrix-js-sdk';
 import { useColorMode } from '#imports';
 import { useMatrixStore } from '~/stores/matrix';
+import { useUIStore } from '~/stores/ui';
 import { Toaster } from '~/components/ui/sonner';
 import { toast } from 'vue-sonner';
 
 const { $isTauri: isTauri } = useNuxtApp();
 const colorMode = useColorMode();
 const store = useMatrixStore();
+const uiStore = useUIStore();
+const matrixService = useMatrixService();
 const { applyTauriTheme } = useTauriTheme();
 
 // Dynamic theme-color meta tag for PWA/Mobile
@@ -87,7 +90,7 @@ useHead({
 
 const isFailover = ref(false);
 
-watch(() => store.ui.themePreset, (newTheme: string) => {
+watch(() => uiStore.themePreset, (newTheme: string) => {
   if (import.meta.client) {
     const body = document.body;
     body.classList.forEach(cls => {
@@ -138,7 +141,7 @@ onMounted(async () => {
       try {
         const { invoke } = await import('@tauri-apps/api/core');
         const isMinimizedArg = await invoke<boolean>('get_cli_args');
-        const startMinimizedPref = await store.startMinimized;
+        const startMinimizedPref = uiStore.startMinimized;
 
         if (isMinimizedArg || startMinimizedPref) {
           console.log("[App] Starting minimized to tray");
@@ -216,7 +219,7 @@ onMounted(async () => {
 
   // PWA Share Target Handling
   if (import.meta.client) {
-    store.checkPendingShare();
+    matrixService.checkPendingShare();
   }
 
 

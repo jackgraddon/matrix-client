@@ -1,5 +1,4 @@
 import { defineStore } from 'pinia';
-import { useMatrixStore } from '~/stores/matrix';
 
 export interface SongMetadata {
   id: string;
@@ -15,209 +14,49 @@ export interface SongMetadata {
 export const useMusicStore = defineStore('music', {
   state: () => ({
     isPlaying: false,
-    isExpanded: false, // For the sidebar queue expansion
+    isExpanded: false,
     currentSong: null as SongMetadata | null,
     queue: [] as SongMetadata[],
     history: [] as SongMetadata[],
     currentTime: 0,
     duration: 0,
     volume: 1,
-    audioElement: null as HTMLAudioElement | null,
     startTime: null as number | null,
   }),
 
   actions: {
-    initAudio() {
-      if (this.audioElement) return;
-      this.audioElement = new Audio();
-      this.audioElement.volume = this.volume;
-
-      this.audioElement.addEventListener('timeupdate', () => {
-        const newTime = this.audioElement?.currentTime || 0;
-        // Only update state if the floored second has changed to avoid reactive churn
-        if (Math.floor(newTime) !== Math.floor(this.currentTime)) {
-          this.currentTime = newTime;
-          this.updatePresence();
-        } else {
-          this.currentTime = newTime;
-        }
-      });
-
-      this.audioElement.addEventListener('durationchange', () => {
-        this.duration = this.audioElement?.duration || 0;
-      });
-
-      this.audioElement.addEventListener('ended', () => {
-        this.playNext();
-      });
-
-      this.audioElement.addEventListener('play', () => {
-        this.isPlaying = true;
-        this.startTime = Math.floor(Date.now() - (this.currentTime * 1000));
-        this.updatePresence();
-      });
-
-      this.audioElement.addEventListener('pause', () => {
-        this.isPlaying = false;
-        this.updatePresence();
-      });
-
-      this.updateMediaSession();
+    setPlaybackState(playing: boolean) {
+      this.isPlaying = playing;
     },
-
-    playSong(song: SongMetadata, addToHistory = true) {
-      this.initAudio();
-      if (!this.audioElement) return;
-
-      if (this.currentSong && addToHistory) {
-        this.history.push(this.currentSong);
-        if (this.history.length > 50) this.history.shift();
-      }
-
+    setCurrentSong(song: SongMetadata | null) {
       this.currentSong = song;
-      this.currentTime = 0;
-      this.startTime = Math.floor(Date.now());
-      this.audioElement.src = song.streamUrl;
-      this.audioElement.play();
-      this.updateMediaSession();
     },
-
+    updateTime(time: number, duration: number) {
+      this.currentTime = time;
+      this.duration = duration;
+    },
     addToQueue(songs: SongMetadata | SongMetadata[]) {
-      if (Array.isArray(songs)) {
-        this.queue.push(...songs);
-      } else {
-        this.queue.push(songs);
-      }
+      if (Array.isArray(songs)) this.queue.push(...songs);
+      else this.queue.push(songs);
     },
-
     addToStartOfQueue(songs: SongMetadata | SongMetadata[]) {
-      if (Array.isArray(songs)) {
-        this.queue.unshift(...songs);
-      } else {
-        this.queue.unshift(songs);
-      }
+      if (Array.isArray(songs)) this.queue.unshift(...songs);
+      else this.queue.unshift(songs);
     },
-
-    togglePlay() {
-      if (!this.audioElement) return;
-      if (this.isPlaying) {
-        this.audioElement.pause();
-      } else {
-        this.audioElement.play();
-      }
+    removeFromQueue(index: number) {
+        this.queue.splice(index, 1);
     },
-
-    playNext() {
-      if (this.queue.length > 0) {
-        const nextSong = this.queue.shift()!;
-        this.playSong(nextSong);
-      } else {
-        this.isPlaying = false;
-        this.currentSong = null;
-        if (this.audioElement) {
-          this.audioElement.pause();
-          this.audioElement.src = '';
-        }
-        this.updatePresence();
-      }
-    },
-
-    playPrevious() {
-      if (this.currentTime > 3) {
-        this.seek(0);
-        return;
-      }
-
-      if (this.history.length > 0) {
-        const prevSong = this.history.pop()!;
-        // When playing previous, we add the current song back to the START of the queue
-        if (this.currentSong) {
-          this.queue.unshift(this.currentSong);
-        }
-        this.playSong(prevSong, false);
-      } else {
-        this.seek(0);
-      }
+    clearQueue() {
+        this.queue = [];
     },
 
     shuffleQueue() {
       for (let i = this.queue.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
-        [this.queue[i], this.queue[j]] = [this.queue[j]!, this.queue[i]!];
+        const temp = this.queue[i];
+        this.queue[i] = this.queue[j]!;
+        this.queue[j] = temp!;
       }
-    },
-
-    reorderQueue(oldIndex: number, newIndex: number) {
-      const movedItem = this.queue.splice(oldIndex, 1)[0];
-      if (movedItem) {
-        this.queue.splice(newIndex, 0, movedItem);
-      }
-    },
-
-    removeFromQueue(index: number) {
-      this.queue.splice(index, 1);
-    },
-
-    clearQueue() {
-      this.queue = [];
-    },
-
-    setVolume(value: number) {
-      this.volume = value;
-      if (this.audioElement) {
-        this.audioElement.volume = value;
-      }
-    },
-
-    seek(time: number) {
-      if (this.audioElement) {
-        this.audioElement.currentTime = time;
-        this.currentTime = time;
-        if (this.isPlaying) {
-          this.startTime = Math.floor(Date.now() - (time * 1000));
-        }
-        this.updatePresence();
-      }
-    },
-
-    updatePresence() {
-      const matrixStore = useMatrixStore();
-      if (this.currentSong) {
-        matrixStore.setMusicActivity({
-          title: this.currentSong.title,
-          artist: this.currentSong.artist,
-          album: this.currentSong.album,
-          coverUrl: this.currentSong.coverUrl,
-          duration: Math.floor(this.duration),
-          currentTime: Math.floor(this.currentTime),
-          startTime: this.startTime || undefined,
-          isRunning: this.isPlaying
-        });
-      } else {
-        matrixStore.setMusicActivity(null);
-      }
-    },
-
-    updateMediaSession() {
-      if (!this.currentSong || !('mediaSession' in navigator)) return;
-
-      navigator.mediaSession.metadata = new MediaMetadata({
-        title: this.currentSong.title,
-        artist: this.currentSong.artist,
-        album: this.currentSong.album,
-        artwork: this.currentSong.coverUrl ? [
-          { src: this.currentSong.coverUrl, sizes: '96x96', type: 'image/png' },
-          { src: this.currentSong.coverUrl, sizes: '128x128', type: 'image/png' },
-          { src: this.currentSong.coverUrl, sizes: '192x192', type: 'image/png' },
-          { src: this.currentSong.coverUrl, sizes: '256x256', type: 'image/png' },
-          { src: this.currentSong.coverUrl, sizes: '384x384', type: 'image/png' },
-          { src: this.currentSong.coverUrl, sizes: '512x512', type: 'image/png' },
-        ] : []
-      });
-
-      navigator.mediaSession.setActionHandler('play', () => this.togglePlay());
-      navigator.mediaSession.setActionHandler('pause', () => this.togglePlay());
-      navigator.mediaSession.setActionHandler('nexttrack', () => this.playNext());
     }
   }
 });
