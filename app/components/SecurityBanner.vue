@@ -39,6 +39,9 @@
 import { useMatrixStore } from '~/stores/matrix';
 
 const store = useMatrixStore();
+const uiStore = useUIStore();
+const matrixService = useMatrixService();
+const presenceStore = usePresenceStore();
 
 const isDismissed = ref(false);
 
@@ -95,14 +98,15 @@ const actionLabel = computed(() => {
 const showClose = computed(() => type.value === 'soft-trigger');
 
 function handleAction() {
+  const verificationService = useVerificationService();
   if (type.value === 'degraded') {
-    store.openVerificationModal();
+    uiStore.setVerificationModalOpen(true);
   } else if (type.value === 'soft-trigger') {
     // Start verification request directly so other devices get notified
-    store.requestVerification();
+    verificationService.requestVerification();
   } else {
     // Open bootstrap or a dedicated setup flow
-    store.bootstrapVerification();
+    verificationService.bootstrapVerification();
   }
 }
 

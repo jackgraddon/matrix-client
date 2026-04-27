@@ -6,6 +6,9 @@ const props = defineProps<{
 }>();
 
 const store = useMatrixStore();
+const uiStore = useUIStore();
+const matrixService = useMatrixService();
+const presenceStore = usePresenceStore();
 const content = computed(() => props.event.getContent());
 const senderId = computed(() => props.event.getSender());
 const senderName = computed(() => store.client?.getRoom(props.event.getRoomId()!)?.getMember(senderId.value!)?.name || senderId.value);

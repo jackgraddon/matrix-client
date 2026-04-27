@@ -42,7 +42,7 @@
           :key="preset.id"
           @click="setTheme(preset.id)"
           class="flex items-center gap-3 p-3 rounded-xl border-2 transition-all hover:border-primary/50 group text-left"
-          :class="store.ui.themePreset === preset.id ? 'border-primary bg-primary/5' : 'bg-card border-transparent hover:bg-muted/50'"
+          :class="uiStore.themePreset === preset.id ? 'border-primary bg-primary/5' : 'bg-card border-transparent hover:bg-muted/50'"
         >
           <div 
             class="size-8 rounded-full border-2 border-white/20 shadow-sm shrink-0"
@@ -92,6 +92,10 @@ definePageMeta({
 })
 
 const store = useMatrixStore();
+const uiStore = useUIStore();
+import { toast } from 'vue-sonner';
+const matrixService = useMatrixService();
+const presenceStore = usePresenceStore();
 const colorMode = useColorMode();
 
 const modes = [
@@ -109,26 +113,26 @@ const presets = [
   { id: 'crimson', label: 'Rebel Crimson', color: 'oklch(0.55 0.2 25)' },
 ]
 
-const customCss = ref(store.ui.customCss || '');
+const customCss = ref(uiStore.customCss || '');
 
-const hasUnsavedCss = computed(() => customCss.value !== (store.ui.customCss || ''));
+const hasUnsavedCss = computed(() => customCss.value !== (uiStore.customCss || ''));
 
 function setTheme(id: string) {
-  store.setThemePreset(id);
+  uiStore.setThemePreset(id);
 }
 
 async function saveCss() {
-  await store.setCustomCss(customCss.value);
+  await uiStore.setCustomCss(customCss.value);
   toast.success('Custom CSS applied');
 }
 
 function resetCss() {
-  customCss.value = store.ui.customCss || '';
+  customCss.value = uiStore.customCss || '';
 }
 
 onMounted(() => {
   // Sync state if it changed externally
-  watch(() => store.ui.customCss, (val) => {
+  watch(() => uiStore.customCss, (val) => {
     if (val !== undefined) customCss.value = val;
   });
 });

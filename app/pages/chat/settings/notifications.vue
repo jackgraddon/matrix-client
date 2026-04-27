@@ -113,6 +113,9 @@ definePageMeta({
 
 const { $isTauri: isTauri } = useNuxtApp();
 const store = useMatrixStore();
+const uiStore = useUIStore();
+const matrixService = useMatrixService();
+const presenceStore = usePresenceStore();
 const region = useRegionDetection();
 
 const pushEnabled = computed({

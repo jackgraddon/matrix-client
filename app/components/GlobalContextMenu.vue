@@ -10,7 +10,7 @@
     </UiContextMenuTrigger>
     <UiContextMenuContent class="w-64">
       <!-- Room Context Menu Content -->
-      <template v-if="store.ui.contextMenu.type === 'room'">
+      <template v-if="uiStore.contextMenu.type === 'room'">
         <template v-if="room">
           <!-- Room/DM Options -->
           <template v-if="!isSpace">
@@ -22,7 +22,7 @@
               <Icon :name="isFavorite ? 'solar:star-fall-bold-duotone' : 'solar:star-bold-duotone'" class="mr-2 h-4 w-4" />
               {{ isFavorite ? 'Remove from Favorites' : 'Favorite' }}
             </UiContextMenuItem>
-            <UiContextMenuItem @click="() => roomId && store.openRoomSettingsModal(roomId)" class="cursor-pointer">
+            <UiContextMenuItem @click="() => roomId && uiStore.openRoomSettingsModal(roomId)" class="cursor-pointer">
               <Icon name="solar:settings-minimalistic-bold-duotone" class="mr-2 h-4 w-4" />
               Settings
             </UiContextMenuItem>
@@ -47,7 +47,7 @@
               <Icon name="solar:letter-opened-bold-duotone" class="mr-2 h-4 w-4" />
               Mark Space as Read
             </UiContextMenuItem>
-            <UiContextMenuItem @click="() => roomId && store.openSpaceSettingsModal(roomId)" class="cursor-pointer">
+            <UiContextMenuItem @click="() => roomId && uiStore.openSpaceSettingsModal(roomId)" class="cursor-pointer">
               <Icon name="solar:settings-minimalistic-bold-duotone" class="mr-2 h-4 w-4" />
               Settings
             </UiContextMenuItem>
@@ -76,8 +76,8 @@
       </template>
 
       <!-- Message Context Menu Content -->
-      <template v-else-if="store.ui.contextMenu.type === 'message'">
-        <UiContextMenuItem @click="store.handleReply(activeMessage)">
+      <template v-else-if="uiStore.contextMenu.type === 'message'">
+        <UiContextMenuItem @click="uiStore.setUIComposerState(activeMessage.roomId, { replyingTo: activeMessage })">
           Reply
         </UiContextMenuItem>
 
@@ -117,7 +117,7 @@
         </UiContextMenuItem>
 
         <UiContextMenuSeparator v-if="activeMessage.isOwn" />
-        <UiContextMenuItem v-if="activeMessage.isOwn" @click="store.handleEdit(activeMessage)">
+        <UiContextMenuItem v-if="activeMessage.isOwn" @click="uiStore.setUIComposerState(activeMessage.roomId, { editingMessage: activeMessage, text: activeMessage.body })">
           Edit
         </UiContextMenuItem>
         <UiContextMenuItem v-if="activeMessage.isOwn" @click="confirmDeleteMessage" class="text-red-500 focus:text-red-500">
@@ -126,7 +126,7 @@
       </template>
 
       <!-- Music Item Context Menu Content -->
-      <template v-else-if="store.ui.contextMenu.type === 'music-item'">
+      <template v-else-if="uiStore.contextMenu.type === 'music-item'">
         <template v-if="musicItem">
           <UiContextMenuItem @click="toggleMusicFavorite" class="cursor-pointer">
             <Icon :name="musicItem.UserData?.IsFavorite ? 'solar:heart-bold' : 'solar:heart-linear'" class="mr-2 h-4 w-4" :class="{'text-red-500': musicItem.UserData?.IsFavorite}" />
@@ -183,21 +183,25 @@
 <script setup lang="ts">
 import { computed, ref, toRaw } from 'vue';
 import { useMatrixStore } from '~/stores/matrix';
+import { useUIStore } from '~/stores/ui';
 import { useMusicStore } from '~/stores/music';
 import { useJellyfinStore } from '~/stores/jellyfin';
 import { useJellyfin } from '~/composables/useJellyfin';
 import { useWebHaptics } from 'web-haptics/vue';
+import { useServices } from '~/composables/useServices';
 import { toast } from 'vue-sonner';
 import { EventType } from 'matrix-js-sdk';
 import EmojiPicker from 'vue3-emoji-picker';
 import 'vue3-emoji-picker/css';
 
 const store = useMatrixStore();
+const uiStore = useUIStore();
+const { matrixService } = useServices();
 const musicStore = useMusicStore();
 const jellyfinStore = useJellyfinStore();
 const { fetcher: jellyfinFetch } = useJellyfin();
 const { trigger } = useWebHaptics({
-  debug: store.ui.hapticsDebugEnabled
+  debug: uiStore.hapticsDebugEnabled
 });
 const showReactionPicker = ref(false);
 
@@ -205,61 +209,61 @@ const showReactionPicker = ref(false);
 const reloadPage = () => window.location.reload();
 const goBack = () => window.history.back();
 const goForward = () => window.history.forward();
-const openAboutModal = () => store.openAboutModal();
+const openAboutModal = () => uiStore.openAboutModal();
 
 // --- Context Menu Management ---
 const onGlobalContextMenu = (e: MouseEvent) => {
   // If a child component handled the right click, _contextMenuHandled will be true.
   // We don't want to reset it to false until AFTER the menu has been triggered to render.
   // Using nextTick or a small timeout to clear the flag ensures it stays true during the bubble phase.
-  if (store.ui._contextMenuHandled) {
+  if (uiStore._contextMenuHandled) {
     setTimeout(() => {
-        store.ui._contextMenuHandled = false;
+        uiStore._contextMenuHandled = false;
     }, 10);
     return;
   }
-  store.setContextMenu('global');
+  uiStore.setContextMenu('global');
 };
 
 const onGlobalLongPress = () => {
-  if (store.ui._contextMenuHandled) return;
-  if (store.ui.hapticFeedbackEnabled) trigger('medium');
-  store.setContextMenu('global');
+  if (uiStore._contextMenuHandled) return;
+  if (uiStore.hapticFeedbackEnabled) trigger('medium');
+  uiStore.setContextMenu('global');
 };
 
 const onOpenChange = (open: boolean) => {
   if (!open) {
     showReactionPicker.value = false;
     // Reset context menu state when closed
-    store.setContextMenu(null);
+    uiStore.setContextMenu(null);
   }
 };
 
 // --- Room Context Logic ---
-const roomId = computed(() => store.ui.contextMenu.type === 'room' ? store.ui.contextMenu.data?.roomId : null);
+const roomId = computed(() => uiStore.contextMenu.type === 'room' ? uiStore.contextMenu.data?.roomId : null);
 const room = computed(() => {
   if (!roomId.value || !store.client) return null;
   const r = store.client.getRoom(roomId.value);
   return r ? toRaw(r) : null;
 });
-const isSpace = computed(() => room.value && typeof room.value.isSpaceRoom === 'function' && room.value.isSpaceRoom());
+const isSpace = computed(() => room.value && (room.value as any).isSpaceRoom?.());
 const isDM = computed(() => {
   if (!room.value || !store.client || !roomId.value) return false;
   const directEvent = store.client.getAccountData(EventType.Direct);
   const directContent = directEvent ? directEvent.getContent() as Record<string, string[]> : {};
-  return Object.values(directContent).some(roomIds => roomIds.includes(roomId.value!));
+  return Object.values(directContent).some(roomIds => Array.isArray(roomIds) && roomIds.includes(roomId.value!));
 });
 
 const isUnread = computed(() => {
-  if (!room.value || !roomId.value || typeof room.value.getUnreadNotificationCount !== 'function') return false;
-  const count = room.value.getUnreadNotificationCount(store.unreadCountType) ?? 0;
+  if (!room.value || !roomId.value || typeof (room.value as any).getUnreadNotificationCount !== 'function') return false;
+  const count = (room.value as any).getUnreadNotificationCount(store.unreadCountType) ?? 0;
   const manual = store.manualUnread[roomId.value] ? 1 : 0;
   return Math.max(count, manual) > 0;
 });
 
 const isFavorite = computed(() => {
-  if (!room.value || typeof room.value.getTags !== 'function') return false;
-  const tags = room.value.getTags();
+  if (!room.value || typeof (room.value as any).getTags !== 'function') return false;
+  const tags = (room.value as any).getTags();
   return 'm.favourite' in tags;
 });
 
@@ -277,35 +281,36 @@ const togglePin = () => {
 const toggleRead = () => {
   if (!roomId.value) return;
   if (isUnread.value) {
-    store.markAsRead(roomId.value);
+    matrixService.markAsRead(roomId.value);
   } else {
     store.markAsUnread(roomId.value);
   }
 };
 
-const markSpaceAsRead = () => roomId.value && store.markSpaceAsRead(roomId.value);
+const markSpaceAsRead = () => roomId.value && matrixService.markSpaceAsRead(roomId.value);
 
 const toggleFavorite = () => {
   if (!roomId.value) return;
-  store.setRoomTag(roomId.value, 'm.favourite', isFavorite.value ? null : { order: 0.5 });
+  matrixService.setRoomTag(roomId.value, 'm.favourite', isFavorite.value ? null : { order: 0.5 });
 };
 
 const openInvite = () => {
   if (!roomId.value) return;
   store.setInviteRoomId(roomId.value);
-  store.openGlobalSearchModal();
+  uiStore.openGlobalSearchModal();
 };
 
 const copyLink = () => {
-  if (!room.value || !roomId.value || !room.value.currentState) return;
-  const via = room.value.currentState.getStateEvents('m.room.member')
-    .map(ev => ev.getSender().split(':').pop())
-    .filter((v, i, a) => v && a.indexOf(v) === i)
+  if (!room.value || !roomId.value || !(room.value as any).currentState) return;
+  const via = (room.value as any).currentState.getStateEvents('m.room.member')
+    .map((ev: any) => ev.getSender()?.split(':').pop())
+    .filter((v: any, i: any, a: any) => v && a.indexOf(v) === i)
     .slice(0, 3);
   if (via.length === 0 && store.client?.getUserId()) {
-    via.push(store.client.getUserId().split(':').pop()!);
+    const userId = store.client.getUserId();
+    if (userId) via.push(userId.split(':').pop()!);
   }
-  const viaParams = via.map(v => `via=${v}`).join('&');
+  const viaParams = via.map((v: any) => `via=${v}`).join('&');
   const link = `https://matrix.to/#/${roomId.value}${viaParams ? '?' + viaParams : ''}`;
   navigator.clipboard.writeText(link);
   toast.success('Link copied to clipboard');
@@ -314,29 +319,29 @@ const copyLink = () => {
 const confirmLeave = () => {
   if (!roomId.value) return;
   const id = roomId.value;
-  store.openConfirmationDialog({
+  uiStore.openConfirmationDialog({
     title: 'Are you sure?',
     description: isSpace.value ? 'You are about to leave this space. You will no longer see its rooms unless you are still a member of them individually.' : 
                  (isDM.value ? 'This will close the DM and remove it from your list. You can restart it later by searching for the user.' : 
                  'You are about to leave this room. You will need an invite to rejoin if it is private.'),
     confirmLabel: isSpace.value ? 'Leave Space' : (isDM.value ? 'Close DM' : 'Leave Room'),
-    onConfirm: () => store.leaveRoom(id)
+    onConfirm: () => matrixService.leaveRoom(id)
   });
 };
 
 // --- Message Context Logic ---
-const activeMessage = computed(() => store.ui.contextMenu.type === 'message' ? store.ui.contextMenu.data?.msg : null);
+const activeMessage = computed(() => uiStore.contextMenu.type === 'message' ? uiStore.contextMenu.data?.msg : null);
 
 const quickReact = (key: string) => {
   if (activeMessage.value) {
-    store.handleReaction(activeMessage.value, key);
+    matrixService.handleReaction(activeMessage.value, key);
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
   }
 };
 
 const onEmojiSelect = (emoji: any) => {
   if (emoji && emoji.i && activeMessage.value) {
-    store.handleReaction(activeMessage.value, emoji.i);
+    matrixService.handleReaction(activeMessage.value, emoji.i);
     showReactionPicker.value = false;
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
   }
@@ -359,16 +364,16 @@ const viewSource = async () => {
 const confirmDeleteMessage = () => {
   if (!activeMessage.value) return;
   const msg = activeMessage.value;
-  store.openConfirmationDialog({
+  uiStore.openConfirmationDialog({
     title: 'Delete Message?',
     description: 'Are you sure you want to delete this message? This action cannot be undone.',
     confirmLabel: 'Delete',
-    onConfirm: () => store.redactEvent(msg.roomId, msg.eventId)
+    onConfirm: () => matrixService.redactEvent(msg.roomId, msg.eventId)
   });
 };
 
 // --- Music Context Logic ---
-const musicItem = computed(() => store.ui.contextMenu.type === 'music-item' ? store.ui.contextMenu.data?.item : null);
+const musicItem = computed(() => uiStore.contextMenu.type === 'music-item' ? uiStore.contextMenu.data?.item : null);
 
 async function toggleMusicFavorite() {
   if (!musicItem.value || !jellyfinStore.isAuthenticated) return;

@@ -62,13 +62,15 @@ const props = defineProps<{
 }>();
 
 const store = useMatrixStore();
+const uiStore = useUIStore();
+const presenceStore = usePresenceStore();
 
 const isSelf = computed(() => {
   const currentUserId = store.client?.getUserId();
   return !props.userId || (currentUserId && props.userId === currentUserId);
 });
 
-const displayActivity = computed(() => store.resolveActivities(props.userId ?? null).music);
+const displayActivity = computed(() => presenceStore.resolveActivities(props.userId ?? null).music);
 
 const startTime = computed(() => (displayActivity.value as any)?.startTimestamp);
 const totalDuration = computed(() => (displayActivity.value as any)?.duration ? Math.floor((displayActivity.value as any).duration) : 0);

@@ -3,7 +3,7 @@
         <button 
             v-if="!isVirtual"
             @click="toggleCategory"
-            @contextmenu.capture="store.openRoomContextMenu(category.id)"
+            @contextmenu.capture="uiStore.openRoomContextMenu(category.id)"
             class="flex items-center gap-2 px-2 py-1 text-xs font-bold uppercase text-muted-foreground hover:text-foreground transition-colors group w-full hover:bg-muted/30 rounded-md"
         >
             <MatrixAvatar
@@ -56,7 +56,7 @@
                         v-if="isVoiceChannel(store.client?.getRoom(room.roomId))"
                         :variant="(isLinkActive(`/chat/spaces/${activeSpaceId}/${room.roomId}`) || voiceStore.activeRoomId === room.roomId) ? 'secondary' : 'ghost'"
                         class="justify-start px-2 h-9 w-full group relative"
-                        @contextmenu.capture="store.openRoomContextMenu(room.roomId)"
+                        @contextmenu.capture="uiStore.openRoomContextMenu(room.roomId)"
                         as-child
                     >
                         <NuxtLink
@@ -109,10 +109,10 @@
                     <div
                         v-else
                         class="contents"
-                        @contextmenu.capture="store.openRoomContextMenu(room.roomId)"
+                        @contextmenu.capture="uiStore.openRoomContextMenu(room.roomId)"
                     >
                     <UiButton 
-                        @click="() => { store.toggleSidebar(false); store.ui.memberListVisible = false; }"
+                        @click="() => { uiStore.toggleSidebar(false); uiStore.memberListVisible = false; }"
                         :variant="isLinkActive(`/chat/spaces/${activeSpaceId}/${room.roomId}`) ? 'secondary' : 'ghost'"
                         class="justify-start px-2 h-10 w-full"
                         as-child
@@ -176,6 +176,7 @@ import { useVoiceStore } from '~/stores/voice';
 import { isVoiceChannel } from '~/utils/room';
 
 const store = useMatrixStore();
+const uiStore = useUIStore();
 const voiceStore = useVoiceStore();
 
 interface MappedRoom {
@@ -220,7 +221,7 @@ const isNativeRoot = computed(() => {
 });
 
 const toggleCategory = () => {
-    emit('toggle-category', props.category.id);
+    uiStore.toggleUICategory(props.category.id);
 };
 
 const getVoiceParticipants = (roomId: string) => {
@@ -231,7 +232,7 @@ function handleVoiceRoomClick(e: MouseEvent, roomId: string) {
     const isMobile = import.meta.client ? window.innerWidth < 768 : false;
     const r = store.client!.getRoom(roomId)!;
     if (isMobile) {
-        store.toggleSidebar(false);
+        uiStore.toggleSidebar(false);
     } else {
         e.preventDefault();
         voiceStore.joinVoiceRoom(r);
@@ -241,7 +242,7 @@ function handleVoiceRoomClick(e: MouseEvent, roomId: string) {
 const draggableChildren = computed({
     get: () => {
         const children = props.category.children || [];
-        const order = store.ui.uiOrder.categories[props.category.id];
+        const order = uiStore.uiOrder.categories[props.category.id];
         if (!order || order.length === 0) return children;
 
         return [...children].sort((a, b) => {
@@ -269,7 +270,7 @@ const mapRoomWithUnread = (room: MappedRoom) => {
 const draggableRooms = computed({
     get: () => {
         const rooms = props.category.rooms.map(mapRoomWithUnread) || [];
-        const order = store.ui.uiOrder.rooms[props.category.id];
+        const order = uiStore.uiOrder.rooms[props.category.id];
         if (!order || order.length === 0) return rooms;
 
         return [...rooms].sort((a, b) => {

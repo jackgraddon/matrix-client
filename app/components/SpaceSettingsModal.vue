@@ -1,5 +1,5 @@
 <template>
-  <UiDialog :open="store.spaceSettingsModalOpen" @update:open="(val) => { if(!val) store.closeSpaceSettingsModal() }">
+  <UiDialog :open="uiStore.spaceSettingsModalOpen" @update:open="(val: boolean) => { if(!val) uiStore.closeSpaceSettingsModal() }">
     <UiDialogContent class="sm:max-w-[800px] h-[80vh] flex flex-col p-0 bg-background border-border overflow-hidden">
       <div class="flex h-full">
         <!-- Sidebar Tabs -->
@@ -24,7 +24,7 @@
               <h3 class="text-xl font-bold">{{ currentTab?.label }}</h3>
               <p class="text-sm text-muted-foreground">{{ currentTab?.description }}</p>
             </div>
-            <UiButton variant="ghost" size="icon" @click="store.closeSpaceSettingsModal">
+            <UiButton variant="ghost" size="icon" @click="uiStore.closeSpaceSettingsModal">
               <Icon name="solar:close-circle-linear" class="h-6 w-6" />
             </UiButton>
           </header>
@@ -80,7 +80,7 @@
                 <div class="flex items-center justify-between">
                   <UiLabel>Rooms in this Space</UiLabel>
                   <div class="flex gap-2">
-                     <UiButton variant="outline" size="sm" @click="store.openCreateRoomModal">
+                     <UiButton variant="outline" size="sm" @click="uiStore.openCreateRoomModal">
                         <Icon name="solar:add-circle-bold" class="mr-2 h-4 w-4" />
                         Create New Room
                      </UiButton>
@@ -204,8 +204,11 @@ import { toast } from 'vue-sonner';
 import * as sdk from 'matrix-js-sdk';
 
 const store = useMatrixStore();
+const uiStore = useUIStore();
 const activeTab = ref('general');
 const isSaving = ref(false);
+
+const { matrixService } = useServices();
 
 const editName = ref('');
 const editTopic = ref('');
@@ -222,7 +225,7 @@ const tabs = [
 
 const currentTab = computed(() => tabs.find(t => t.id === activeTab.value));
 
-const spaceId = computed(() => store.activeSettingsSpaceId);
+const spaceId = computed(() => uiStore.activeSettingsSpaceId);
 const space = computed(() => spaceId.value ? store.client?.getRoom(spaceId.value) : null);
 
 const members = computed(() => {
@@ -281,7 +284,7 @@ const saveGeneral = async () => {
   if (!spaceId.value || isSaving.value) return;
   isSaving.value = true;
   try {
-    await store.updateRoomMetadata(spaceId.value, {
+    await matrixService.updateRoomMetadata(spaceId.value, {
       name: editName.value !== space.value?.name ? editName.value : undefined,
       topic: editTopic.value !== (space.value?.currentState.getStateEvents('m.room.topic', '')?.getContent().topic) ? editTopic.value : undefined,
       avatarFile: avatarFile.value || undefined
@@ -309,7 +312,7 @@ const removeChild = async (child: sdk.Room) => {
 const openInvite = () => {
   if (!spaceId.value) return;
   store.setInviteRoomId(spaceId.value);
-  store.openGlobalSearchModal();
+  uiStore.openGlobalSearchModal();
 };
 
 const canKick = (member: sdk.RoomMember) => {
@@ -326,17 +329,17 @@ const canBan = (member: sdk.RoomMember) => {
 
 const kickMember = async (member: sdk.RoomMember) => {
   if (!spaceId.value) return;
-  await store.kickUser(spaceId.value, member.userId);
+  await matrixService.kickUser(spaceId.value, member.userId);
 };
 
 const banMember = async (member: sdk.RoomMember) => {
   if (!spaceId.value) return;
-  await store.banUser(spaceId.value, member.userId);
+  await matrixService.banUser(spaceId.value, member.userId);
 };
 
 const setJoinRule = async (rule: string) => {
   if (!spaceId.value) return;
-  await store.setRoomJoinRule(spaceId.value, rule);
+  await matrixService.setRoomJoinRule(spaceId.value, rule);
 };
 
 const addAlias = async () => {

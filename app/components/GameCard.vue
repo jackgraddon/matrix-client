@@ -65,6 +65,9 @@ const props = defineProps<{
 }>();
 
 const store = useMatrixStore();
+const uiStore = useUIStore();
+const matrixService = useMatrixService();
+const presenceStore = usePresenceStore();
 
 const isSelf = computed(() => {
   const currentUserId = store.client?.getUserId();
@@ -78,7 +81,7 @@ const sanitize = (val: any) => {
   return s;
 };
 
-const displayActivity = computed(() => store.resolveActivities(props.userId ?? null).game);
+const displayActivity = computed(() => presenceStore.resolveActivities(props.userId ?? null).game);
 
 const gameStartTimestamp = computed(() => (displayActivity.value as any)?.startTimestamp);
 

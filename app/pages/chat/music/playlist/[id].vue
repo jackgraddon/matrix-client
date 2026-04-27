@@ -58,7 +58,7 @@
           :key="track.Id"
           class="flex items-center gap-4 p-2 rounded-md hover:bg-accent/50 group cursor-pointer transition-colors"
           @click="play(track)"
-          @contextmenu.capture="matrixStore.openMusicItemContextMenu(track)"
+          @contextmenu.capture="uiStore.openMusicItemContextMenu(track)"
         >
           <span class="w-8 text-sm text-muted-foreground text-center font-medium group-hover:hidden">{{ index + 1 }}</span>
           <div class="w-8 h-8 flex items-center justify-center hidden group-hover:flex">
@@ -88,18 +88,21 @@
 </template>
 
 <script setup lang="ts">
+import { ref, computed, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import { useJellyfin } from '~/composables/useJellyfin';
 import { useJellyfinStore } from '~/stores/jellyfin';
 import { useMusicStore } from '~/stores/music';
-import { useMatrixStore } from '~/stores/matrix';
+import { useUIStore } from "~/stores/ui";
+import { useServices } from "~/composables/useServices";
 import type { BaseItemDto } from '~/types/jellyfin';
 
 const route = useRoute();
 const { fetcher } = useJellyfin();
 const jellyfinStore = useJellyfinStore();
 const musicStore = useMusicStore();
-const matrixStore = useMatrixStore();
+const uiStore = useUIStore();
+const { audioService } = useServices();
 
 const playlistId = route.params.id as string;
 const playlist = ref<BaseItemDto | null>(null);
@@ -130,7 +133,7 @@ async function loadPlaylist() {
       Fields: ['ArtistItems', 'PrimaryImageAspectRatio', 'UserData', 'Album']
     }
   }).then(data => {
-    if (data && 'Items' in data) tracks.value = data.Items as BaseItemDto[];
+    if (data && data.Items) tracks.value = data.Items as BaseItemDto[];
   });
 }
 
@@ -151,7 +154,7 @@ function formatDuration(ticks?: number | null) {
 
 function play(item: BaseItemDto) {
   const song = mapToSong(item);
-  if (song) musicStore.playSong(song);
+  if (song) audioService.playSong(song);
 }
 
 function playAll(shuffle = false) {
@@ -162,7 +165,7 @@ function playAll(shuffle = false) {
     songsToPlay = songsToPlay.sort(() => Math.random() - 0.5);
   }
 
-  musicStore.playSong(songsToPlay[0]);
+  audioService.playSong(songsToPlay[0]);
   if (songsToPlay.length > 1) {
     musicStore.addToQueue(songsToPlay.slice(1));
   }

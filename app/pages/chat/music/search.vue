@@ -73,7 +73,7 @@ async function performSearch() {
       }
     });
 
-    if (data && 'Items' in data) {
+    if (data && data.Items) {
       const allItems = data.Items as BaseItemDto[];
       artists.value = allItems.filter(i => i.Type === 'Artist');
       albums.value = allItems.filter(i => i.Type === 'MusicAlbum');

@@ -9,6 +9,9 @@ const props = defineProps<{
 }>();
 
 const store = useMatrixStore();
+const activityStore = useActivityStore();
+const uiStore = useUIStore();
+const matrixService = useMatrixService();
 const roomId = props.event.getRoomId()!;
 const { updateGameState, sendGameAction, getGameState } = useMatrixGame(roomId);
 
@@ -19,7 +22,7 @@ const isOwnInvite = computed(() => props.event.getSender() === store.client?.get
 const isProcessing = ref(false);
 
 const gameState = computed(() => {
-  store.gameTrigger; // React to store updates
+  activityStore.gameTrigger; // React to store updates
   return getGameState(content.value.game_id);
 });
 

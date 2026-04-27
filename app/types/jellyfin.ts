@@ -3,6 +3,9 @@
  * Do not make direct changes to the file.
  */
 
+export type BaseItemDto = components['schemas']['BaseItemDto'];
+export type BaseItemDtoQueryResult = components['schemas']['BaseItemDtoQueryResult'];
+
 export interface paths {
     "/System/ActivityLog/Entries": {
         parameters: {

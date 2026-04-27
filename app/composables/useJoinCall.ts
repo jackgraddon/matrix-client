@@ -27,7 +27,7 @@ export function useJoinCall() {
   const voiceStore = useVoiceStore();
 
   const showKeychainWarning = ref(false);
-  const pendingRoom = ref<Room | null>(null);
+  const pendingRoom = ref<any | null>(null);
 
   function hasSeenWarning(): boolean {
     try {
@@ -50,7 +50,7 @@ export function useJoinCall() {
    * If the user hasn't seen the warning yet, shows the dialog first.
    * Otherwise proceeds directly.
    */
-  function handleJoinCall(room: Room) {
+  function handleJoinCall(room: Room | any) {
     if (hasSeenWarning()) {
       voiceStore.joinVoiceRoom(room);
       return;

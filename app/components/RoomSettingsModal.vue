@@ -1,5 +1,5 @@
 <template>
-  <UiDialog :open="store.roomSettingsModalOpen" @update:open="(val) => { if(!val) store.closeRoomSettingsModal() }">
+  <UiDialog :open="uiStore.roomSettingsModalOpen" @update:open="(val: boolean) => { if(!val) uiStore.closeRoomSettingsModal() }">
     <UiDialogContent class="sm:max-w-[800px] h-[80vh] flex flex-col p-0 bg-background border-border overflow-hidden">
       <div class="flex h-full">
         <!-- Sidebar Tabs -->
@@ -24,7 +24,7 @@
               <h3 class="text-xl font-bold">{{ currentTab?.label }}</h3>
               <p class="text-sm text-muted-foreground">{{ currentTab?.description }}</p>
             </div>
-            <UiButton variant="ghost" size="icon" @click="store.closeRoomSettingsModal">
+            <UiButton variant="ghost" size="icon" @click="uiStore.closeRoomSettingsModal">
               <Icon name="solar:close-circle-linear" class="h-6 w-6" />
             </UiButton>
           </header>
@@ -206,8 +206,11 @@ import { toast } from 'vue-sonner';
 import * as sdk from 'matrix-js-sdk';
 
 const store = useMatrixStore();
+const uiStore = useUIStore();
 const activeTab = ref('general');
 const isSaving = ref(false);
+
+const { matrixService } = useServices();
 
 const editName = ref('');
 const editTopic = ref('');
@@ -227,7 +230,7 @@ const tabs = [
 
 const currentTab = computed(() => tabs.find(t => t.id === activeTab.value));
 
-const roomId = computed(() => store.activeSettingsRoomId);
+const roomId = computed(() => uiStore.activeSettingsRoomId);
 const room = computed(() => roomId.value ? store.client?.getRoom(roomId.value) : null);
 
 const members = computed(() => {
@@ -291,7 +294,7 @@ const saveGeneral = async () => {
   if (!roomId.value || isSaving.value) return;
   isSaving.value = true;
   try {
-    await store.updateRoomMetadata(roomId.value, {
+    await matrixService.updateRoomMetadata(roomId.value, {
       name: editName.value !== room.value?.name ? editName.value : undefined,
       topic: editTopic.value !== (room.value?.currentState.getStateEvents('m.room.topic', '')?.getContent().topic) ? editTopic.value : undefined,
       avatarFile: avatarFile.value || undefined
@@ -305,7 +308,7 @@ const saveGeneral = async () => {
 const openInvite = () => {
   if (!roomId.value) return;
   store.setInviteRoomId(roomId.value);
-  store.openGlobalSearchModal();
+  uiStore.openGlobalSearchModal();
 };
 
 const canKick = (member: sdk.RoomMember) => {
@@ -322,17 +325,17 @@ const canBan = (member: sdk.RoomMember) => {
 
 const kickMember = async (member: sdk.RoomMember) => {
   if (!roomId.value) return;
-  await store.kickUser(roomId.value, member.userId);
+  await matrixService.kickUser(roomId.value, member.userId);
 };
 
 const banMember = async (member: sdk.RoomMember) => {
   if (!roomId.value) return;
-  await store.banUser(roomId.value, member.userId);
+  await matrixService.banUser(roomId.value, member.userId);
 };
 
 const setJoinRule = async (rule: string) => {
   if (!roomId.value) return;
-  await store.setRoomJoinRule(roomId.value, rule);
+  await matrixService.setRoomJoinRule(roomId.value, rule);
 };
 
 const addAlias = async () => {
@@ -358,7 +361,7 @@ const canSaveDiscordBridge = computed(() => {
 const saveDiscordBridge = async () => {
   if (!roomId.value || !canSaveDiscordBridge.value) return;
   try {
-    await store.client?.sendStateEvent(roomId.value, 'cc.tumult.bridge.discord', {
+    await store.client?.sendStateEvent(roomId.value, 'cc.tumult.bridge.discord' as any, {
       discord_guild_id: discordGuildId.value.trim(),
       discord_channel_id: discordChannelId.value.trim(),
     }, '');
@@ -371,7 +374,7 @@ const saveDiscordBridge = async () => {
 const removeDiscordBridge = async () => {
   if (!roomId.value) return;
   try {
-    await store.client?.sendStateEvent(roomId.value, 'cc.tumult.bridge.discord', {}, '');
+    await store.client?.sendStateEvent(roomId.value, 'cc.tumult.bridge.discord' as any, {}, '');
     discordGuildId.value = '';
     discordChannelId.value = '';
     toast.success('Discord bridge removed');

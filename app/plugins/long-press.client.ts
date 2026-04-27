@@ -16,7 +16,7 @@ export default defineNuxtPlugin((nuxtApp) => {
       let isLongPressTriggered = false;
 
       const start = (e: TouchEvent) => {
-        const store = useMatrixStore();
+        const uiStore = useUIStore();
 
         // Touch only to avoid interfering with desktop right-click logic
         if (e.type !== 'touchstart') return;
@@ -33,8 +33,7 @@ export default defineNuxtPlugin((nuxtApp) => {
             binding.value(e);
 
             // Light haptic feedback to signal trigger
-            if (store.ui.hapticFeedbackEnabled) {
-              haptics.setDebug(store.ui.hapticsDebugEnabled);
+            if (uiStore.hapticFeedbackEnabled) {
               haptics.trigger('light');
             }
 

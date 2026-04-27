@@ -4,12 +4,15 @@ import { useMatrixStore } from '~/stores/matrix';
 import { X, ZoomIn, ZoomOut, Maximize2 } from 'lucide-vue-next';
 
 const store = useMatrixStore();
+const uiStore = useUIStore();
+const matrixService = useMatrixService();
+const presenceStore = usePresenceStore();
 
-const media = computed(() => store.ui.mediaPreview);
+const media = computed(() => uiStore.mediaPreview);
 const isOpen = computed({
   get: () => !!media.value,
   set: (val) => {
-    if (!val) store.closeMediaPreview();
+    if (!val) uiStore.closeMediaPreview();
   }
 });
 
@@ -47,7 +50,7 @@ watch(isOpen, (val) => {
 });
 
 function close() {
-  store.closeMediaPreview();
+  uiStore.closeMediaPreview();
 }
 
 // --- Zoom Logic ---

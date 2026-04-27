@@ -14,7 +14,7 @@
         :width="displayWidth || undefined"
         :height="displayHeight || undefined"
         loading="lazy"
-        @click="store.openMediaPreview({ url: finalImageUrl, type: 'image', alt: alt })"
+        @click="uiStore.openMediaPreview({ url: finalImageUrl, type: 'image', alt: alt })"
       />
       <div v-else-if="!isLoading" class="w-full h-48 flex items-center justify-center text-muted-foreground text-sm bg-muted/50">
         <span>Failed to load image</span>
@@ -37,7 +37,7 @@
         playsinline
         class="w-full max-h-[400px] object-contain cursor-zoom-in"
         preload="metadata"
-        @click="store.openMediaPreview({ url: finalImageUrl, type: 'video', alt: alt })"
+        @click="uiStore.openMediaPreview({ url: finalImageUrl, type: 'video', alt: alt })"
       ></video>
       <div v-else class="w-full h-48 flex items-center justify-center text-muted-foreground text-sm">
         <span v-if="!isLoading">Failed to load video</span>
@@ -105,6 +105,9 @@ const props = defineProps<{
 }>();
 
 const store = useMatrixStore();
+const uiStore = useUIStore();
+const matrixService = useMatrixService();
+const presenceStore = usePresenceStore();
 
 // --- 1. Media Type Detection ---
 const isImage = computed(() => props.mimetype?.startsWith('image/') || props.msgtype === 'm.image');

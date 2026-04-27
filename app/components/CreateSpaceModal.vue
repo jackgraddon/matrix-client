@@ -1,5 +1,5 @@
 <template>
-  <UiDialog :open="store.createSpaceModalOpen" @update:open="(val) => { if(!val) store.closeCreateSpaceModal() }">
+  <UiDialog :open="uiStore.createSpaceModalOpen" @update:open="(val: boolean) => { if(!val) uiStore.closeCreateSpaceModal() }">
     <UiDialogContent class="sm:max-w-[425px] bg-background border-border">
       <UiDialogHeader>
         <UiDialogTitle class="text-2xl font-bold">Create a space</UiDialogTitle>
@@ -58,7 +58,7 @@
       </div>
       
       <UiDialogFooter class="gap-2 sm:gap-0">
-        <UiButton variant="ghost" @click="store.closeCreateSpaceModal" :disabled="isSubmitting">Cancel</UiButton>
+        <UiButton variant="ghost" @click="uiStore.closeCreateSpaceModal" :disabled="isSubmitting">Cancel</UiButton>
         <UiButton @click="handleCreate" :disabled="!name.trim() || isSubmitting">
           <UiSpinner v-if="isSubmitting" class="mr-2 h-4 w-4" />
           Create space
@@ -73,6 +73,9 @@ import { ref, computed, watch } from 'vue';
 import { toast } from 'vue-sonner';
 
 const store = useMatrixStore();
+const uiStore = useUIStore();
+const matrixService = useMatrixService();
+const presenceStore = usePresenceStore();
 const name = ref('');
 const topic = ref('');
 const isPublic = ref(false);
@@ -81,7 +84,7 @@ const roomAlias = ref('');
 
 const homeserverDomain = computed(() => store.client?.getDomain() || 'matrix.org');
 
-watch(() => store.createSpaceModalOpen, (open) => {
+watch(() => uiStore.createSpaceModalOpen, (open) => {
   if (!open) {
     name.value = '';
     topic.value = '';
@@ -95,7 +98,7 @@ const handleCreate = async () => {
   
   isSubmitting.value = true;
   try {
-    const roomId = await store.createSpace({
+    const roomId = await matrixService.createSpace({
       name: name.value.trim(),
       topic: topic.value.trim() || undefined,
       isPublic: isPublic.value,
@@ -103,7 +106,7 @@ const handleCreate = async () => {
     });
     
     if (roomId) {
-      store.closeCreateSpaceModal();
+      uiStore.closeCreateSpaceModal();
       toast.success('Space created successfully');
       await navigateTo(`/chat/spaces/${roomId}`);
     }

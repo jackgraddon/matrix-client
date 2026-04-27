@@ -1,250 +1,13 @@
 import { defineStore } from 'pinia';
-import { toast } from 'vue-sonner';
-import { markRaw } from 'vue';
-import { navigateTo } from '#app';
 import * as sdk from 'matrix-js-sdk';
-import { OidcTokenRefresher, type AccessTokens } from 'matrix-js-sdk';
-import { CryptoEvent } from 'matrix-js-sdk/lib/crypto-api/CryptoEvent';
-import { VerificationRequestEvent, VerificationPhase, VerifierEvent } from 'matrix-js-sdk/lib/crypto-api/verification';
-import type { VerificationRequest, Verifier, ShowSasCallbacks } from 'matrix-js-sdk/lib/crypto-api/verification';
-import { deriveRecoveryKeyFromPassphrase } from 'matrix-js-sdk/lib/crypto-api/key-passphrase';
-import { decodeRecoveryKey } from 'matrix-js-sdk/lib/crypto-api/recovery-key';
-import type { IdTokenClaims } from 'oidc-client-ts';
-import { getPendingShare, clearPendingShare } from '~/utils/crypto-db';
-import { getOidcConfig, registerClient, getLoginUrl, completeLoginFlow, getHomeserverUrl, getDeviceDisplayName } from '~/utils/matrix-auth';
-import { MsgType, EventType, IndexedDBStore, IndexedDBCryptoStore, MemoryStore, LocalStorageCryptoStore } from 'matrix-js-sdk';
-import { useRouter } from '#app';
-import { useVoiceStore } from './voice';
-import { useJellyfinStore } from './jellyfin';
-import { MatrixRTCSessionManagerEvents } from 'matrix-js-sdk/lib/matrixrtc/MatrixRTCSessionManager';
-import { MatrixRTCSessionEvent } from 'matrix-js-sdk/lib/matrixrtc/MatrixRTCSession';
-import { isVoiceChannel } from '~/utils/room';
-import { useDebounceFn } from '@vueuse/core';
-import { setPref, getPref, deletePref, setSecret, getSecret, deleteSecret, deleteSecrets } from '~/composables/useAppStorage';
-import { dismissNotification } from '~/utils/notify';
+import { VerificationPhase } from 'matrix-js-sdk/lib/crypto-api/verification';
+import { getOidcConfig, registerClient, getLoginUrl } from '~/utils/matrix-auth';
+import type { VerificationRequest, ShowSasCallbacks } from 'matrix-js-sdk/lib/crypto-api/verification';
 
 export interface LastVisitedRooms {
   dm: string | null;
   rooms: string | null;
   spaces: Record<string, string>;
-}
-
-export interface UIState {
-  memberListVisible: boolean;
-  selectedUserId: string | null;
-  profileCardPos: { top: string; right: string; left?: string };
-  collapsedCategories: string[];
-  showEmptyRooms: boolean;
-  // Composer states indexed by roomId
-  composerStates: Record<string, {
-    replyingTo?: any;
-    editingMessage?: any;
-    text?: string;
-  }>;
-  // Sortable sidebar state
-  uiOrder: {
-    rootSpaces: string[]; // Order of root spaces (pinned + others)
-    categories: Record<string, string[]>; // Order of categories per spaceId
-    rooms: Record<string, string[]>; // Order of rooms per categoryId
-  };
-  themePreset: string;
-  customCss: string;
-  pendingShare: any | null;
-  hapticFeedbackEnabled: boolean;
-  hapticsDebugEnabled: boolean;
-  sidebarOpen: boolean;
-  contextMenu: {
-    type: 'room' | 'message' | 'music-item' | 'global' | null;
-    data: any;
-  };
-  _contextMenuHandled: boolean;
-  confirmationDialog: {
-    isOpen: boolean;
-    title: string;
-    description: string;
-    confirmLabel: string;
-    cancelLabel: string;
-    onConfirm: () => void;
-  };
-  mediaPreview: {
-    url: string;
-    type: 'image' | 'video';
-    alt?: string;
-  } | null;
-}
-
-// Enhanced HTML for OAuth Loopback Response
-const authResponseHtml = `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8"> <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Authentication</title>
-  <style>
-    body { font-family: system-ui, -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #111; color: #eee; }
-    .card { text-align: center; padding: 2rem; border-radius: 12px; background: #222; box-shadow: 0 4px 6px rgba(0,0,0,0.3); border: 1px solid #333; max-width: 400px; width: 100%; }
-    .success { color: #10b981; }
-    .error { color: #ef4444; }
-    .hidden { display: none !important; }
-    p { color: #aaa; line-height: 1.5; }
-    .small { color: #666; font-size: 0.875rem; margin-top: 1.5rem; }
-  </style>
-</head>
-<body>
-  <div class="card hidden" id="success-card">
-    <h1 class="success">Login Successful</h1>
-    <p>You can close this tab and return to the app.</p>
-  </div>
-  
-  <div class="card hidden" id="error-card">
-    <h1 class="error">Authentication Failed</h1>
-    <p id="error-msg">Access was denied.</p>
-    <p class="small">You can close this tab and try again in the app.</p>
-  </div>
-
-  <script>
-    const params = new URLSearchParams(window.location.search);
-    const successCard = document.getElementById('success-card');
-    const errorCard = document.getElementById('error-card');
-    const errorMsg = document.getElementById('error-msg');
-    
-    // Check if the URL contains an error parameter
-    if (params.has('error')) {
-      errorCard.classList.remove('hidden');
-      
-      // Make the error readable (e.g., 'access_denied' -> 'access denied')
-      const rawError = params.get('error').replace(/_/g, ' ');
-      const desc = params.get('error_description');
-      
-      errorMsg.textContent = desc ? desc : "Error: " + rawError;
-    } else {
-      // Show success and attempt to auto-close
-      successCard.classList.remove('hidden');
-    }
-  </script>
-</body>
-</html>
-`;
-
-/**
- * Subclass of OidcTokenRefresher that persists rotated tokens to the encrypted store (or sessionStorage fallback).
- */
-class LocalStorageOidcTokenRefresher extends OidcTokenRefresher {
-  public override async doRefreshAccessToken(refreshToken: string): Promise<AccessTokens> {
-    const performRefresh = async (): Promise<AccessTokens> => {
-      // 1. Check storage first. Maybe another context already refreshed the token?
-      const latestRefreshToken = await getSecret('matrix_refresh_token');
-      if (latestRefreshToken && latestRefreshToken !== refreshToken) {
-        console.log('[MatrixStore] OIDC: Newer refresh token found in storage, skipping OIDC refresh call.');
-        const latestAccessToken = await getSecret('matrix_access_token');
-        const latestExpiry = await getPref<number | null>('matrix_token_expiry', null);
-        return {
-          accessToken: latestAccessToken!,
-          refreshToken: latestRefreshToken,
-          expiry: latestExpiry ? new Date(latestExpiry) : undefined
-        };
-      }
-
-      // 2. Otherwise, do the real refresh
-      try {
-        console.log('[MatrixStore] OIDC: Calling OIDC refresh...');
-        return await super.doRefreshAccessToken(refreshToken);
-      } catch (e) {
-        // 3. If refresh fails, check storage AGAIN. 
-        // Maybe someone else finished the refresh while we were trying?
-        const finalRefreshToken = await getSecret('matrix_refresh_token');
-        if (finalRefreshToken && finalRefreshToken !== refreshToken) {
-          console.warn('[MatrixStore] OIDC: Refresh failed but storage has a newer token. Recovering...', e);
-          const finalAccessToken = await getSecret('matrix_access_token');
-          const finalExpiry = await getPref<number | null>('matrix_token_expiry', null);
-          return {
-            accessToken: finalAccessToken!,
-            refreshToken: finalRefreshToken,
-            expiry: finalExpiry ? new Date(finalExpiry) : undefined
-          };
-        }
-        throw e;
-      }
-    };
-
-    // Use Web Locks to ensure only one refresh happens at a time across all tabs/windows
-    if (typeof navigator !== 'undefined' && navigator.locks) {
-      return await navigator.locks.request('matrix-token-refresh', { mode: 'exclusive' }, performRefresh);
-    } else {
-      return await performRefresh();
-    }
-  }
-
-  protected override async persistTokens(tokens: { accessToken: string; refreshToken?: string; expiry?: Date }): Promise<void> {
-    console.log('[MatrixStore] OIDC tokens refreshed, persisting...', {
-      hasAccessToken: !!tokens.accessToken,
-      hasRefreshToken: !!tokens.refreshToken,
-      expiry: tokens.expiry?.toISOString()
-    });
-    await setSecret('matrix_access_token', tokens.accessToken);
-    if (tokens.refreshToken) {
-      await setSecret('matrix_refresh_token', tokens.refreshToken);
-    }
-    if (tokens.expiry) {
-      await setPref('matrix_token_expiry', tokens.expiry.getTime());
-    }
-
-    // Sync to Service Worker store for background decryption
-    try {
-      const { saveMatrixAuth } = await import('~/utils/crypto-db');
-      const hsUrl = await getHomeserverUrl();
-      const deviceId = await getPref<string | null>('matrix_device_id', null);
-      await saveMatrixAuth(tokens.accessToken, hsUrl, deviceId || undefined);
-    } catch (err) {
-      console.warn('[MatrixStore] Failed to sync auth to SW store:', err);
-    }
-  }
-}
-
-function generateNonce(): string {
-  return Array.from(crypto.getRandomValues(new Uint8Array(16)))
-    .map(b => b.toString(16).padStart(2, '0'))
-    .join('');
-}
-
-// Outside your Pinia store, create a memory cache
-const secretStorageKeys = new Map<string, Uint8Array<ArrayBuffer>>();
-
-// Helper to persist keys to localStorage (encoded as Base64)
-function persistSecretStorageKey(keyId: string, privateKey: Uint8Array) {
-  if (typeof window === 'undefined') return;
-  try {
-    const base64 = btoa(String.fromCharCode(...privateKey));
-    localStorage.setItem(`matrix_ssss_key_${keyId}`, base64);
-    console.log(`[SecretStorage] Persisted key ${keyId} to localStorage`);
-  } catch (err) {
-    console.warn('[SecretStorage] Failed to persist key:', err);
-  }
-}
-
-// Helper to load persisted keys from localStorage
-function loadPersistedSecretStorageKeys() {
-  if (typeof window === 'undefined') return;
-  try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key?.startsWith('matrix_ssss_key_')) {
-        const keyId = key.replace('matrix_ssss_key_', '');
-        const base64 = localStorage.getItem(key);
-        if (base64) {
-          const binaryString = atob(base64);
-          const bytes = new Uint8Array(binaryString.length);
-          for (let j = 0; j < binaryString.length; j++) {
-            bytes[j] = binaryString.charCodeAt(j);
-          }
-          secretStorageKeys.set(keyId, bytes as Uint8Array<ArrayBuffer>);
-          console.log(`[SecretStorage] Loaded persisted key ${keyId}`);
-        }
-      }
-    }
-  } catch (err) {
-    console.warn('[SecretStorage] Failed to load persisted keys:', err);
-  }
 }
 
 export const useMatrixStore = defineStore('matrix', {
@@ -253,12 +16,11 @@ export const useMatrixStore = defineStore('matrix', {
     isAuthenticated: false,
     isSyncing: false,
     isClientReady: false,
-    isReady: false, // Phase 2: Signal for splash screen transition
+    isReady: false,
     isRestoringSession: true,
     isCryptoDegraded: false,
     cryptoStatusMessage: null as string | null,
     lastSyncError: null as any | null,
-    isSasTimeout: false,
     user: null as {
       userId: string;
       displayName?: string;
@@ -266,6 +28,7 @@ export const useMatrixStore = defineStore('matrix', {
       description?: string;
       status_msg?: string;
     } | null,
+
     // Verification state
     isCrossSigningReady: false,
     isSecretStorageReady: false,
@@ -273,408 +36,86 @@ export const useMatrixStore = defineStore('matrix', {
     isVerificationInitiatedByMe: false,
     isRequestingVerification: false,
     activeSas: null as ShowSasCallbacks | null,
-    isSasConfirming: false,
     isVerificationCompleted: false,
     isRestoringHistory: false,
     verificationPhase: null as VerificationPhase | null,
     qrCodeData: null as any | null,
-    verificationModalOpen: false,
-    aboutModalOpen: false,
-    globalSearchModalOpen: false,
-    createRoomModalOpen: false,
-    createSpaceModalOpen: false,
-    roomSettingsModalOpen: false,
-    spaceSettingsModalOpen: false,
-    activeSettingsRoomId: null as string | null,
-    activeSettingsSpaceId: null as string | null,
-    // Secret Storage / Backup Code Verification
     secretStoragePrompt: null as {
-      promise: { resolve: (val: [string, Uint8Array<ArrayBuffer>] | null) => void, reject: (err?: any) => void },
-      keyId: string,
-      keyInfo: any // SecretStorageKeyDescription
+        promise: { resolve: (val: any) => void, reject: (err: any) => void },
+        keyId: string,
+        keyInfo: any
     } | null,
-    pendingSecretStorageRequests: [] as {
-      promise: { resolve: (val: [string, Uint8Array<ArrayBuffer>] | null) => void, reject: (err?: any) => void },
-      keyId: string,
-      keyInfo: any
-    }[],
-    secretStorageKeyCache: {} as Record<string, Uint8Array<ArrayBuffer>>,
-    secretStorageSetup: null as {
-      defaultKeyId: string;
-      needsPassphrase: boolean;
-      passphraseInfo?: any;
-    } | null,
-    // Activity Status (Game Detection)
-    isGameDetectionEnabled: false,
-    runAtStartup: false,
-    startMinimized: false,
-    activityStatus: null as string | null,
-    activityDetails: null as any | null,
-    musicActivity: null as { title: string; artist: string; album?: string; coverUrl?: string; duration?: number; currentTime?: number; startTime?: number; isRunning: boolean } | null,
+
+    // Settings & State
     pushNotificationsEnabled: true,
     showContentInNotifications: true,
     customPushEndpoint: null as string | null,
     notificationsQuietUntil: 0,
-    remoteActivityDetails: {} as Record<string, { game?: any; music?: any }>,
-    appCache: {} as Record<string, { name: string; icon: string | null }>,
-    assetCache: {} as Record<string, Record<string, string>>,
-    gameDetectionLevel: 'off' as 'off' | 'basic' | 'advanced',
-    detectableGames: [] as any[],
-
-    // Dehydration state
-    isDehydrating: false,
-    gameTrigger: 0,
-    unreadTrigger: 0,
-    unreadCountType: sdk.NotificationCountType.Total as sdk.NotificationCountType,
-    gameStates: {} as Record<string, any>,
-    manualUnread: {} as Record<string, boolean>,
-    inviteRoomId: null as string | null,
-
-    customStatus: null as string | null,
-    isLoggingIn: false,
-    isLoggingOut: false,
-    loginStatus: '' as string,
-    isRestoringKeys: false,
-    isFullySynced: false,
-
     lastVisitedRooms: { dm: null, rooms: null, spaces: {} } as LastVisitedRooms,
+    lastPresenceState: null as { presence: string; status_msg: string } | null,
+
+    // Dehydration & Hierarchy
     hierarchyTrigger: 0,
     spaceHierarchies: {} as Record<string, any[]>,
     isIdle: false,
     pinnedSpaces: [] as string[],
-    lastPresenceUpdate: 0,
-    lastPresenceState: null as { presence: string; status_msg: string } | null,
+    unreadTrigger: 0,
+    unreadCountType: sdk.NotificationCountType.Total as sdk.NotificationCountType,
+    manualUnread: {} as Record<string, boolean>,
     directMessageMap: {} as Record<string, string>,
-    matrixRTCBoundSessions: new Set<string>(),
 
-    // Centralized UI State
-    ui: {
-      memberListVisible: false,
-      selectedUserId: null,
-      profileCardPos: { top: '0px', right: '0px' },
-      collapsedCategories: [],
-      showEmptyRooms: false,
-      composerStates: {},
-      uiOrder: { rootSpaces: [], categories: {}, rooms: {} },
-      themePreset: 'default',
-      customCss: '',
-      pendingShare: null,
-      hapticFeedbackEnabled: true,
-      hapticsDebugEnabled: false,
-      sidebarOpen: false,
-      contextMenu: {
-        type: null,
-        data: null,
-      },
-      _contextMenuHandled: false,
-      confirmationDialog: {
-        isOpen: false,
-        title: '',
-        description: '',
-        confirmLabel: 'Confirm',
-        cancelLabel: 'Cancel',
-        onConfirm: () => { },
-      },
-      mediaPreview: null,
-    } as UIState,
+    customStatus: null as string | null,
+    loginStatus: '' as string,
+    isFullySynced: false,
+    isLoggingOut: false,
+    isLoggingIn: false,
+    startMinimized: false,
+    inviteRoomId: null as string | null,
+    isSasConfirming: false,
+    isSasTimeout: false,
   }),
 
   getters: {
-    isVerificationRequested: (state) => state.verificationPhase === VerificationPhase.Requested,
-    isVerificationReady: (state) => state.verificationPhase === VerificationPhase.Ready,
-    isVerificationStarted: (state) => state.verificationPhase === VerificationPhase.Started,
-    isWaitingForRecoveryKey: (state) => state.isAuthenticated && !state.isCrossSigningReady,
-    needsRecoveryKeySetup: (state) => state.isAuthenticated && !state.isSecretStorageReady,
     invites: (state) => {
       if (!state.client) return [];
       return state.client.getVisibleRooms().filter(r => r.getMyMembership() === 'invite');
     },
-    totalInviteCount: (state) => {
-      if (!state.client) return 0;
-      return state.client.getVisibleRooms().filter(r => r.getMyMembership() === 'invite').length;
-    },
-    totalDmUnreadCount(): number {
-      this.unreadTrigger; // trigger reactivity
-      if (!this.client) return 0;
-      const { directMessages } = (this as any).hierarchy;
-      return directMessages.reduce((sum: number, room: any) => {
-        const count = room.getUnreadNotificationCount(this.unreadCountType) || 0;
-        const manual = (this as any).manualUnread[room.roomId] ? 1 : 0;
-        return sum + Math.max(count, manual);
-      }, 0);
-    },
-    totalOrphanRoomUnreadCount(): number {
-      this.unreadTrigger; // trigger reactivity
-      if (!this.client) return 0;
-      const { orphanRooms } = (this as any).hierarchy;
-      return orphanRooms.reduce((sum: number, room: any) => {
-        const count = room.getUnreadNotificationCount(this.unreadCountType) || 0;
-        const manual = (this as any).manualUnread[room.roomId] ? 1 : 0;
-        return sum + Math.max(count, manual);
-      }, 0);
-    },
-    getSpaceUnreadCount: (state) => (spaceId: string): number => {
-      state.unreadTrigger; // trigger reactivity
-      if (!state.client) return 0;
-
-      const roomIds = new Set<string>();
-      const queue = [spaceId];
-      const visited = new Set<string>();
-
-      while (queue.length > 0) {
-        const currentId = queue.shift()!;
-        if (visited.has(currentId)) continue;
-        visited.add(currentId);
-
-        const room = state.client.getRoom(currentId);
-        if (!room) continue;
-
-        if (room.isSpaceRoom()) {
-          const children = room.currentState.getStateEvents('m.space.child');
-          children.forEach(ev => {
-            const content = ev.getContent();
-            if (content && Array.isArray(content.via) && content.via.length > 0) {
-              const childId = ev.getStateKey();
-              if (childId) queue.push(childId);
-            }
-          });
-        } else {
-          roomIds.add(currentId);
-        }
-      }
-
-      let total = 0;
-      roomIds.forEach(id => {
-        const room = state.client?.getRoom(id);
-        if (room && (room.getMyMembership() === 'join' || room.getMyMembership() === 'invite')) {
-          const count = room.getUnreadNotificationCount(state.unreadCountType) || 0;
-          const manual = state.manualUnread[id] ? 1 : 0;
-          total += Math.max(count, manual);
-        }
-      });
-      return total;
-    },
-    getVoiceParticipants: (state) => (roomId: string) => {
-      // Access hierarchyTrigger for reactivity
-      state.hierarchyTrigger;
-
-      if (!state.client) return [];
-
-      const room = state.client.getRoom(roomId);
-      if (!room) return [];
-
-      const rtcSession = state.client.matrixRTC.getRoomSession(room);
-      const voiceStore = useVoiceStore();
-
-      const rawMemberships = rtcSession.memberships;
-
-      // Temporary debug logging — remove once resolved
-      console.log(`[VoiceDebug] Room ${roomId} — raw membership count: ${rawMemberships.length}`);
-      rawMemberships.forEach((m: any, i: number) => {
-        console.log(`[VoiceDebug] Member ${i}:`, {
-          userId: m.userId,
-          deviceId: m.deviceId,
-          isExpired: m.isExpired?.(),
-          membership: m.membership,
-          callMembership: m.callMembership,
-          // Raw event content — this is the most important one
-          eventContent: m.getCallMemberEvent?.()?.getContent?.(),
-          // Check what keys exist on the object
-          keys: Object.keys(m),
-        });
-      });
-
-      // Debug: Check if there are ANY rtc related state events in the room
-      const rtcEvents = room.currentState.getStateEvents('m.rtc.member');
-      const msc4143Events = room.currentState.getStateEvents('org.matrix.msc4143.rtc.member');
-
-      if (rawMemberships.length === 0 && (rtcEvents.length > 0 || msc4143Events.length > 0)) {
-        console.warn(`[MatrixRTC] Room ${roomId} has ${rtcEvents.length + msc4143Events.length} state events but 0 session memberships!`);
-      }
-
-      // Filter for non-expired memberships
-      const participantsMap = new Map<string, any>();
-      rawMemberships.forEach((member: any) => {
-        if (member.userId === state.client?.getUserId() && voiceStore.activeRoomId !== roomId) {
-          return;
-        }
-
-        const isExp = member.isExpired?.() ?? true;
-        const isLeave = (member as any).callMembership?.membership === 'leave'
-          || (member as any).getMembershipEvent?.()?.getContent()?.membership === 'leave';
-        if (isExp || isLeave) return;
-
-        const key = `${member.userId}:${member.deviceId}`;
-        // Store the newest one (highest TS)
-        if (!participantsMap.has(key) || (member.createdTs?.() > participantsMap.get(key).createdTs?.())) {
-          participantsMap.set(key, member);
-        }
-      });
-
-      return Array.from(participantsMap.values()).map((member: any) => {
-        const user = room.getMember(member.userId);
-        const name = user?.name || member.userId.split(':')[0].replace('@', '');
-        const avatarUrl = user?.getMxcAvatarUrl() || null;
-
-        return {
-          id: member.userId,
-          name,
-          avatarUrl
-        };
-      });
-    }
-    ,
-
-
     hierarchy(state) {
-      // Access hierarchyTrigger for reactivity
       state.hierarchyTrigger;
-
       if (!state.client) return { rootSpaces: [], directMessages: [], orphanRooms: [] };
 
-      const allRooms = state.client.getVisibleRooms().filter(room => {
-        const membership = room.getMyMembership();
-        return membership === 'join' || membership === 'invite';
-      });
-      const spaces: sdk.Room[] = [];
-      const normalRooms: sdk.Room[] = [];
+      const all = state.client.getVisibleRooms().filter(r => ['join', 'invite'].includes(r.getMyMembership()));
+      const childIds = new Set<string>();
+      const spacesWithChildren = new Set<string>();
 
-      // Separate by type
-      allRooms.forEach(room => {
-        if (room.isSpaceRoom()) {
-          spaces.push(room);
-        } else {
-          normalRooms.push(room);
+      all.forEach(r => {
+        if (r.isSpaceRoom()) {
+          r.currentState.getStateEvents('m.space.child').forEach(ev => {
+            if (ev.getContent()?.via?.length) {
+              childIds.add(ev.getStateKey()!);
+              spacesWithChildren.add(r.roomId);
+            }
+          });
         }
       });
 
-      // Map the Space Hierarchy
-      const childRoomIds = new Set<string>();
-      const spacesWithChildren = new Set<string>(); // To track active servers
-
-      spaces.forEach(space => {
-        const childEvents = space.currentState.getStateEvents('m.space.child');
-        let hasValidChild = false;
-
-        childEvents.forEach(event => {
-          const content = event.getContent();
-          if (content && Array.isArray(content.via) && content.via.length > 0) {
-            childRoomIds.add(event.getStateKey() as string);
-            hasValidChild = true;
-          }
-        });
-
-        if (hasValidChild) {
-          spacesWithChildren.add(space.roomId);
-        }
-      });
-
-      // Also check m.space.parent in the rooms themselves for robustness
-      allRooms.forEach(room => {
-        const parentEvents = room.currentState.getStateEvents('m.space.parent');
-        parentEvents.forEach(event => {
-          const content = event.getContent();
-          // If a canonical parent is set, mark it as a child
-          if (content && content.via) {
-            childRoomIds.add(room.roomId);
-          }
-        });
-      });
-
-      // Find the DMs (Read from the user's account data)
-      const mDirectEvent = state.client.getAccountData(sdk.EventType.Direct);
-      const mDirectContent = mDirectEvent ? mDirectEvent.getContent() : {};
       const dmRoomIds = new Set<string>();
-
-      Object.values(mDirectContent).forEach((roomList: any) => {
-        if (Array.isArray(roomList)) {
-          roomList.forEach(roomId => dmRoomIds.add(roomId));
-        }
-      });
-
-      // --- THE FINAL CATEGORIES ---
-
-      // Servers: Spaces that have NO parents AND HAVE at least one child
-      const rootSpaces = spaces.filter(space =>
-        !childRoomIds.has(space.roomId) && spacesWithChildren.has(space.roomId)
-      );
-
-      // Pinned Spaces: Spaces that the user has pinned
-      const pinnedRooms = state.pinnedSpaces
-        .map(roomId => state.client?.getRoom(roomId))
-        .filter((room): room is sdk.Room => !!room && room.isSpaceRoom());
-
-      // Merge and deduplicate
-      const allRootSpaces = [...rootSpaces];
-      pinnedRooms.forEach(room => {
-        if (!allRootSpaces.find(s => s.roomId === room.roomId)) {
-          allRootSpaces.push(room);
-        }
-      });
-
-      // DMs: Normal rooms that exist in the m.direct payload
-      const directMessages = normalRooms.filter(room =>
-        dmRoomIds.has(room.roomId)
-      );
-
-      // Orphan Rooms: Normal rooms that are NOT in a space, and are NOT DMs
-      const orphanRooms = normalRooms.filter(room =>
-        !childRoomIds.has(room.roomId) && !dmRoomIds.has(room.roomId)
-      );
+      const dmEvent = state.client.getAccountData(sdk.EventType.Direct);
+      if (dmEvent) Object.values(dmEvent.getContent()).forEach((list: any) => list.forEach((id: string) => dmRoomIds.add(id)));
 
       return {
-        rootSpaces: allRootSpaces,
-        directMessages,
-        orphanRooms,
+        rootSpaces: all.filter(r => r.isSpaceRoom() && (state.pinnedSpaces.includes(r.roomId) || (!childIds.has(r.roomId) && spacesWithChildren.has(r.roomId)))),
+        directMessages: all.filter(r => dmRoomIds.has(r.roomId)),
+        orphanRooms: all.filter(r => !r.isSpaceRoom() && !childIds.has(r.roomId) && !dmRoomIds.has(r.roomId)),
       };
     },
-  },
-
-  actions: {
-    async resolveApplicationInfo(appId: string) {
-      if (this.appCache[appId]) return this.appCache[appId];
-
-      try {
-        const response = await fetch(`https://discord.com/api/v9/applications/${appId}/rpc`);
-        if (response.ok) {
-          const data = await response.json();
-          this.appCache[appId] = {
-            name: data.name,
-            icon: data.icon
-          };
-          return this.appCache[appId];
-        }
-      } catch (e) {
-        console.warn(`[MatrixStore] Failed to resolve Discord app info for ${appId}:`, e);
-      }
-      return null;
+    totalInviteCount(state): number {
+        state.unreadTrigger;
+        return state.client?.getVisibleRooms().filter(r => r.getMyMembership() === 'invite').length || 0;
     },
-
-    async resolveApplicationAssets(appId: string) {
-      if (this.assetCache[appId]) return this.assetCache[appId];
-
-      try {
-        const response = await fetch(`https://discord.com/api/v9/oauth2/applications/${appId}/assets`);
-        if (response.ok) {
-          const data = await response.json();
-          const map: Record<string, string> = {};
-          if (Array.isArray(data)) {
-            data.forEach((asset: any) => {
-              map[asset.name] = asset.id;
-            });
-          }
-          this.assetCache[appId] = map;
-          return map;
-        }
-      } catch (e) {
-        console.warn(`[MatrixStore] Failed to resolve Discord assets for ${appId}:`, e);
-      }
-      return {};
-    },
-
-    resolveActivity(userId: string | null): any {
-      const { game, music } = this.resolveActivities(userId);
-      return game || music;
+    totalDmUnreadCount(): number {
+        this.unreadTrigger;
+        return this.hierarchy.directMessages.reduce((sum, r) => sum + (r.getUnreadNotificationCount(this.unreadCountType) || 0), 0);
     },
 
     resolveActivities(userId: string | null): { game: any | null; music: any | null } {
@@ -780,321 +221,104 @@ export const useMatrixStore = defineStore('matrix', {
                 } else {
                   if (!game) game = act;
                 }
-              }
-            } catch { }
-          } else if (presenceMsg.startsWith('Playing ')) {
-            const name = sanitize(presenceMsg.substring(8));
-            if (name && !game) game = { name, is_running: true };
-          }
-        }
-      }
+            });
+            return count;
+        };
 
-      return { game, music };
+        return getRecursiveUnread(spaceId);
     },
-
-    async initStorage() {
-      // Load all persisted prefs into Pinia state on startup
-      const jellyfinStore = useJellyfinStore();
-      await jellyfinStore.init();
-
-      this.pushNotificationsEnabled = await getPref('push_notifications_enabled', true);
-      this.showContentInNotifications = await getPref('show_content_in_notifications', true);
-      this.customPushEndpoint = await getPref('custom_push_endpoint', null);
-      this.notificationsQuietUntil = await getPref('notifications_quiet_until', 0);
-      this.ui.memberListVisible = await getPref('matrix_member_list_visible', false);
-      this.ui.collapsedCategories = await getPref('matrix_collapsed_categories', []);
-      this.ui.showEmptyRooms = await getPref('matrix_show_empty_rooms', false);
-      this.ui.themePreset = await getPref('matrix_theme_preset', 'default');
-      this.ui.customCss = await getPref('matrix_custom_css', '');
-      this.ui.hapticFeedbackEnabled = await getPref('matrix_haptic_feedback_enabled', true);
-      this.ui.hapticsDebugEnabled = await getPref('matrix_haptics_debug_enabled', false);
-      this.ui.uiOrder = await getPref('matrix_ui_order', {
-        rootSpaces: [], categories: {}, rooms: {}
-      });
-      this.lastVisitedRooms = await getPref('matrix_last_visited_rooms', {
-        dm: null, rooms: null, spaces: {}
-      });
-      this.startMinimized = await getPref('matrix_start_minimized', false);
-
-      const isTauri = (process as any).client && !!(window as any).__TAURI_INTERNALS__;
-      if (isTauri) {
-        try {
-          const { isEnabled } = await import('@tauri-apps/plugin-autostart');
-          this.runAtStartup = await isEnabled();
-        } catch (e) {
-          console.error('Failed to check autostart status:', e);
-        }
-      }
-    },
-
-    async initGameDetection() {
-      // Check if Tauri storage has "game_detection_level"
-      const stored = await getPref('game_detection_level', 'off');
-      console.log('[MatrixStore] Loading game detection config:', stored);
-      this.gameDetectionLevel = stored as any;
-
-      const isTauri = (process as any).client && !!(window as any).__TAURI_INTERNALS__;
-      if (isTauri) {
-        const { listen } = await import('@tauri-apps/api/event');
-
-        // Listen for BASIC scanner events (native Rust process scanner)
-        listen('game-activity', (event: any) => {
-          console.log('[MatrixStore] Game activity event from Rust (Basic):', event.payload);
-          const { name, exe, is_running } = event.payload;
-          if (is_running) {
-            this.activityDetails = {
-              name: name + (exe ? ` (via ${exe})` : ''),
-              is_running: true,
-              last_updated: Date.now()
-            };
-          } else {
-            if (this.activityDetails?.name === name) {
-              this.activityDetails = null;
-            }
-          }
-          this.refreshPresence();
-        });
-
-        // Listen for ADVANCED rsRPC events (handles both scanning and RPC)
-        listen('arrpc-activity', (event: any) => {
-          console.log('[MatrixStore] Received rsRPC activity from Rust:', event.payload);
-          this.handleRpcActivity(event.payload);
-        });
-      }
-
-      if (this.gameDetectionLevel !== 'off') {
-        this.setGameDetectionLevel(this.gameDetectionLevel);
-      }
-    },
-
-    async fetchDetectableGames() {
-      if (this.detectableGames.length > 0) return this.detectableGames;
-      try {
-        const res = await fetch('https://discord.com/api/v9/applications/detectable');
-        if (res.ok) {
-          this.detectableGames = await res.json();
-          return this.detectableGames;
-        }
-      } catch (e) {
-        console.error('[MatrixStore] Failed to fetch detectable games:', e);
-      }
-      return [];
-    },
-
-    async setGameDetectionLevel(level: 'off' | 'basic' | 'advanced') {
-      console.log('[MatrixStore] Setting game detection level:', level);
-      this.gameDetectionLevel = level;
-      await setPref('game_detection_level', level);
-
-      const isTauri = (process as any).client && !!(window as any).__TAURI_INTERNALS__;
-
-      // Disable everything first
-      await this.stopRpcServer();
-      if (isTauri) {
-        const { invoke } = await import('@tauri-apps/api/core');
-        await invoke('set_scanner_enabled', { enabled: false });
-      }
-
-      if (level === 'basic') {
-        // Basic: Rust process scanning ONLY
-        if (isTauri) {
-          const { invoke } = await import('@tauri-apps/api/core');
-          const { platform } = await import('@tauri-apps/plugin-os');
-          const games = await this.fetchDetectableGames();
-          const os = platform(); // macos, windows, linux
-
-          // Filter games for the current OS
-          const filtered = games.map((g: any) => ({
-            id: g.id,
-            name: g.name,
-            executables: (g.executables || []).filter((e: any) => {
-              if (os === 'windows') return e.os === 'win32';
-              if (os === 'macos') return e.os === 'darwin';
-              if (os === 'linux') return e.os === 'linux';
-              return false;
+    getVoiceParticipants: (state) => (roomId: string) => {
+        const room = state.client?.getRoom(roomId);
+        if (!room) return [];
+        // Map members who are in the call
+        return room.getMembersWithMembership('join')
+            .filter(m => {
+                const event = room.currentState.getStateEvents('org.matrix.msc3401.call.member', m.userId);
+                return event && event.getContent().memberships?.length > 0;
             })
-          })).filter((g: any) => g.executables.length > 0);
+            .map(m => ({
+                id: m.userId,
+                name: m.name,
+                avatarUrl: m.getMxcAvatarUrl()
+            }));
+    },
+    isVerificationRequested: (state) => {
+        return !!state.activeVerificationRequest && state.verificationPhase === VerificationPhase.Requested;
+    },
+    isVerificationReady: (state) => {
+        return !!state.activeVerificationRequest && state.verificationPhase === VerificationPhase.Ready;
+    },
+    isWaitingForRecoveryKey: (state) => {
+        return !!state.secretStoragePrompt;
+    },
+    needsRecoveryKeySetup: (state) => {
+        return state.isAuthenticated && !state.isSecretStorageReady && !state.isCryptoDegraded;
+    }
+  },
 
-          await invoke('update_watch_list', { games: filtered });
-          await invoke('set_scanner_enabled', { enabled: true });
-        }
-      } else if (level === 'advanced') {
-        // Advanced: arRPC sidecar (handles both scanning and RPC)
-        await this.startRpcServer();
-      }
+  actions: {
+    async initialize() {
+      this.pushNotificationsEnabled = await getPref('matrix_push_notifications_enabled', true);
+      this.showContentInNotifications = await getPref('matrix_show_content_in_notifications', true);
+      this.customPushEndpoint = await getPref('matrix_custom_push_endpoint', null);
+      this.notificationsQuietUntil = await getPref('matrix_notifications_quiet_until', 0);
+      this.lastVisitedRooms = await getPref('matrix_last_visited_rooms', { dm: null, rooms: null, spaces: {} });
     },
 
-    _sanitizeActivityString(val: any): string | null {
-      if (val === null || val === undefined) return null;
-      const s = String(val).trim();
-      if (!s || s === 'undefined' || s === 'null' || s === 'None') return null;
-      return s;
+    async _clearPersistentStores() {
+      const deleteDb = (name: string) => new Promise<void>((resolve) => {
+        const req = window.indexedDB.deleteDatabase(name);
+        req.onsuccess = req.onerror = req.onblocked = () => resolve();
+      });
+
+      await Promise.all([
+        'matrix-js-sdk::matrix-store',
+        'matrix-js-sdk::matrix-sdk-crypto',
+        'matrix-js-sdk::matrix-sdk-crypto-meta',
+        'matrix-js-sdk::crypto-store'
+      ].map(deleteDb));
     },
 
-    async setGameDetection(enabled: boolean) {
-      console.log('[MatrixStore] Setting game detection:', enabled);
-      this.isGameDetectionEnabled = enabled;
-      await setPref('game_activity_enabled', enabled);
-
-      if (enabled) {
-        await this.startRpcServer();
-      } else {
-        await this.stopRpcServer();
-      }
+    _resetVerificationState() {
+      this.activeVerificationRequest = null;
+      this.isVerificationInitiatedByMe = false;
+      this.activeSas = null;
+      this.qrCodeData = null;
+      this.isVerificationCompleted = false;
+      this.verificationPhase = null;
+      this.isRestoringHistory = false;
     },
 
-    async setRunAtStartup(enabled: boolean) {
-      this.runAtStartup = enabled;
-      const isTauri = (process as any).client && !!(window as any).__TAURI_INTERNALS__;
-      if (isTauri) {
-        try {
-          const { enable, disable } = await import('@tauri-apps/plugin-autostart');
-          if (enabled) {
-            await enable();
-          } else {
-            await disable();
-          }
-        } catch (e) {
-          console.error('Failed to set autostart status:', e);
-        }
-      }
-    },
-
-    async setStartMinimized(enabled: boolean) {
-      this.startMinimized = enabled;
-      await setPref('matrix_start_minimized', enabled);
+    setIdle(idle: boolean) {
+      this.isIdle = idle;
     },
 
     async setPushNotificationsEnabled(enabled: boolean) {
       this.pushNotificationsEnabled = enabled;
-      await setPref('push_notifications_enabled', enabled);
-      // This will trigger the watch in push-registration.client.ts
-      this.unreadTrigger++;
+      await setPref('matrix_push_notifications_enabled', enabled);
     },
 
-    async setShowContentInNotifications(enabled: boolean) {
-      this.showContentInNotifications = enabled;
-      await setPref('show_content_in_notifications', enabled);
-
-      // Sync to SW via IDB
-      try {
-        const { saveSwSettings } = await import('~/utils/crypto-db');
-        await saveSwSettings({ showContent: enabled });
-      } catch (e) {
-        console.warn('[MatrixStore] Failed to sync showContent to SW IDB:', e);
-      }
-
-      if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-        navigator.serviceWorker.controller.postMessage({
-          type: 'SET_SHOW_CONTENT',
-          enabled
-        });
-      }
+    async setShowContentInNotifications(show: boolean) {
+      this.showContentInNotifications = show;
+      await setPref('matrix_show_content_in_notifications', show);
     },
 
     async setCustomPushEndpoint(endpoint: string | null) {
       this.customPushEndpoint = endpoint;
-      if (endpoint) {
-        await setPref('custom_push_endpoint', endpoint);
-      } else {
-        await deletePref('custom_push_endpoint');
-      }
-      // Force re-registration
-      this.unreadTrigger++;
+      await setPref('matrix_custom_push_endpoint', endpoint);
     },
 
-    async setNotificationsQuietUntil(timestamp: number) {
-      this.notificationsQuietUntil = timestamp;
-      await setPref('notifications_quiet_until', timestamp);
-
-      // Sync to SW via IDB
-      try {
-        const { saveSwSettings } = await import('~/utils/crypto-db');
-        await saveSwSettings({ quietUntil: timestamp });
-      } catch (e) {
-        console.warn('[MatrixStore] Failed to sync quietUntil to SW IDB:', e);
-      }
-
-      // Sync to Service Worker via message (simplified mechanism)
-      if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-        navigator.serviceWorker.controller.postMessage({
-          type: 'SET_QUIET_UNTIL',
-          timestamp
-        });
-      }
+    async setNotificationsQuietUntil(until: number) {
+      this.notificationsQuietUntil = until;
+      await setPref('matrix_notifications_quiet_until', until);
     },
 
-    async _hashUserId(userId: string): Promise<string> {
-      const msgUint8 = new TextEncoder().encode(userId);
-      const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
-      const hashArray = Array.from(new Uint8Array(hashBuffer));
-      // Convert to a big number string for Snowflake compatibility
-      const hex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-      // Use BigInt to convert hex to decimal
-      return BigInt('0x' + hex).toString().substring(0, 18);
-    },
-
-    async startRpcServer() {
-      const isTauri = (process as any).client && !!(window as any).__TAURI_INTERNALS__;
-      if (!isTauri) return;
-
-      try {
-        const { invoke } = await import('@tauri-apps/api/core');
-        console.log('[MatrixStore] Starting rsRPC sidecar...');
-        await invoke('start_rsrpc_server', {
-          bridgePort: 1337,
-          noProcessScanning: false,
-        });
-      } catch (e) {
-        console.error('[MatrixStore] Failed to start rsRPC server:', e);
-      }
-    },
-
-    async stopRpcServer() {
-      const isTauri = (process as any).client && !!(window as any).__TAURI_INTERNALS__;
-      if (!isTauri) return;
-
-      try {
-        const { invoke } = await import('@tauri-apps/api/core');
-        console.log('[MatrixStore] Stopping rsRPC sidecar...');
-        await invoke('stop_rsrpc_server');
-
-        this.activityDetails = null;
-        this.refreshPresence();
-      } catch (e) {
-        console.error('[MatrixStore] Failed to stop rsRPC server:', e);
-      }
-    },
-
-
-    async handleRpcActivity(data: any) {
-      console.log('[MatrixStore] Processing rsRPC activity:', data);
-
-      if (data.activity) {
-        let name = this._sanitizeActivityString(data.activity.name);
-        const details = this._sanitizeActivityString(data.activity.details);
-        const appId = data.activity.application_id;
-        let appIcon = null;
-
-        let largeImage = data.activity.assets?.large_image;
-        let smallImage = data.activity.assets?.small_image;
-
-        // Always try to resolve from appId for authoritative name and assets
-        if (appId) {
-          const [appInfo, assets] = await Promise.all([
-            this.resolveApplicationInfo(appId),
-            this.resolveApplicationAssets(appId)
-          ]);
-
-          if (appInfo) {
-            name = appInfo.name || name;
-            appIcon = appInfo.icon;
-          }
-
-          // Map asset names to IDs if they are not already IDs
-          if (largeImage && assets[largeImage]) largeImage = assets[largeImage];
-          if (smallImage && assets[smallImage]) smallImage = assets[smallImage];
+    async setCustomStatus(status: string | null) {
+        this.customStatus = status;
+        if (this.client) {
+            await this.client.setAccountData('cc.jackg.ruby.status' as any, { status_msg: status } as any);
         }
+    },
 
         // Enhanced activity details from rsRPC
         this.activityDetails = {
@@ -1124,128 +348,61 @@ export const useMatrixStore = defineStore('matrix', {
         } else {
           this.remoteActivityDetails[userId].game = null;
         }
-      }
-
-      this.refreshPresence();
     },
 
-    setCustomStatus(status: string | null) {
-      this.customStatus = status;
-      this.refreshPresence();
-    },
-
-    setMusicActivity(activity: { title: string; artist: string; album?: string; coverUrl?: string; duration?: number; currentTime?: number; startTime?: number; isRunning: boolean } | null) {
-      // If the song is exactly the same and only currentTime changed, we check if it's worth updating
-      // But for now, we allow the store to update it (throttled by refreshPresence anyway)
-      this.musicActivity = activity;
-      this.refreshPresence();
-    },
-
-    async goOffline() {
-      if (this.client && this.isAuthenticated) {
-        console.log('[MatrixStore] Sending offline flare...');
-
-        let status_msg = this.customStatus;
-        if (!status_msg && this.activityDetails?.is_running) {
-          const gameName = this._sanitizeActivityString(this.activityDetails.name);
-          if (gameName) {
-            status_msg = `Playing ${gameName}`;
-          }
+    async setPinnedSpaces(spaceIds: string[]) {
+        this.pinnedSpaces = spaceIds;
+        if (this.client) {
+            await this.client.setAccountData('cc.jackg.ruby.pinned_spaces' as any, { rooms: spaceIds } as any);
         }
+    },
 
+    updateRootSpacesOrder(spaceIds: string[]) {
+        const uiStore = useUIStore();
+        uiStore.uiOrder.rootSpaces = spaceIds;
+        setPref('matrix_ui_order', uiStore.uiOrder);
+    },
+
+    async fetchSpaceHierarchy(spaceId: string) {
+        if (!this.client) return;
         try {
-          await this.client.setPresence({
-            presence: 'offline',
-            status_msg: status_msg || ''
-          });
+            // @ts-ignore - newer versions of SDK have this, or it's provided by a plugin
+            const hierarchy = await this.client.getSpaceSummary(spaceId);
+            this.spaceHierarchies[spaceId] = hierarchy.rooms;
+            this.hierarchyTrigger++;
         } catch (e) {
-          console.error('[MatrixStore] Failed to send offline flare:', e);
+            // Fallback for older SDK or different method name
+            try {
+               const hierarchy = await (this.client as any).getSpaceHierarchy(spaceId);
+               this.spaceHierarchies[spaceId] = hierarchy.rooms;
+               this.hierarchyTrigger++;
+            } catch (e2) {
+               console.error('Failed to fetch space hierarchy', e2);
+            }
         }
-      }
     },
 
-    setIdle(idle: boolean) {
-      if (this.isIdle === idle) return;
-      this.isIdle = idle;
-      console.log('[MatrixStore] User idle status changed:', idle);
-      this.refreshPresence();
+    updateCategoryOrder(spaceId: string, categoryIds: string[]) {
+        const uiStore = useUIStore();
+        uiStore.uiOrder.categories[spaceId] = categoryIds;
+        setPref('matrix_ui_order', uiStore.uiOrder);
     },
 
-    async refreshPresence() {
-      if (!this.client || !this.isAuthenticated || !this.isClientReady) return;
+    updateRoomOrder(categoryId: string, roomIds: string[]) {
+        const uiStore = useUIStore();
+        uiStore.uiOrder.rooms[categoryId] = roomIds;
+        setPref('matrix_ui_order', uiStore.uiOrder);
+    },
 
-      // Determine best activity for the status message
-      const { game, music } = this.resolveActivities(null);
-      const bestActivity = game || music;
-      const hasLiveActivity = (game?.is_running && !game?.is_paused) || (music?.is_running && !music?.is_paused);
+    setInviteRoomId(roomId: string | null) {
+        this.inviteRoomId = roomId;
+    },
 
-      // CRITICAL: If we have a live activity running on ANY of our devices,
-      // we should stay 'online' and not flip to 'unavailable' (idle).
-      const presence = (this.isIdle && !hasLiveActivity) ? 'unavailable' : 'online';
-
-      let status_msg: string = this.customStatus || '';
-
-      if (!status_msg && bestActivity?.is_running) {
-        const act = bestActivity;
-        const name = this._sanitizeActivityString(act.name);
-        if (name) {
-          // Encode the full payload so remote Tumult clients can render
-          // icons, timestamps, and details. Non-Tumult clients will see
-          // the JSON string as their status — not ideal but acceptable.
-          status_msg = JSON.stringify({
-            playing: name,
-            details: act.details ?? null,
-            state: act.state ?? null,
-            applicationId: act.applicationId ?? null,
-            iconHash: act.iconHash ?? null,
-            smallIconHash: act.smallIconHash ?? null,
-            startTimestamp: act.startTimestamp ?? null,
-            duration: act.duration ?? null,
-            currentTime: act.currentTime ?? null,
-            coverUrl: act.coverUrl ?? null,
-            type: act.type || (name.includes(' by ') ? 'music' : 'game'),
-            is_running: true,
-            is_paused: act.is_paused ?? false,
-            // Multi-activity support
-            game: game ? {
-              name: game.name,
-              details: game.details,
-              state: game.state,
-              applicationId: game.applicationId,
-              iconHash: game.iconHash,
-              smallIconHash: game.smallIconHash,
-              startTimestamp: game.startTimestamp,
-              is_running: true,
-              type: 'game'
-            } : null,
-            music: music ? {
-              name: music.name,
-              details: music.details,
-              coverUrl: music.coverUrl,
-              duration: music.duration,
-              currentTime: music.currentTime,
-              startTimestamp: music.startTimestamp,
-              is_running: true,
-              is_paused: music.is_paused,
-              type: 'music'
-            } : null
-          });
+    pinSpace(spaceId: string) {
+        if (!this.pinnedSpaces.includes(spaceId)) {
+            this.setPinnedSpaces([...this.pinnedSpaces, spaceId]);
         }
-      }
-
-      // Check if state has actually changed
-      const stateChanged = !this.lastPresenceState ||
-        this.lastPresenceState.presence !== presence ||
-        this.lastPresenceState.status_msg !== status_msg;
-
-      // Determine if this is a "critical" change that should bypass throttling.
-      // For music, critical changes are play/pause and track changes.
-      // Continuous progress (time updates) should still be throttled.
-      let isCriticalChange = false;
-      if (stateChanged && this.lastPresenceState) {
-        try {
-          const lastMsg = this.lastPresenceState.status_msg;
-          const currentMsg = status_msg;
+    },
 
           if (lastMsg.startsWith('{') && currentMsg.startsWith('{')) {
             const last = JSON.parse(lastMsg);
@@ -4424,200 +3581,8 @@ export const useMatrixStore = defineStore('matrix', {
     },
 
     markAsUnread(roomId: string) {
-      this.manualUnread[roomId] = true;
-      this.unreadTrigger++;
-    },
-
-    async markSpaceAsRead(spaceId: string) {
-      if (!this.client) return;
-
-      const queue = [spaceId];
-      const visited = new Set<string>();
-      const joinedRooms: string[] = [];
-
-      while (queue.length > 0) {
-        const currentId = queue.shift()!;
-        if (visited.has(currentId)) continue;
-        visited.add(currentId);
-
-        const room = this.client.getRoom(currentId);
-        if (!room) continue;
-
-        if (room.isSpaceRoom()) {
-          const children = room.currentState.getStateEvents('m.space.child');
-          children.forEach(ev => {
-            const childId = ev.getStateKey();
-            if (childId) queue.push(childId);
-          });
-          if (room.getMyMembership() === 'join') {
-            joinedRooms.push(currentId);
-          }
-        } else if (room.getMyMembership() === 'join') {
-          joinedRooms.push(currentId);
-        }
-      }
-
-      await Promise.all(joinedRooms.map(id => this.markAsRead(id)));
-      toast.success('Marked space as read');
-    },
-
-    setInviteRoomId(roomId: string | null) {
-      this.inviteRoomId = roomId;
-    },
-
-    async markRoomAsDirect(roomId: string) {
-      if (!this.client) return;
-      const room = this.client.getRoom(roomId);
-      if (!room) return;
-
-      const myUserId = this.client.getUserId();
-      const otherMember = room.getMembers().find(m => m.userId !== myUserId);
-      if (!otherMember) return;
-
-      const dmEvent = this.client.getAccountData(sdk.EventType.Direct);
-      const content = dmEvent ? JSON.parse(JSON.stringify(dmEvent.getContent())) : {};
-
-      const userRooms = content[otherMember.userId] || [];
-      if (!userRooms.includes(roomId)) {
-        userRooms.push(roomId);
-        content[otherMember.userId] = userRooms;
-        await (this.client as any).setAccountData(sdk.EventType.Direct, content);
-      }
-    },
-
-    setupMatrixRTCListeners() {
-      if (!this.client) {
-        console.warn('[MatrixRTC] setupMatrixRTCListeners: No client');
-        return;
-      }
-
-      console.log('[MatrixRTC] setupMatrixRTCListeners: Initializing listeners');
-      const rtc = this.client.matrixRTC;
-
-      const triggerHierarchyRefresh = useDebounceFn(() => {
-        this.hierarchyTrigger++;
-      }, 500);
-
-      const onMembershipsChanged = (oldM: any, newM: any) => {
-        // Ensure session has reparsed before Vue re-renders
-        // Note: We can't access the room here directly, but the session is already bound to the room
-        triggerHierarchyRefresh();
-      };
-
-      const bindToSession = (roomId: string, session: any) => {
-        if (this.matrixRTCBoundSessions.has(roomId)) return;
-        console.log(`[MatrixRTC] Binding listeners to session in ${roomId}`);
-        // Do NOT call ensureRecalculateSessionMembers here — doing so for every
-        // voice room at startup causes a blocking IDB read per room.
-        // The MembershipsChanged listener will fire when state actually changes.
-        session.on(MatrixRTCSessionEvent.MembershipsChanged, onMembershipsChanged);
-        this.matrixRTCBoundSessions.add(roomId);
-      };
-
-      // Listen for session starts/ends to bind to new sessions
-      rtc.on(MatrixRTCSessionManagerEvents.SessionStarted, (roomId: string, session: any) => {
-        console.log(`[MatrixRTC] Session started in ${roomId}, binding listeners`);
-        bindToSession(roomId, session);
-        triggerHierarchyRefresh();
-      });
-
-      rtc.on(MatrixRTCSessionManagerEvents.SessionEnded, (roomId: string, session: any) => {
-        console.log(`[MatrixRTC] Session ended in ${roomId}, unbinding listeners`);
-        session.off(MatrixRTCSessionEvent.MembershipsChanged, onMembershipsChanged);
-        this.matrixRTCBoundSessions.delete(roomId);
-        triggerHierarchyRefresh();
-      });
-
-      // Bind to any already active sessions after sync is prepared
-      const bindExisting = () => {
-        if (!this.client) return;
-        const rooms = this.client.getRooms();
-        console.log(`[MatrixRTC] Checking ${rooms.length} rooms for existing MatrixRTC presence`);
-
-        for (const room of rooms) {
-          // Bind to anything that is a voice channel OR already has memberships
-          const isVoice = isVoiceChannel(room);
-          const hasRtcState = room.currentState.getStateEvents('m.rtc.member').length > 0 ||
-            room.currentState.getStateEvents('org.matrix.msc4143.rtc.member').length > 0 ||
-            room.currentState.getStateEvents('org.matrix.msc3401.call.member').length > 0; // ← add this
-
-          if (isVoice || hasRtcState) {
-            const session = rtc.getRoomSession(room);
-            bindToSession(room.roomId, session);
-          }
-        }
-        triggerHierarchyRefresh();
-      };
-
-      if (this.client.isInitialSyncComplete()) {
-        bindExisting();
-      } else {
-        this.client.once(sdk.ClientEvent.Sync, (state) => {
-          if (state === 'PREPARED') {
-            console.log('[MatrixRTC] Initial sync prepared, checking existing sessions');
-            bindExisting();
-          }
-        });
-      }
-    },
-
-    forceRecalculateVoiceMemberships() {
-      if (!this.client) return;
-
-      // Only touch rooms that are bound voice sessions — not every room.
-      // Calling getRoomSession + ensureRecalculateSessionMembers on all 70+
-      // rooms at startup blocks the main thread for several seconds.
-      const boundRoomIds = Array.from(this.matrixRTCBoundSessions);
-
-      for (const roomId of boundRoomIds) {
-        try {
-          const room = this.client.getRoom(roomId);
-          if (!room) continue;
-          const session = this.client.matrixRTC.getRoomSession(room);
-          if (!session) continue;
-
-          if (typeof (session as any).ensureRecalculateSessionMembers === 'function') {
-            (session as any).ensureRecalculateSessionMembers();
-          }
-        } catch (e) {
-          console.warn(`[MatrixRTC] Failed to recalculate session for ${roomId}:`, e);
-        }
-      }
-
-      // Force Vue to re-evaluate getVoiceParticipants
-      this.hierarchyTrigger++;
-    },
-
-    openMediaPreview(media: { url: string, type: 'image' | 'video', alt?: string }) {
-      this.ui.mediaPreview = media;
-    },
-
-    closeMediaPreview() {
-      this.ui.mediaPreview = null;
-    },
-
-    async checkPendingShare() {
-      if (typeof window === 'undefined') return;
-
-      if (window.location.search.includes('share=pending')) {
-        console.log('[MatrixStore] Pending share detected in URL, fetching from IDB...');
-        try {
-          const share = await getPendingShare();
-          if (share) {
-            console.log('[MatrixStore] Successfully retrieved pending share from IDB:', share);
-            this.ui.pendingShare = markRaw(share);
-            await clearPendingShare();
-          }
-        } catch (err) {
-          console.error('[MatrixStore] Failed to fetch pending share:', err);
-        }
-
-        // Clean up the URL
-        const url = new URL(window.location.href);
-        url.searchParams.delete('share');
-        window.history.replaceState({}, '', url.pathname + url.search);
-      }
-    },
-
+        this.manualUnread[roomId] = true;
+        this.unreadTrigger++;
+    }
   }
 });

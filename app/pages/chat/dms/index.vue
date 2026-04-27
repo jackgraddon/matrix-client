@@ -5,8 +5,8 @@
         variant="ghost"
         size="icon-sm"
         class="md:hidden shrink-0"
-        @click="store.toggleSidebar(true)"
-        v-if="!store.ui.sidebarOpen"
+        @click="uiStore.toggleSidebar(true)"
+        v-if="!uiStore.sidebarOpen"
       >
         <Icon name="solar:hamburger-menu-linear" class="h-6 w-6" />
       </UiButton>
@@ -20,10 +20,10 @@
         <h2 class="text-xl font-bold">No message selected</h2>
         <p class="text-muted-foreground">Select a conversation from the sidebar, or start a new direct message.</p>
       </div>
-      <UiButton @click="store.toggleSidebar(true)" class="md:hidden">
+      <UiButton @click="uiStore.toggleSidebar(true)" class="md:hidden">
         Open Sidebar
       </UiButton>
-      <UiButton variant="outline" @click="store.openGlobalSearchModal()">
+      <UiButton variant="outline" @click="uiStore.openGlobalSearchModal()">
         Find a Person
       </UiButton>
     </div>
@@ -32,6 +32,9 @@
 
 <script lang="ts" setup>
 const store = useMatrixStore();
+const uiStore = useUIStore();
+const matrixService = useMatrixService();
+const presenceStore = usePresenceStore();
 
 onMounted(() => {
   if (store.lastVisitedRooms.dm) {

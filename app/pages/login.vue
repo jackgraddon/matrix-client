@@ -87,6 +87,8 @@
 
 <script setup lang="ts">
 const matrixStore = useMatrixStore();
+import { useUIStore } from "~/stores/ui";
+import { useMatrixService, useAudioService, useJellyfinService, usePresenceService } from "~/composables/useServices";
 const config = useRuntimeConfig();
 const recommendedHomeservers = config.public.matrix.recommendedHomeservers || ['matrix.org'];
 const homeserver = ref<string>((config.public.matrix.baseUrl as string) || 'matrix.org');

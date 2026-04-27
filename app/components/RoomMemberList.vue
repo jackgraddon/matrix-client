@@ -5,7 +5,7 @@
         variant="ghost"
         size="icon-sm"
         class="md:hidden shrink-0"
-        @click="store.toggleMemberList()"
+        @click="uiStore.toggleMemberList()"
       >
         <Icon name="solar:alt-arrow-left-linear" class="h-6 w-6" />
       </UiButton>
@@ -98,6 +98,9 @@ import type { Room, RoomMember } from 'matrix-js-sdk';
 
 const props = defineProps<{ room: Room }>();
 const store = useMatrixStore();
+const uiStore = useUIStore();
+const matrixService = useMatrixService();
+const presenceStore = usePresenceStore();
 const refreshKey = ref(0);
 
 const isEncrypted = computed(() => {
@@ -106,8 +109,8 @@ const isEncrypted = computed(() => {
 });
 
 // --- Popover State ---
-const selectedUserId = computed(() => store.ui.selectedUserId);
-const profileCardPos = computed(() => store.ui.profileCardPos);
+const selectedUserId = computed(() => uiStore.selectedUserId);
+const profileCardPos = computed(() => uiStore.profileCardPos);
 
 // ProfileCard expects a Matrix User object, so we resolve it here
 const selectedUser = computed(() => {
@@ -180,11 +183,11 @@ function openUserProfileCard(event: MouseEvent, userId: string) {
     };
   }
 
-  store.setUISelectedUser(userId, pos);
+  uiStore.setUISelectedUser(userId, pos);
 }
 
 function closeProfileCard() {
-  store.setUISelectedUser(null);
+  uiStore.setUISelectedUser(null);
 }
 
 // --- Matrix Event Listeners for Live Updates ---

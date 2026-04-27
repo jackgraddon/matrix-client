@@ -49,8 +49,8 @@ async function loadArtists() {
       Limit: 12,
       Fields: ['PrimaryImageAspectRatio', 'UserData']
     }
-  }).then(data => {
-    if (data && 'Items' in data) topArtists.value = data.Items as BaseItemDto[];
+  }).then((data: any) => {
+    if (data && data.Items) topArtists.value = data.Items as BaseItemDto[];
   }).finally(() => loading.top = false);
 
   loading.all = true;
@@ -63,8 +63,8 @@ async function loadArtists() {
       Limit: 100, // Reasonable limit for initial load
       Fields: ['PrimaryImageAspectRatio', 'UserData']
     }
-  }).then(data => {
-    if (data && 'Items' in data) allArtists.value = data.Items as BaseItemDto[];
+  }).then((data: any) => {
+    if (data && data.Items) allArtists.value = data.Items as BaseItemDto[];
   }).finally(() => loading.all = false);
 
   Promise.all([p1, p2]).then(() => {

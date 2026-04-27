@@ -93,10 +93,11 @@ export default defineNuxtPlugin(async (nuxtApp) => {
                         const expectedUrl = `${relayUrl}/_matrix/push/v1/notify`;
 
                         // Check if key matches
-                        const hasKey = currentPusher.data?.ek && typeof currentPusher.data.ek === 'object';
-                        const keyMatch = hasKey && JSON.stringify(currentPusher.data.ek) === JSON.stringify(jwk);
+                        const data = currentPusher.data as any;
+                        const hasKey = data?.ek && typeof data.ek === 'object';
+                        const keyMatch = hasKey && JSON.stringify(data.ek) === JSON.stringify(jwk);
 
-                        if (currentPusher.data?.url !== expectedUrl || !keyMatch) {
+                        if (data?.url !== expectedUrl || !keyMatch) {
                             console.log('[PushPlugin] Pusher URL or Encryption Key mismatch, updating...');
                             needsUpdate = true;
                         }
@@ -139,7 +140,7 @@ export default defineNuxtPlugin(async (nuxtApp) => {
                 lang: 'en',
                 data: {
                     url: `${relayUrl}/_matrix/push/v1/notify`,
-                    user_id: store.client.getUserId(),
+                    user_id: store.client.getUserId()!,
                     include_content: true,
                     ...({
                         ek: encryptionKey,

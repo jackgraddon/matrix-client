@@ -6,8 +6,8 @@
           variant="ghost"
           size="icon-sm"
           class="md:hidden shrink-0"
-          @click="() => { store.toggleSidebar(true); store.ui.memberListVisible = false; }"
-          v-if="!store.ui.sidebarOpen"
+          @click="() => { uiStore.toggleSidebar(true); uiStore.memberListVisible = false; }"
+          v-if="!uiStore.sidebarOpen"
         >
           <Icon name="solar:hamburger-menu-linear" class="h-6 w-6" />
         </UiButton>
@@ -21,6 +21,9 @@
 
 <script lang="ts" setup>
 const store = useMatrixStore();
+const uiStore = useUIStore();
+const matrixService = useMatrixService();
+const presenceStore = usePresenceStore();
 
 definePageMeta({
     middleware: "auth",

@@ -50,8 +50,8 @@ async function loadAlbums() {
       Limit: 12,
       Fields: ['ArtistItems', 'AlbumArtist', 'PrimaryImageAspectRatio', 'UserData']
     }
-  }).then(data => {
-    if (data && 'Items' in data) topAlbums.value = data.Items as BaseItemDto[];
+  }).then((data: any) => {
+    if (data && data.Items) topAlbums.value = data.Items as BaseItemDto[];
   }).finally(() => loading.top = false);
 
   loading.all = true;
@@ -65,8 +65,8 @@ async function loadAlbums() {
       Limit: 100,
       Fields: ['ArtistItems', 'AlbumArtist', 'PrimaryImageAspectRatio', 'UserData']
     }
-  }).then(data => {
-    if (data && 'Items' in data) allAlbums.value = data.Items as BaseItemDto[];
+  }).then((data: any) => {
+    if (data && data.Items) allAlbums.value = data.Items as BaseItemDto[];
   }).finally(() => loading.all = false);
 
   Promise.all([p1, p2]).then(() => {

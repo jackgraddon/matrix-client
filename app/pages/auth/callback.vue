@@ -28,6 +28,8 @@
 </template>
 
 <script setup lang="ts">
+import { useMatrixStore } from "~/stores/matrix";
+import { useServices } from "~/composables/useServices";
 
 interface ErrorState {
   title: string;
@@ -35,8 +37,8 @@ interface ErrorState {
 }
 
 const route = useRoute();
-const router = useRouter();
 const matrixStore = useMatrixStore();
+const { matrixService } = useServices();
 const error = ref<ErrorState | null>(null);
 
 const backOut = () => {
@@ -61,20 +63,16 @@ onMounted(async () => {
       throw new Error("Missing authorization parameters from callback URL.");
     }
 
-    // 3. Hand off to the Store to perform the SDK exchange
-    // This replaces the $fetch call to /api/auth/callback
-    await matrixStore.handleCallback(code, state);
+    // 3. Hand off to the Service to perform the SDK exchange
+    await matrixService.handleCallback(code, state);
 
     // 4. (Optional) Set a cookie for Nuxt Middleware
-    // The SDK uses localStorage, but if you have route middleware checking cookies:
     const authCookie = useCookie('auth_token');
-    // We assume the store has set the accessToken in state by now
     if (matrixStore.client?.getAccessToken()) {
        authCookie.value = matrixStore.client.getAccessToken();
     }
 
     // 5. Redirect to dashboard
-    // Use replace to prevent the user from clicking "back" into the callback logic
     await navigateTo('/chat', { replace: true });
 
   } catch (err: any) {

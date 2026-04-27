@@ -7,9 +7,9 @@
         <div 
             class="flex flex-row h-full shrink-0 transition-transform duration-300 ease-in-out z-10 w-full md:w-auto pb-2"
             :class="[
-                store.ui.sidebarOpen ? 'translate-x-0' : 'translate-x-[-100%] md:translate-x-0',
+                uiStore.sidebarOpen ? 'translate-x-0' : 'translate-x-[-100%] md:translate-x-0',
                 'fixed top-0 left-0 md:relative',
-                !store.ui.sidebarOpen && 'pointer-events-none md:pointer-events-auto',
+                !uiStore.sidebarOpen && 'pointer-events-none md:pointer-events-auto',
                 isTauri ? '' : 'top-safe'
             ]"
         >
@@ -20,7 +20,7 @@
                     class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 flex items-center justify-center shrink-0 relative group" 
                     :class="isLinkActive('/chat') ? 'rounded-[16px]' : ''"
                     :variant="isLinkActive('/chat') ? 'default' : 'secondary'"
-                    @click="() => { store.ui.memberListVisible = false; }"
+                    @click="() => { uiStore.memberListVisible = false; }"
                     as-child
                 >
                     <NuxtLink to="/chat" aria-label="Home">
@@ -37,7 +37,7 @@
                     class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 flex items-center justify-center shrink-0 relative" 
                     :class="isLinkActive('/chat/dms') ? 'rounded-[16px]' : ''"
                     :variant="isLinkActive('/chat/dms') ? 'default' : 'secondary'"
-                    @click="() => { store.ui.memberListVisible = false; }"
+                    @click="() => { uiStore.memberListVisible = false; }"
                     as-child
                 >
                     <NuxtLink :to="store.lastVisitedRooms.dm ? `/chat/dms/${store.lastVisitedRooms.dm}` : '/chat/dms'" aria-label="Direct Messages">
@@ -54,7 +54,7 @@
                     class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 flex items-center justify-center shrink-0 relative" 
                     :class="isLinkActive('/chat/rooms') ? 'rounded-[16px]' : ''"
                     :variant="isLinkActive('/chat/rooms') ? 'default' : 'secondary'"
-                    @click="() => { store.ui.memberListVisible = false; }"
+                    @click="() => { uiStore.memberListVisible = false; }"
                     as-child
                 >
                     <NuxtLink :to="store.lastVisitedRooms.rooms ? `/chat/rooms/${store.lastVisitedRooms.rooms}` : '/chat/rooms'" aria-label="Rooms">
@@ -75,9 +75,9 @@
                         variant="ghost" 
                         class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 group shrink-0 relative"
                         :class="{ 'rounded-[16px]': isLinkActive(`/chat/spaces/${server.roomId}`) }"
-                        @click="() => { store.ui.memberListVisible = false; }"
-                        @contextmenu.capture="store.openRoomContextMenu(server.roomId)"
-                        v-long-press="() => { if (store.ui.hapticFeedbackEnabled) trigger('medium'); store.openRoomContextMenu(server.roomId); }"
+                        @click="() => { uiStore.memberListVisible = false; }"
+                        @contextmenu.capture="uiStore.openRoomContextMenu(server.roomId)"
+                        v-long-press="() => { if (uiStore.hapticFeedbackEnabled) trigger('medium'); uiStore.openRoomContextMenu(server.roomId); }"
                         as-child
                     >
                         <NuxtLink 
@@ -107,7 +107,7 @@
                 <UiButton 
                     variant="secondary"
                     class="h-12 w-12 rounded-[24px] hover:rounded-[16px] transition-all p-0 flex items-center justify-center shrink-0" 
-                    @click="store.openCreateSpaceModal()"
+                    @click="uiStore.openCreateSpaceModal()"
                     title="Create a space"
                 >
                     <Icon name="solar:add-circle-linear" class="h-6 w-6" />
@@ -122,21 +122,21 @@
         <main 
             class="flex-1 flex-col min-w-0 min-h-0 md:ml-0 mb-2 transition-transform duration-300 ease-in-out z-20"
             :class="[
-                store.ui.sidebarOpen ? 'translate-x-full md:translate-x-0' : (store.ui.memberListVisible ? '-translate-x-full md:translate-x-0' : 'translate-x-0')
+                uiStore.sidebarOpen ? 'translate-x-full md:translate-x-0' : (uiStore.memberListVisible ? '-translate-x-full md:translate-x-0' : 'translate-x-0')
             ]"
         >
             <!-- Lighter background for the main chat area to contrast with the root background -->
             <div class="rounded-lg h-full bg-sidebar md:bg-card min-w-0 flex flex-col min-h-0 overflow-hidden relative">
                 <!-- Mobile Overlays to close sidebars -->
                 <div 
-                    v-if="store.ui.sidebarOpen" 
+                    v-if="uiStore.sidebarOpen"
                     class="md:hidden absolute inset-0 z-50 bg-black/20"
-                    @click="store.toggleSidebar(false)"
+                    @click="uiStore.toggleSidebar(false)"
                 ></div>
                 <div 
-                    v-if="store.ui.memberListVisible" 
+                    v-if="uiStore.memberListVisible"
                     class="md:hidden absolute inset-0 z-50 bg-black/20"
-                    @click="store.toggleMemberList()"
+                    @click="uiStore.toggleMemberList()"
                 ></div>
 
                 <header class="landmark-banner shrink-0">
@@ -151,9 +151,9 @@
             v-if="currentRoom && isChatRoute" 
             class="flex flex-row h-full shrink-0 transition-all duration-300 ease-in-out z-10 w-full overflow-hidden"
             :class="[
-                store.ui.memberListVisible ? 'translate-x-0 md:w-60' : 'translate-x-full md:translate-x-0 md:w-0',
+                uiStore.memberListVisible ? 'translate-x-0 md:w-60' : 'translate-x-full md:translate-x-0 md:w-0',
                 'fixed top-0 left-0 md:left-auto md:right-0 md:relative',
-                !store.ui.memberListVisible && 'pointer-events-none',
+                !uiStore.memberListVisible && 'pointer-events-none',
                 isTauri ? '' : 'top-safe'
             ]"
         >
@@ -168,11 +168,13 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { useRoute, useNuxtApp } from '#app';
 import { useMatrixStore } from '~/stores/matrix';
+import { useUIStore } from '~/stores/ui';
 import { useGameActivity } from '~/composables/useGameActivity';
 import { Room, ClientEvent, RoomEvent, EventType, MatrixClient, MatrixEvent } from 'matrix-js-sdk';
 import { PushProcessor } from 'matrix-js-sdk/lib/pushprocessor';
 import { VueDraggable as draggable } from 'vue-draggable-plus';
 import { useWebHaptics } from 'web-haptics/vue';
+import { useServices } from '~/composables/useServices';
 import { notify } from '../utils/notify';
 
 definePageMeta({
@@ -195,8 +197,11 @@ const isChatRoute = computed(() => {
 });
 
 const store = useMatrixStore();
+const uiStore = useUIStore();
+const { matrixService } = useServices();
+const presenceStore = usePresenceStore();
 const { trigger } = useWebHaptics({
-    debug: store.ui.hapticsDebugEnabled
+    debug: uiStore.hapticsDebugEnabled
 });
 const { $isTauri: isTauri } = useNuxtApp();
 useGameActivity(); // Initialize game detection at layout level
@@ -222,7 +227,7 @@ const rooms = computed(() => sidebarRef.value?.rooms ?? []);
 const draggableRootSpaces = computed({
     get: () => {
         const spaces = store.hierarchy.rootSpaces;
-        const order = store.ui.uiOrder.rootSpaces;
+        const order = uiStore.uiOrder.rootSpaces;
         if (!order || order.length === 0) return spaces;
 
         const sorted = [...spaces].sort((a, b) => {
@@ -385,7 +390,7 @@ const setupListeners = () => {
 const handleKeyDown = (event: KeyboardEvent) => {
     if ((event.metaKey || event.ctrlKey) && event.key === 'k') {
         event.preventDefault();
-        store.openGlobalSearchModal();
+        uiStore.openGlobalSearchModal();
     }
 };
 

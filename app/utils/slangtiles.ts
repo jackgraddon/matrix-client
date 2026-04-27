@@ -104,15 +104,19 @@ export function validatePlacement(
   const sorted = [...placed].sort((a, b) => (rows.size === 1 ? a.c - b.c : a.r - b.r));
   if (rows.size === 1) {
     const r = sorted[0].r;
-    for (let c = sorted[0].c; c <= sorted[sorted.length - 1].c; c++) {
-      if (!placed.find(p => p.c === c) && !board[r][c]) {
+    const startC = sorted[0].c;
+    const endC = sorted[sorted.length - 1].c;
+    for (let c = startC; c <= endC; c++) {
+      if (!placed.find(p => p.c === c) && !(board[r] && board[r][c])) {
         return { valid: false, error: 'Tiles must be placed contiguously' };
       }
     }
   } else {
     const c = sorted[0].c;
-    for (let r = sorted[0].r; r <= sorted[sorted.length - 1].r; r++) {
-      if (!placed.find(p => p.r === r) && !board[r][c]) {
+    const startR = sorted[0].r;
+    const endR = sorted[sorted.length - 1].r;
+    for (let r = startR; r <= endR; r++) {
+      if (!placed.find(p => p.r === r) && !(board[r] && board[r][c])) {
         return { valid: false, error: 'Tiles must be placed contiguously' };
       }
     }
@@ -124,7 +128,12 @@ export function validatePlacement(
       const neighbors = [
         [p.r - 1, p.c], [p.r + 1, p.c], [p.r, p.c - 1], [p.r, p.c + 1]
       ];
-      return neighbors.some(([nr, nc]) => nr >= 0 && nr < 15 && nc >= 0 && nc < 15 && board[nr][nc]);
+      return neighbors.some(([nr, nc]) => {
+          if (nr !== undefined && nc !== undefined && nr >= 0 && nr < 15 && nc >= 0 && nc < 15) {
+              return !!(board[nr] && board[nr][nc]);
+          }
+          return false;
+      });
     });
     if (!connected) {
       return { valid: false, error: 'Tiles must be connected to existing ones' };
@@ -138,7 +147,7 @@ export function calculateScore(
   placed: PlacedTile[],
   board: (Tile | null)[][]
 ): { total: number; words: { word: string; score: number; isBingo?: boolean }[] } {
-  const result = { total: 0, words: [] as { word: string; score: number }[] };
+  const result = { total: 0, words: [] as { word: string; score: number; isBingo?: boolean }[] };
   
   // Temporarily apply placed tiles to board for word detection
   const tempBoard = JSON.parse(JSON.stringify(board));
@@ -167,7 +176,7 @@ export function calculateScore(
     let score = 0;
     let wordMult = 1;
 
-    while (currR < 15 && currC < 15 && tempBoard[currR][currC]) {
+    while (currR < 15 && currC < 15 && (tempBoard[currR] && tempBoard[currR][currC])) {
       const tile = tempBoard[currR][currC];
       const letter = tile.letter;
       const displayLetter = tile.isBlank ? (tile.assigned || '?') : letter;
@@ -197,13 +206,15 @@ export function calculateScore(
 
   // Check all words formed by the move
   placed.forEach(p => {
-    // Check horizontal word
-    const hWord = getWordAt(p.r, p.c, true);
-    if (hWord) result.words.push(hWord);
-    
-    // Check vertical word
-    const vWord = getWordAt(p.r, p.c, false);
-    if (vWord) result.words.push(vWord);
+    if (p.r !== undefined && p.c !== undefined) {
+      // Check horizontal word
+      const hWord = getWordAt(p.r, p.c, true);
+      if (hWord) result.words.push(hWord);
+
+      // Check vertical word
+      const vWord = getWordAt(p.r, p.c, false);
+      if (vWord) result.words.push(vWord);
+    }
   });
 
   result.total = result.words.reduce((sum, w) => sum + w.score, 0);

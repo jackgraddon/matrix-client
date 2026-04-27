@@ -90,7 +90,7 @@
                 <UiDropdownMenu>
                   <UiDropdownMenuTrigger as-child>
                     <UiButton variant="outline" size="sm" class="capitalize">
-                      {{ store.gameDetectionLevel }}
+                      {{ activityStore.gameDetectionLevel }}
                       <Icon name="solar:alt-arrow-down-outline" class="ml-2 h-4 w-4" />
                     </UiButton>
                   </UiDropdownMenuTrigger>
@@ -152,7 +152,7 @@
     </div>
 
     <div class="pt-4">
-      <UiButton variant="outline" class="w-full gap-2 h-12" @click="store.openAboutModal()">
+      <UiButton variant="outline" class="w-full gap-2 h-12" @click="uiStore.openAboutModal()">
         <Icon name="solar:info-circle-bold" class="size-5 text-muted-foreground" />
         About Tumult
       </UiButton>
@@ -169,31 +169,36 @@ definePageMeta({
 })
 
 const store = useMatrixStore();
+const uiStore = useUIStore();
+const activityStore = useActivityStore();
+const activityService = useActivityService();
+const matrixService = useMatrixService();
+const presenceStore = usePresenceStore();
 const gameActivity = useGameActivity();
 
 const gameDetectionLevel = computed({
-  get: () => store.gameDetectionLevel,
-  set: (val: any) => store.setGameDetectionLevel(val),
+  get: () => activityStore.gameDetectionLevel,
+  set: (val: any) => activityService.setGameDetectionLevel(val),
 });
 
 const showEmptyRoomsToggle = computed({
-  get: () => store.ui.showEmptyRooms,
-  set: () => store.toggleShowEmptyRooms(),
+  get: () => uiStore.showEmptyRooms,
+  set: () => uiStore.toggleShowEmptyRooms(),
 });
 
 const hapticFeedbackToggle = computed({
-  get: () => store.ui.hapticFeedbackEnabled,
-  set: (val: boolean) => store.setHapticFeedbackEnabled(val),
+  get: () => uiStore.hapticFeedbackEnabled,
+  set: (val: boolean) => uiStore.setHapticFeedbackEnabled(val),
 });
 
 const runAtStartup = computed({
-  get: () => store.runAtStartup,
-  set: (val: boolean) => store.setRunAtStartup(val),
+  get: () => uiStore.runAtStartup,
+  set: (val: boolean) => uiStore.setRunAtStartup(val),
 });
 
 const startMinimized = computed({
-  get: () => store.startMinimized,
-  set: (val: boolean) => store.setStartMinimized(val),
+  get: () => uiStore.startMinimized,
+  set: (val: boolean) => uiStore.setStartMinimized(val),
 });
 
 const isHapticsSupported = ref(false);

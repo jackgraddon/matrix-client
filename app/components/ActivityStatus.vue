@@ -64,6 +64,10 @@ const props = withDefaults(defineProps<{
 });
 
 const store = useMatrixStore();
+const uiStore = useUIStore();
+const matrixService = useMatrixService();
+const { presenceService } = useServices();
+const presenceStore = usePresenceStore();
 
 // Presence state
 const presenceStatusMsg = ref<string | null>(null);
@@ -96,8 +100,8 @@ const pollPresence = async () => {
     if (!store.client || !props.userId) return;
 
     if (isSelf.value) {
-        // For self, the store handles throttling and pushing to server
-        store.refreshPresence();
+        // For self, the service handles throttling and pushing to server
+        presenceService.refreshPresence();
         // Update local state from the user object to stay in sync
         const user = store.client.getUser(props.userId);
         if (user) {
@@ -151,7 +155,7 @@ const sanitize = (val: any) => {
   return s;
 };
 
-const activities = computed(() => store.resolveActivities(props.userId as string | null));
+const activities = computed(() => presenceStore.resolveActivities(props.userId as string | null));
 
 const displayCustomStatus = computed(() => {
   // Prefer local store custom status for self
@@ -168,7 +172,7 @@ const displayCustomStatus = computed(() => {
 const effectivePresence = computed(() => {
     if (isSelf.value) {
         // Stay online if we have a live activity, even if idle
-        const { game, music } = store.resolveActivities(null);
+        const { game, music } = presenceStore.resolveActivities(null);
         const hasLiveActivity = (game?.is_running && !game?.is_paused) || (music?.is_running && !music?.is_paused);
         return (store.isIdle && !hasLiveActivity) ? 'unavailable' : 'online';
     }

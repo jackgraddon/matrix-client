@@ -69,7 +69,7 @@
       </div>
 
       <!-- Controls -->
-      <UiButton variant="ghost" size="icon-sm" class="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground" @click.stop="musicStore.togglePlay">
+      <UiButton variant="ghost" size="icon-sm" class="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground" @click.stop="audioService.togglePlay">
         <Icon :name="musicStore.isPlaying ? 'solar:pause-bold' : 'solar:play-bold'" class="h-4 w-4" />
       </UiButton>
     </div>
@@ -86,7 +86,7 @@
             max="1"
             step="0.01"
             :value="musicStore.volume"
-            @input="(e: any) => musicStore.setVolume(parseFloat(e.target.value))"
+            @input="(e: any) => audioService.setVolume(parseFloat(e.target.value))"
             class="h-1 bg-muted rounded-lg appearance-none cursor-pointer accent-[#AA5CC3] flex-1"
           />
         </div>
@@ -109,13 +109,13 @@
 
       <!-- Extended Controls (Only when expanded) -->
       <div v-if="musicStore.isExpanded" class="flex items-center justify-center gap-6 py-2">
-        <UiButton variant="ghost" size="icon" class="h-8 w-8" @click="musicStore.playPrevious" title="Previous">
+        <UiButton variant="ghost" size="icon" class="h-8 w-8" @click="audioService.playPrevious" title="Previous">
            <Icon name="solar:skip-previous-bold" class="h-5 w-5" />
         </UiButton>
-        <UiButton variant="secondary" size="icon" class="h-10 w-10 rounded-full" @click="musicStore.togglePlay">
+        <UiButton variant="secondary" size="icon" class="h-10 w-10 rounded-full" @click="audioService.togglePlay">
            <Icon :name="musicStore.isPlaying ? 'solar:pause-bold' : 'solar:play-bold'" class="h-6 w-6" />
         </UiButton>
-        <UiButton variant="ghost" size="icon" class="h-8 w-8" @click="musicStore.playNext" title="Next">
+        <UiButton variant="ghost" size="icon" class="h-8 w-8" @click="audioService.playNext" title="Next">
            <Icon name="solar:skip-next-bold" class="h-5 w-5" />
         </UiButton>
       </div>
@@ -128,6 +128,7 @@ import { useMusicStore } from '~/stores/music';
 import MusicQueue from './MusicQueue.vue';
 
 const musicStore = useMusicStore();
+const audioService = useAudioService();
 
 const progress = computed(() => {
   if (!musicStore.duration) return 0;
@@ -142,10 +143,10 @@ function formatTime(seconds: number) {
 }
 
 function handleSeek(e: MouseEvent) {
-  if (!musicStore.audioElement || !musicStore.duration) return;
+  if (!musicStore.duration) return;
   const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
   const percent = (e.clientX - rect.left) / rect.width;
   const time = percent * musicStore.duration;
-  musicStore.seek(time);
+  audioService.seek(time);
 }
 </script>

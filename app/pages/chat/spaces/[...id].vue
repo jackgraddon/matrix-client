@@ -9,6 +9,9 @@ import SpaceLobby from '~/components/SpaceLobby.vue';
 
 const route = useRoute();
 const store = useMatrixStore();
+const uiStore = useUIStore();
+const matrixService = useMatrixService();
+const presenceStore = usePresenceStore();
 
 const activeSpaceId = computed(() => {
   const params = route.params.id;
