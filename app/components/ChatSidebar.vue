@@ -586,9 +586,11 @@ const mapRoom = (room: Room): MappedRoom => {
 
 const isEmptyRoom = (room: Room): boolean => {
   if (room.getMyMembership() === 'invite') return false;
-  // If lazy loading is on, getJoinedMembers() might return 0 if members aren't fetched yet.
-  // Instead, use getJoinedMemberCount() which is often more accurate/immediate from the sync state.
-  return (room.getJoinedMemberCount?.() ?? room.getJoinedMembers().length) <= 1;
+  // Use getJoinedMemberCount() to avoid expensive array allocations from getJoinedMembers()
+  const count = typeof room.getJoinedMemberCount === 'function'
+    ? room.getJoinedMemberCount()
+    : room.getJoinedMembers().length;
+  return count <= 1;
 };
 
 const friends = computed(() => {
@@ -601,22 +603,32 @@ const friends = computed(() => {
   const directEvent = matrixStore.client.getAccountData(EventType.Direct);
   const directContent: Record<string, string[]> = directEvent ? directEvent.getContent() as Record<string, string[]> : {};
 
+  // Performance Optimization: Pre-calculate reverse mapping of roomId -> userId for O(1) lookups.
+  // This avoids a nested O(N*M) loop in the subsequent map() call.
+  const roomIdToUserId = new Map<string, string>();
+  for (const [userId, roomIds] of Object.entries(directContent)) {
+    if (Array.isArray(roomIds)) {
+      for (const rid of roomIds) {
+        roomIdToUserId.set(rid, userId);
+      }
+    }
+  }
+
   // Filter out empty rooms unless the setting is enabled
   const filteredDMs = uiStore.showEmptyRooms
     ? directMessages
     : directMessages.filter(room => !isEmptyRoom(room));
 
+  const myUserId = matrixStore.client.getUserId();
+
   return filteredDMs.map(room => {
     const mapped = mapRoom(room);
     
-    // Robustly find the DM partner's user ID
-    // 1. Try account data (m.direct)
-    let dmUserId = Object.entries(directContent)
-      .find(([, ids]) => ids.includes(room.roomId))?.[0];
+    // Robustly find the DM partner's user ID using the optimized reverse map.
+    let dmUserId = roomIdToUserId.get(room.roomId);
       
-    // 2. Fallback: find the first member that isn't us
+    // Fallback: find the first member that isn't us
     if (!dmUserId && matrixStore.client) {
-        const myUserId = matrixStore.client.getUserId();
         const otherMember = room.getJoinedMembers().find(m => m.userId !== myUserId);
         dmUserId = otherMember?.userId;
     }
