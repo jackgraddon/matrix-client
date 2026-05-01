@@ -1,8 +1,74 @@
+import { markRaw } from 'vue';
 import { defineStore } from 'pinia';
 import * as sdk from 'matrix-js-sdk';
-import { VerificationPhase } from 'matrix-js-sdk/lib/crypto-api/verification';
+import {
+  IndexedDBStore,
+  IndexedDBCryptoStore,
+  MemoryStore,
+  LocalStorageCryptoStore,
+  EventType,
+  MsgType,
+  OidcTokenRefresher,
+  type AccessTokens
+} from 'matrix-js-sdk';
+import { CryptoEvent } from 'matrix-js-sdk/lib/crypto-api/CryptoEvent';
+import { VerificationPhase, VerificationRequestEvent, VerifierEvent } from 'matrix-js-sdk/lib/crypto-api/verification';
+import type { VerificationRequest, Verifier, ShowSasCallbacks } from 'matrix-js-sdk/lib/crypto-api/verification';
+import { deriveRecoveryKeyFromPassphrase } from 'matrix-js-sdk/lib/crypto-api/key-passphrase';
+import { decodeRecoveryKey } from 'matrix-js-sdk/lib/crypto-api/recovery-key';
+import type { IdTokenClaims } from 'oidc-client-ts';
 import { getOidcConfig, registerClient, getLoginUrl } from '~/utils/matrix-auth';
-import type { VerificationRequest, ShowSasCallbacks } from 'matrix-js-sdk/lib/crypto-api/verification';
+import { LocalStorageOidcTokenRefresher, MatrixService } from '~/services/matrix.service';
+import { toast } from 'vue-sonner';
+import { useRouter, navigateTo } from '#app';
+import { setPref, getPref, deletePref, deleteSecrets } from '~/composables/useAppStorage';
+import { dismissNotification } from '~/utils/notify';
+
+const secretStorageKeys = new Map<string, Uint8Array>();
+
+function persistSecretStorageKey(keyId: string, privateKey: Uint8Array) {
+  if (typeof window === 'undefined') return;
+  try {
+    const base64 = btoa(String.fromCharCode(...privateKey));
+    localStorage.setItem(`matrix_ssss_key_${keyId}`, base64);
+    console.log(`[SecretStorage] Persisted key ${keyId} to localStorage`);
+  } catch (err) {
+    console.warn('[SecretStorage] Failed to persist key:', err);
+  }
+}
+
+function loadPersistedSecretStorageKeys() {
+  if (typeof window === 'undefined') return;
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key?.startsWith('matrix_ssss_key_')) {
+        const keyId = key.replace('matrix_ssss_key_', '');
+        const base64 = localStorage.getItem(key);
+        if (base64) {
+          const binaryString = atob(base64);
+          const bytes = new Uint8Array(binaryString.length);
+          for (let j = 0; j < binaryString.length; j++) {
+            bytes[j] = binaryString.charCodeAt(j);
+          }
+          secretStorageKeys.set(keyId, bytes);
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[SecretStorage] Failed to load keys:', err);
+  }
+}
+
+function generateNonce(): string {
+  if (typeof crypto === 'undefined' || !crypto.getRandomValues) {
+    return Math.random().toString(16).slice(2);
+  }
+  return Array.from(crypto.getRandomValues(new Uint8Array(16)))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
 
 export interface LastVisitedRooms {
   dm: string | null;
@@ -41,9 +107,9 @@ export const useMatrixStore = defineStore('matrix', {
     verificationPhase: null as VerificationPhase | null,
     qrCodeData: null as any | null,
     secretStoragePrompt: null as {
-        promise: { resolve: (val: any) => void, reject: (err: any) => void },
-        keyId: string,
-        keyInfo: any
+      promise: { resolve: (val: any) => void, reject: (err: any) => void },
+      keyId: string,
+      keyInfo: any
     } | null,
 
     // Settings & State
@@ -65,6 +131,12 @@ export const useMatrixStore = defineStore('matrix', {
     directMessageMap: {} as Record<string, string>,
 
     customStatus: null as string | null,
+    gameDetectionLevel: 'off' as 'off' | 'basic' | 'advanced',
+    activityDetails: null as any | null,
+    musicActivity: null as any | null,
+    remoteActivityDetails: {} as Record<string, { game?: any; music?: any }>,
+    gameTrigger: 0,
+    lastPresenceUpdate: 0,
     loginStatus: '' as string,
     isFullySynced: false,
     isLoggingOut: false,
@@ -110,12 +182,12 @@ export const useMatrixStore = defineStore('matrix', {
       };
     },
     totalInviteCount(state): number {
-        state.unreadTrigger;
-        return state.client?.getVisibleRooms().filter(r => r.getMyMembership() === 'invite').length || 0;
+      state.unreadTrigger;
+      return state.client?.getVisibleRooms().filter(r => r.getMyMembership() === 'invite').length || 0;
     },
     totalDmUnreadCount(): number {
-        this.unreadTrigger;
-        return this.hierarchy.directMessages.reduce((sum, r) => sum + (r.getUnreadNotificationCount(this.unreadCountType) || 0), 0);
+      this.unreadTrigger;
+      return this.hierarchy.directMessages.reduce((sum, r) => sum + (r.getUnreadNotificationCount(this.unreadCountType) || 0), 0);
     },
 
     resolveActivities(userId: string | null): { game: any | null; music: any | null } {
@@ -221,38 +293,89 @@ export const useMatrixStore = defineStore('matrix', {
                 } else {
                   if (!game) game = act;
                 }
-            });
-            return count;
-        };
+              }
+            } catch (e) {
+              console.error('Failed to parse presence message', e);
+            }
+          }
+        }
+      }
 
-        return getRecursiveUnread(spaceId);
+      return { game, music };
     },
+
+    totalOrphanRoomUnreadCount(): number {
+      this.unreadTrigger;
+      if (!this.client) return 0;
+      const { orphanRooms } = this.hierarchy;
+      return orphanRooms.reduce((sum, room) => {
+        const count = room.getUnreadNotificationCount(this.unreadCountType) || 0;
+        const manual = this.manualUnread[room.roomId] ? 1 : 0;
+        return sum + Math.max(count, manual);
+      }, 0);
+    },
+
+    getSpaceUnreadCount: (state) => (spaceId: string): number => {
+      state.unreadTrigger;
+      if (!state.client) return 0;
+
+      const roomIds = new Set<string>();
+      const queue = [spaceId];
+      const visited = new Set<string>();
+
+      while (queue.length > 0) {
+        const currentId = queue.shift()!;
+        if (visited.has(currentId)) continue;
+        visited.add(currentId);
+
+        const room = state.client.getRoom(currentId);
+        if (!room) continue;
+
+        if (room.isSpaceRoom()) {
+          const children = room.currentState.getStateEvents('m.space.child');
+          children.forEach(ev => {
+            const childId = ev.getStateKey();
+            if (childId) queue.push(childId);
+          });
+        } else {
+          roomIds.add(currentId);
+        }
+      }
+
+      let total = 0;
+      roomIds.forEach(id => {
+        const room = state.client?.getRoom(id);
+        total += room?.getUnreadNotificationCount(state.unreadCountType) || 0;
+      });
+      return total;
+    },
+
     getVoiceParticipants: (state) => (roomId: string) => {
-        const room = state.client?.getRoom(roomId);
-        if (!room) return [];
-        // Map members who are in the call
-        return room.getMembersWithMembership('join')
-            .filter(m => {
-                const event = room.currentState.getStateEvents('org.matrix.msc3401.call.member', m.userId);
-                return event && event.getContent().memberships?.length > 0;
-            })
-            .map(m => ({
-                id: m.userId,
-                name: m.name,
-                avatarUrl: m.getMxcAvatarUrl()
-            }));
+      const room = state.client?.getRoom(roomId);
+      if (!room) return [];
+      // Map members who are in the call
+      return room.getMembersWithMembership('join')
+        .filter(m => {
+          const event = room.currentState.getStateEvents('org.matrix.msc3401.call.member', m.userId);
+          return event && event.getContent().memberships?.length > 0;
+        })
+        .map(m => ({
+          id: m.userId,
+          name: m.name,
+          avatarUrl: m.getMxcAvatarUrl()
+        }));
     },
     isVerificationRequested: (state) => {
-        return !!state.activeVerificationRequest && state.verificationPhase === VerificationPhase.Requested;
+      return !!state.activeVerificationRequest && state.verificationPhase === VerificationPhase.Requested;
     },
     isVerificationReady: (state) => {
-        return !!state.activeVerificationRequest && state.verificationPhase === VerificationPhase.Ready;
+      return !!state.activeVerificationRequest && state.verificationPhase === VerificationPhase.Ready;
     },
     isWaitingForRecoveryKey: (state) => {
-        return !!state.secretStoragePrompt;
+      return !!state.secretStoragePrompt;
     },
     needsRecoveryKeySetup: (state) => {
-        return state.isAuthenticated && !state.isSecretStorageReady && !state.isCryptoDegraded;
+      return state.isAuthenticated && !state.isSecretStorageReady && !state.isCryptoDegraded;
     }
   },
 
@@ -266,17 +389,27 @@ export const useMatrixStore = defineStore('matrix', {
     },
 
     async _clearPersistentStores() {
+      const userId = this.client?.getUserId();
       const deleteDb = (name: string) => new Promise<void>((resolve) => {
         const req = window.indexedDB.deleteDatabase(name);
-        req.onsuccess = req.onerror = req.onblocked = () => resolve();
+        req.onsuccess = () => resolve();
+        req.onerror = () => resolve();
+        req.onblocked = () => resolve();
       });
 
-      await Promise.all([
+      const dbsToWipe = [
         'matrix-js-sdk::matrix-store',
         'matrix-js-sdk::matrix-sdk-crypto',
         'matrix-js-sdk::matrix-sdk-crypto-meta',
         'matrix-js-sdk::crypto-store'
-      ].map(deleteDb));
+      ];
+
+      if (userId) {
+        dbsToWipe.push(`matrix-sdk-crypto-${userId}`);
+        dbsToWipe.push(`matrix-sdk-crypto-meta-${userId}`);
+      }
+
+      await Promise.all(dbsToWipe.map(name => deleteDb(name))).catch(e => console.error('[MatrixStore] Error during DB wiping:', e));
     },
 
     _resetVerificationState() {
@@ -314,11 +447,21 @@ export const useMatrixStore = defineStore('matrix', {
     },
 
     async setCustomStatus(status: string | null) {
-        this.customStatus = status;
-        if (this.client) {
-            await this.client.setAccountData('cc.jackg.ruby.status' as any, { status_msg: status } as any);
-        }
+      this.customStatus = status;
+      if (this.client) {
+        await this.client.setAccountData('cc.jackg.ruby.status' as any, { status_msg: status } as any);
+      }
     },
+
+    async handleRpcActivity(data: any) {
+      if (data.activity) {
+        let name = data.activity.name;
+        const details = data.activity.details;
+        const appId = data.activity.application_id;
+        let appIcon = null;
+
+        let largeImage = data.activity.assets?.large_image;
+        let smallImage = data.activity.assets?.small_image;
 
         // Enhanced activity details from rsRPC
         this.activityDetails = {
@@ -348,61 +491,87 @@ export const useMatrixStore = defineStore('matrix', {
         } else {
           this.remoteActivityDetails[userId].game = null;
         }
+      }
     },
 
     async setPinnedSpaces(spaceIds: string[]) {
-        this.pinnedSpaces = spaceIds;
-        if (this.client) {
-            await this.client.setAccountData('cc.jackg.ruby.pinned_spaces' as any, { rooms: spaceIds } as any);
-        }
+      this.pinnedSpaces = spaceIds;
+      if (this.client) {
+        await this.client.setAccountData('cc.jackg.ruby.pinned_spaces' as any, { rooms: spaceIds } as any);
+      }
     },
 
     updateRootSpacesOrder(spaceIds: string[]) {
-        const uiStore = useUIStore();
-        uiStore.uiOrder.rootSpaces = spaceIds;
-        setPref('matrix_ui_order', uiStore.uiOrder);
-    },
-
-    async fetchSpaceHierarchy(spaceId: string) {
-        if (!this.client) return;
-        try {
-            // @ts-ignore - newer versions of SDK have this, or it's provided by a plugin
-            const hierarchy = await this.client.getSpaceSummary(spaceId);
-            this.spaceHierarchies[spaceId] = hierarchy.rooms;
-            this.hierarchyTrigger++;
-        } catch (e) {
-            // Fallback for older SDK or different method name
-            try {
-               const hierarchy = await (this.client as any).getSpaceHierarchy(spaceId);
-               this.spaceHierarchies[spaceId] = hierarchy.rooms;
-               this.hierarchyTrigger++;
-            } catch (e2) {
-               console.error('Failed to fetch space hierarchy', e2);
-            }
-        }
+      const uiStore = useUIStore();
+      uiStore.uiOrder.rootSpaces = spaceIds;
+      MatrixService.getInstance().saveUIOrder();
     },
 
     updateCategoryOrder(spaceId: string, categoryIds: string[]) {
-        const uiStore = useUIStore();
-        uiStore.uiOrder.categories[spaceId] = categoryIds;
-        setPref('matrix_ui_order', uiStore.uiOrder);
+      const uiStore = useUIStore();
+      uiStore.uiOrder.categories[spaceId] = categoryIds;
+      MatrixService.getInstance().saveUIOrder();
     },
 
     updateRoomOrder(categoryId: string, roomIds: string[]) {
-        const uiStore = useUIStore();
-        uiStore.uiOrder.rooms[categoryId] = roomIds;
-        setPref('matrix_ui_order', uiStore.uiOrder);
+      const uiStore = useUIStore();
+      uiStore.uiOrder.rooms[categoryId] = roomIds;
+      MatrixService.getInstance().saveUIOrder();
     },
 
     setInviteRoomId(roomId: string | null) {
-        this.inviteRoomId = roomId;
+      this.inviteRoomId = roomId;
+    },
+    _sanitizeActivityString(val: any): string | null {
+      if (val === null || val === undefined) return null;
+      const s = String(val).trim();
+      if (!s || s === "undefined" || s === "null" || s === "None") return null;
+      return s;
     },
 
-    pinSpace(spaceId: string) {
-        if (!this.pinnedSpaces.includes(spaceId)) {
-            this.setPinnedSpaces([...this.pinnedSpaces, spaceId]);
+    async refreshPresence() {
+      if (!this.client || !this.isAuthenticated || !this.isClientReady) return;
+
+      const { game, music } = this.resolveActivities(null);
+      const bestActivity = game || music;
+      const hasLiveActivity = (game?.is_running && !game?.is_paused) || (music?.is_running && !music?.is_paused);
+      const presence = (this.isIdle && !hasLiveActivity) ? "unavailable" : "online";
+
+      let status_msg: string = this.customStatus || "";
+
+      if (!status_msg && bestActivity?.is_running) {
+        const act = bestActivity;
+        const name = this._sanitizeActivityString(act.name);
+        if (name) {
+          status_msg = JSON.stringify({
+            playing: name,
+            details: act.details ?? null,
+            state: act.state ?? null,
+            applicationId: act.applicationId ?? null,
+            iconHash: act.iconHash ?? null,
+            smallIconHash: act.smallIconHash ?? null,
+            startTimestamp: act.startTimestamp ?? null,
+            duration: act.duration ?? null,
+            currentTime: act.currentTime ?? null,
+            coverUrl: act.coverUrl ?? null,
+            type: act.type || (name.includes(" by ") ? "music" : "game"),
+            is_running: true,
+            is_paused: act.is_paused ?? false,
+            game: game ? { ...game } : null,
+            music: music ? { ...music } : null
+          });
         }
-    },
+      }
+
+      const stateChanged = !this.lastPresenceState ||
+        this.lastPresenceState.presence !== presence ||
+        this.lastPresenceState.status_msg !== status_msg;
+
+      let isCriticalChange = false;
+      if (stateChanged && this.lastPresenceState) {
+        try {
+          const lastMsg = this.lastPresenceState.status_msg;
+          const currentMsg = status_msg;
 
           if (lastMsg.startsWith('{') && currentMsg.startsWith('{')) {
             const last = JSON.parse(lastMsg);
@@ -1815,44 +1984,6 @@ export const useMatrixStore = defineStore('matrix', {
       }
     },
 
-    async saveUIOrder() {
-      // Optimistic update to local storage
-      await setPref('matrix_ui_order', this.ui.uiOrder);
-
-      if (!this.client) return;
-      try {
-        await (this.client as any).setAccountData('cc.jackg.ruby.ui_order', this.ui.uiOrder);
-      } catch (e) {
-        console.error('Failed to save UI order to account data:', e);
-      }
-    },
-
-    async fetchSpaceHierarchy(spaceId: string) {
-      if (!this.client) return;
-      try {
-        console.log(`[MatrixStore] Fetching hierarchy for space: ${spaceId}`);
-        const result = await (this.client as any).getRoomHierarchy(spaceId);
-        this.spaceHierarchies[spaceId] = result.rooms;
-        this.hierarchyTrigger++;
-      } catch (e) {
-        console.error(`[MatrixStore] Failed to fetch hierarchy for space ${spaceId}:`, e);
-      }
-    },
-
-    updateRootSpacesOrder(newOrder: string[]) {
-      this.ui.uiOrder.rootSpaces = newOrder;
-      this.saveUIOrder();
-    },
-
-    updateCategoryOrder(spaceId: string, newOrder: string[]) {
-      this.ui.uiOrder.categories[spaceId] = newOrder;
-      this.saveUIOrder();
-    },
-
-    updateRoomOrder(categoryId: string, newOrder: string[]) {
-      this.ui.uiOrder.rooms[categoryId] = newOrder;
-      this.saveUIOrder();
-    },
 
     updatePinnedSpaces() {
       if (!this.client) return;
@@ -2757,20 +2888,7 @@ export const useMatrixStore = defineStore('matrix', {
       });
     },
 
-    _resetVerificationState() {
-      console.log('[Verification] Resetting state');
-      this.activeVerificationRequest = null;
-      this.isVerificationInitiatedByMe = false;
-      this.isRequestingVerification = false;
-      this.activeSas = null;
-      this.isSasConfirming = false;
-      this.qrCodeData = null;
-      this.isVerificationCompleted = false;
-      this.verificationPhase = null;
-      this.isRestoringHistory = false;
-      this.activeVerificationRequest = null;
-      this.verificationModalOpen = false;
-    },
+
 
     async bootstrapVerification() {
       if (!this.client) return;
@@ -3154,40 +3272,7 @@ export const useMatrixStore = defineStore('matrix', {
       });
     },
 
-    async _clearPersistentStores() {
-      const userId = this.client?.getUserId();
-      const deleteDb = (name: string) => new Promise<void>((resolve) => {
-        const req = window.indexedDB.deleteDatabase(name);
-        req.onsuccess = () => {
-          console.log(`[MatrixStore] Database deleted: ${name}`);
-          resolve();
-        };
-        req.onerror = () => {
-          console.warn(`[MatrixStore] Error deleting database: ${name}`);
-          resolve();
-        };
-        req.onblocked = () => {
-          console.warn(`[MatrixStore] DB delete blocked: ${name}`);
-          resolve();
-        };
-      });
 
-      console.log('[MatrixStore] Clearing all persistent stores...');
-      const dbsToWipe = [
-        'matrix-js-sdk::matrix-store',
-        'matrix-js-sdk::matrix-sdk-crypto',
-        'matrix-js-sdk::matrix-sdk-crypto-meta',
-        'matrix-js-sdk::crypto-store'
-      ];
-
-      if (userId) {
-        dbsToWipe.push(`matrix-sdk-crypto-${userId}`);
-        dbsToWipe.push(`matrix-sdk-crypto-meta-${userId}`);
-      }
-
-      await Promise.all(dbsToWipe.map(name => deleteDb(name))).catch(e => console.error('[MatrixStore] Error during DB wiping:', e));
-      console.log('[MatrixStore] Finished clearing persistent stores');
-    },
 
     // --- Room & Space Management ---
     openGlobalSearchModal() {
@@ -3581,8 +3666,8 @@ export const useMatrixStore = defineStore('matrix', {
     },
 
     markAsUnread(roomId: string) {
-        this.manualUnread[roomId] = true;
-        this.unreadTrigger++;
+      this.manualUnread[roomId] = true;
+      this.unreadTrigger++;
     }
   }
 });

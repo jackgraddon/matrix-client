@@ -13,7 +13,7 @@ import { useDebounceFn } from '@vueuse/core';
 import { dismissNotification } from "~/utils/notify";
 import { completeLoginFlow } from "~/utils/matrix-auth";
 
-class LocalStorageOidcTokenRefresher extends OidcTokenRefresher {
+export class LocalStorageOidcTokenRefresher extends OidcTokenRefresher {
   public override async doRefreshAccessToken(refreshToken: string): Promise<AccessTokens> {
     const performRefresh = async (): Promise<AccessTokens> => {
       const latestRefreshToken = await getSecret('matrix_refresh_token');
@@ -548,5 +548,17 @@ export class MatrixService {
       } catch (e) {
           console.error('[MatrixService] Failed to check pending share', e);
       }
+  }
+
+  async saveUIOrder() {
+    const uiStore = useUIStore();
+    await setPref('matrix_ui_order', uiStore.uiOrder);
+
+    if (!this.client) return;
+    try {
+      await (this.client as any).setAccountData('cc.jackg.ruby.ui_order', uiStore.uiOrder);
+    } catch (e) {
+      console.error('Failed to save UI order to account data:', e);
+    }
   }
 }
